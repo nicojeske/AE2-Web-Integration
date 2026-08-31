@@ -15,10 +15,12 @@ concurrency:
 jobs:
   update-core-pins:
     if: >-
-      github.repository == 'kuba6000/AE2-Web-Integration' &&
+      github.repository == 'nicojeske/AE2-Web-Integration' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'core'
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -26,9 +28,8 @@ jobs:
       matrix:
         branch: [ 1.7.10, 1.12.2, 1.20.1, 1.21.1 ]
     env:
-      BOT_EMAIL: agent@kuba6000.pl
-      BOT_LOGIN: kuba6000-agent
-      BOT_NAME: "KLANKER | kuba6000"
+      BOT_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+      BOT_NAME: "github-actions[bot]"
       CORE_SHA: ${{ github.event.workflow_run.head_sha }}
       TARGET_BRANCH: ${{ matrix.branch }}
 
@@ -74,20 +75,6 @@ jobs:
           echo "skip=false" >> "${GITHUB_OUTPUT}"
           echo "Updating ${TARGET_BRANCH} from core ${current_pin} to ${CORE_SHA}."
 
-      - name: Verify bot token identity
-        if: steps.prepare.outputs.skip == 'false'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.CORE_PIN_BOT_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          authenticated_login="$(gh api user --jq .login)"
-          if [[ "${authenticated_login}" != "${BOT_LOGIN}" ]]; then
-            echo "CORE_PIN_BOT_TOKEN belongs to ${authenticated_login}, expected ${BOT_LOGIN}." >&2
-            exit 1
-          fi
-
       - name: Create core pin commit
         if: steps.prepare.outputs.skip == 'false'
         id: commit
@@ -110,12 +97,13 @@ jobs:
         if: steps.prepare.outputs.skip == 'false'
         shell: bash
         env:
-          CORE_PIN_BOT_TOKEN: ${{ secrets.CORE_PIN_BOT_TOKEN }}
+          # The default token scoped to this run; contents:write is granted on this job above.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_WORKTREE: ${{ steps.commit.outputs.worktree }}
         run: |
           set -euo pipefail
 
-          basic_auth="$(printf 'x-access-token:%s' "${CORE_PIN_BOT_TOKEN}" | base64 -w 0)"
+          basic_auth="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w 0)"
           echo "::add-mask::${basic_auth}"
           git -C "${UPDATE_WORKTREE}" \
             -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic_auth}" \
