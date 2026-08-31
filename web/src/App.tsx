@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
 import { logout } from "./api/client";
 import { getContext } from "./context";
@@ -12,6 +12,7 @@ import type { Section } from "./shell/section";
 import { Sidebar } from "./shell/Sidebar";
 import { Topbar } from "./shell/Topbar";
 import { Browser } from "./views/Browser";
+import { CraftDetail } from "./views/CraftDetail";
 import { Favorites } from "./views/Favorites";
 import { History } from "./views/History";
 import { Jobs } from "./views/Jobs";
@@ -19,13 +20,38 @@ import { Statistics } from "./views/Statistics";
 
 function Shell() {
     const context = getContext();
-    const { refresh: refreshGrids } = useNetwork();
+    const { selected, refresh: refreshGrids } = useNetwork();
     const { items, refresh: refreshItems } = useItems();
-    const { busyCount, refresh: refreshCpus } = useCpus();
+    const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
     const { favorites, thresholds, notifyEnabled, setNotifyEnabled } = usePrefs();
     const toast = useToast();
     const [section, setSection] = useState<Section>("browser");
     const [search, setSearch] = useState("");
+    const [craftDetail, setCraftDetail] = useState<{ gridId: number; cpuName: string } | null>(null);
+
+    const changeSection = useCallback((next: Section) => {
+        setCraftDetail(null);
+        setSection(next);
+    }, []);
+
+    // A grid switch can leave `craftDetail` pointing at a CPU that no longer means anything in the
+    // new selection (a different grid entirely, in single-grid mode) - close it rather than showing a
+    // stale/mismatched page. Sidebar drives grid selection directly via `useNetwork` (not through
+    // Shell), so this has to watch `selected` rather than wrap a handler the way `changeSection` does.
+    useEffect(() => {
+        setCraftDetail(null);
+    }, [selected]);
+
+    // Shell is the single writer of `detailScope` - the expensive per-CPU `/get` fan-in covers every
+    // busy CPU while Jobs is the active section, narrows to just the one CPU Craft Detail is showing,
+    // and stops entirely everywhere else (server-thread drain budget, see REDESIGN_MILESTONES.md caveat 2).
+    useEffect(() => {
+        if (craftDetail) {
+            setDetailScope({ gridId: craftDetail.gridId, cpuName: craftDetail.cpuName });
+        } else {
+            setDetailScope(section === "jobs" ? "all" : null);
+        }
+    }, [section, craftDetail, setDetailScope]);
 
     const onToggleNotify = useCallback(() => {
         const next = !notifyEnabled;
@@ -58,7 +84,7 @@ function Shell() {
         <div className="app-shell">
             <Sidebar
                 section={section}
-                onSectionChange={setSection}
+                onSectionChange={changeSection}
                 busyCount={busyCount}
                 lowStockFavCount={lowStockFavCount}
                 notifyEnabled={notifyEnabled}
@@ -76,11 +102,27 @@ function Shell() {
                     onRefresh={() => void onRefresh()}
                 />
                 <div className="content">
-                    {section === "browser" && <Browser search={search} />}
-                    {section === "jobs" && <Jobs />}
-                    {section === "history" && <History />}
-                    {section === "favorites" && <Favorites />}
-                    {section === "stats" && <Statistics />}
+                    {craftDetail ? (
+                        <CraftDetail
+                            gridId={craftDetail.gridId}
+                            cpuName={craftDetail.cpuName}
+                            onClose={() => setCraftDetail(null)}
+                        />
+                    ) : (
+                        <>
+                            {section === "browser" && <Browser search={search} />}
+                            {section === "jobs" && (
+                                <Jobs
+                                    onOpenCraftDetail={(cpu) =>
+                                        setCraftDetail({ gridId: cpu.sourceGridId, cpuName: cpu.name })
+                                    }
+                                />
+                            )}
+                            {section === "history" && <History />}
+                            {section === "favorites" && <Favorites />}
+                            {section === "stats" && <Statistics />}
+                        </>
+                    )}
                 </div>
             </div>
         </div>

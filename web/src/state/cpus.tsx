@@ -7,13 +7,14 @@ import { skipSpecialFormat } from "../api/format";
 import type { CpuDetail, CpuSummary, GridSummary } from "../api/types";
 import { gridOptionLabel } from "../shell/gridLabel";
 import { notify } from "../util/notify";
+import { craftTotals, progressFraction } from "./craftProgress";
 import type { GridSelection } from "./network";
 import { useNetwork } from "./network";
 import { usePrefs } from "./prefs";
 import { useToast } from "./toast";
 
 /**
- * A `CpuSummary` (`/list` entry) tagged with its source grid and, while `detailPolling` is on, the
+ * A `CpuSummary` (`/list` entry) tagged with its source grid and, while `detailScope` covers it, the
  * latest `/get` detail plus a derived progress estimate.
  */
 export interface CpuView extends CpuSummary {
@@ -23,11 +24,25 @@ export interface CpuView extends CpuSummary {
     sourceGridId: number;
     /** Owner-derived label for the source grid; only meaningful in All-Grids mode. */
     gridLabel: string;
-    /** From `/get`, fetched only while `detailPolling` is on and only for busy CPUs. */
+    /** From `/get`, fetched only within `detailScope` and only for busy CPUs. */
     detail: CpuDetail | null;
+    /**
+     * `Date.now()` when `detail` was fetched - `detail.timeElapsed`/`timeStarted` are the *server's*
+     * clock, so callers needing a live-ticking elapsed must add `Date.now() - fetchedAt` rather than
+     * trusting `Date.now() - timeStarted` directly (client/server clock skew).
+     */
+    fetchedAt: number | null;
     /** 0-99, or null when there's nothing to derive a bar from (untracked, or no detail yet). */
     progressPct: number | null;
 }
+
+/**
+ * Which busy CPUs the expensive `/get` fan-in should cover this poll cycle - `null` fetches none,
+ * `"all"` fetches every busy CPU (the Jobs view), and a specific CPU fetches just that one (Craft
+ * Detail, which only ever needs the one it's showing). Narrower than plain on/off so opening Craft
+ * Detail doesn't keep fanning `/get` out to every other busy CPU in the background.
+ */
+export type DetailScope = "all" | { gridId: number; cpuName: string } | null;
 
 export interface CpusContextValue {
     cpus: CpuView[];
@@ -38,11 +53,12 @@ export interface CpusContextValue {
     failedGrids: string[];
     /**
      * Fans the expensive per-busy-CPU `/get` in on top of `/list`. Callers gate this to when it's
-     * actually shown (M2: the Jobs view) - never globally - per the server-thread drain budget
-     * (`CoreEngine.DRAIN_BUDGET_NANOS`, `AE2Controller.requests`' 32-slot queue).
+     * actually shown (Jobs: `"all"`, Craft Detail: the one CPU it's rendering) - never globally - per
+     * the server-thread drain budget (`CoreEngine.DRAIN_BUDGET_NANOS`, `AE2Controller.requests`'
+     * 32-slot queue).
      */
-    detailPolling: boolean;
-    setDetailPolling: (enabled: boolean) => void;
+    detailScope: DetailScope;
+    setDetailScope: (scope: DetailScope) => void;
     /** Suppresses the next busy->idle completion toast/notification for one CPU (a drawer-initiated cancel). */
     suppressCompletion: (gridId: number, cpuName: string) => void;
     refresh: () => Promise<void>;
@@ -65,21 +81,16 @@ function computeTargets(selection: GridSelection, allGrids: GridSummary[]): Grid
 }
 
 /**
- * `requested ~= craftedTotal + active + pending` per item (no real `requested` field exists - see
- * REDESIGN_MILESTONES.md caveat 1); progress = sum(crafted) / sum(requested). Clamped to [0, 99] so it
- * can never read 100% before the CPU actually reports idle (the risk logged at
+ * Clamped to [0, 99] so it can never read 100% before the CPU actually reports idle (the risk logged at
  * REDESIGN_MILESTONES.md:297), and it can move non-monotonically since it's derived from crafted totals.
+ * See `craftProgress.ts` for the underlying `requested ~= craftedTotal + active + pending` approximation
+ * (REDESIGN_MILESTONES.md caveat 1) shared with the Craft Detail page.
  */
 function estimateProgress(detail: CpuDetail | null, hasTrackingInfo: boolean): number | null {
     if (!hasTrackingInfo || !detail?.items) return null;
-    let crafted = 0;
-    let requested = 0;
-    for (const item of detail.items) {
-        crafted += item.craftedTotal;
-        requested += item.craftedTotal + item.active + item.pending;
-    }
-    if (requested <= 0) return null;
-    return Math.min(99, Math.max(0, (crafted / requested) * 100));
+    const totals = craftTotals(detail.items);
+    if (totals.requested <= 0) return null;
+    return Math.min(99, Math.max(0, progressFraction(totals) * 100));
 }
 
 interface LastBusyEntry {
@@ -97,14 +108,14 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [failedGrids, setFailedGrids] = useState<string[]>([]);
-    const [detailPolling, setDetailPolling] = useState(false);
+    const [detailScope, setDetailScope] = useState<DetailScope>(null);
 
     // "Latest ref" mirrors of props/state the poll loop reads every cycle without needing to restart
     // the effect (and therefore the loop's timer/generation/completion-tracking) whenever they change.
     const gridsRef = useRef(grids);
     gridsRef.current = grids;
-    const detailPollingRef = useRef(detailPolling);
-    detailPollingRef.current = detailPolling;
+    const detailScopeRef = useRef(detailScope);
+    detailScopeRef.current = detailScope;
     const notifyEnabledRef = useRef(notifyEnabled);
     notifyEnabledRef.current = notifyEnabled;
 
@@ -119,12 +130,12 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
         suppressRef.current.add(cpuKey(gridId, cpuName));
     }, []);
 
-    // Force one immediate cycle when detail polling turns on (Jobs view mounts), rather than waiting
-    // out whatever's left of the current `/list`-only interval - otherwise a busy CPU's drawer can
-    // show "No items on this CPU" for up to the poll interval after the view opens.
+    // Force one immediate cycle whenever the detail scope changes (Jobs mounts, or Craft Detail opens
+    // targeting a different CPU), rather than waiting out whatever's left of the current `/list`-only
+    // interval - otherwise the view can show stale/empty detail for up to the poll interval.
     useEffect(() => {
-        if (detailPolling) void runNowRef.current();
-    }, [detailPolling]);
+        if (detailScope !== null) void runNowRef.current();
+    }, [detailScope]);
 
     useEffect(() => {
         const generation = ++generationRef.current;
@@ -196,6 +207,7 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
                                     sourceGridId: grid.key,
                                     gridLabel: label,
                                     detail: null,
+                                    fetchedAt: null,
                                     progressPct: null,
                                 });
                             }
@@ -204,15 +216,20 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
                         }
                     }
 
-                    if (detailPollingRef.current) {
+                    const scope = detailScopeRef.current;
+                    if (scope !== null) {
                         // Sequential, not fanned out: `/get` is a server-thread task under a 5ms/tick
                         // drain budget (CoreEngine.DRAIN_BUDGET_NANOS) - see REDESIGN_MILESTONES.md caveat 2.
                         for (const cpu of collected) {
                             if (generation !== generationRef.current) return;
                             if (!cpu.isBusy) continue;
+                            if (scope !== "all" && (scope.gridId !== cpu.sourceGridId || scope.cpuName !== cpu.name)) {
+                                continue;
+                            }
                             try {
                                 const detail = await getCpu(cpu.sourceGridId, cpu.name);
                                 cpu.detail = detail;
+                                cpu.fetchedAt = Date.now();
                                 cpu.progressPct = estimateProgress(detail, cpu.hasTrackingInfo);
                             } catch {
                                 // Transient: e.g. GetCPU.java's craftsPerSec can be a NaN right after a
@@ -274,12 +291,12 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
             loading,
             error,
             failedGrids,
-            detailPolling,
-            setDetailPolling,
+            detailScope,
+            setDetailScope,
             suppressCompletion,
             refresh,
         }),
-        [cpus, busyCount, loading, error, failedGrids, detailPolling, suppressCompletion, refresh],
+        [cpus, busyCount, loading, error, failedGrids, detailScope, suppressCompletion, refresh],
     );
 
     return <CpusContext.Provider value={value}>{children}</CpusContext.Provider>;

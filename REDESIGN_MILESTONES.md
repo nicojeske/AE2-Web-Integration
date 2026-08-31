@@ -151,8 +151,8 @@ All-Grids mode, and low-stock badges reflect stored thresholds.
 **Done when** jobs appear, tick, and complete against a real server; cancelling from the drawer works;
 notifications fire only under the three conditions.
 
-### - [ ] M3 — Craft detail, active mode
-**Status:** Not started
+### - [x] M3 — Craft detail, active mode
+**Status:** Done — pending commit sha (recorded in an immediate follow-up commit, per repo convention)
 
 - Header (back button, `{item} x{qty}`, subtitle, status pill), stat strip (Output, Elapsed/Took,
   Est. remaining — `~{time}` once progress ≥15% and elapsed >20s else "Calculating", Crafts/sec from
@@ -454,3 +454,73 @@ _(newest last)_
   timing) and real `cancelcpu`/CPU-renumbering behavior need in-game verification before relying on this
   milestone. Desktop `Notification` permission/gating was code-reviewed against the four-gate rule but
   not exercised live (headless Chromium has no interactive permission prompt to grant).
+- **M3**: Navigation follows the design literally - a busy CPU card now opens Craft Detail (not the
+  drawer). The busy-CPU drawer branch from M2 (item list, Cancel Job footer, its own confirm modal) was
+  removed entirely rather than kept as a second path to the same cancel action; only the idle-CPU drawer
+  survives. Craft Detail's own "Cancel job" keeps a confirm modal (the prototype cancels immediately with
+  none) - same rationale as M2's drawer confirm, decided with the user rather than re-litigated.
+- **M3**: Per-item share bars ("% of craft time") and the bottleneck panel are derived client-side as
+  `item.timeSpentCrafting / Σ timeSpentCrafting`, matching the prototype, rather than reading the
+  server's `shareInCraftingTimeCombined` (which divides by wall-clock `timeElapsed` instead of total
+  tracked time - with co-processors running items in parallel that sum well past 100% and stop being
+  comparable across items or against the bottleneck ranking). Decided with the user.
+- **M3 API fact**: `GetCPUList.java`/`GetCPU.java` only set `timeStarted`/`timeElapsed` inside their
+  `hasTrackingInfo` branch - an untracked busy CPU reports neither. The design's "Elapsed"/"Took" stat
+  card has no data source for it, so it renders "—" for untracked CPUs rather than a bogus/undefined
+  duration; the mock server was corrected to match (it previously always answered a real `timeStarted`,
+  regardless of tracking).
+- **M3**: `jobRate`/`craftsPerSec` and per-item `rate` are derived (`craftedTotal / (time/1000)`)
+  rather than read from the server's `craftsPerSec` field, so the view never hits the NaN-serialization
+  crash logged under M0/M2 (both operands can be `0` right after a job starts tracking) - it only needs
+  `craftedTotal` and `timeSpentCrafting`, which are always present.
+- **M3**: The status pill can only ever read "Crafting" / "Crafting - no tracking" / "Completed" once a
+  job leaves the CPU - a busy→idle transition can't be told apart from a cancellation without
+  `trackinghistory` (M5), so it's never rendered as "Cancelled" here even when the job was in fact
+  cancelled from this same page (the "Cancel job" click closes the view immediately, before that
+  ambiguity would ever surface).
+- **M3**: Unlike the prototype's no-snapshot fallback (`Job finished` / `This CPU is idle again`, no
+  buttons at all - reachable if the job finishes between the card click and the first `/get`), a
+  "Back to jobs" button was added so the page is never a dead end.
+- **M3**: `useCpus()`'s `detailPolling: boolean` became `detailScope: "all" | {gridId, cpuName} | null`
+  so the expensive per-busy-CPU `/get` fan-in narrows to exactly the one CPU Craft Detail is showing,
+  instead of continuing to poll every other busy CPU in the background while it's open. `App.tsx`'s
+  `Shell` is now the sole writer (derived from `section` + a new `craftDetail` route state), replacing
+  `Jobs.tsx`'s own mount effect - two independent writers would race when Jobs is swapped for Craft
+  Detail in the same render. Opening Craft Detail also closes on a grid-selection change (a `useEffect`
+  on `selected`, since Sidebar drives grid selection directly via `useNetwork` rather than through Shell)
+  and on any sidebar section switch, so it can never be left showing a CPU that no longer matches the
+  current selection.
+- **M3**: Added `CpuView.fetchedAt` (client `Date.now()` when a `/get` response landed) so live-ticking
+  Elapsed/ETA can add wall-clock time to the server's `timeElapsed` without trusting
+  `Date.now() - timeStarted` directly, which would be wrong by the client/server clock offset.
+- **M3**: Extracted `src/state/craftProgress.ts` (`craftTotals`/`progressFraction`) out of `cpus.tsx`'s
+  `estimateProgress` so the Jobs card's progress bar and Craft Detail's own progress/ETA math share one
+  implementation of the `requested ~= craftedTotal + active + pending` approximation (caveat 1) and can
+  never quietly disagree.
+- **M3**: Dev fixtures (`toCompactedItems`) previously advanced every recipe row by the same uniform
+  fraction each tick, so a row could never sit purely in Waiting (`active` was `min(4, remaining)`
+  whenever any `remaining` existed at all, i.e. from the very first tick) - Crafting/Waiting/Done could
+  never all be exercised together under `npm run dev`. Rewritten so rows craft strictly in sequence,
+  each getting a `[windowStart, windowEnd]` slice of the overall duration weighted by its own
+  `requested` (bigger sub-crafts take proportionally longer); a row before its window is Waiting, inside
+  it is Crafting, after it is Done. `Assembly Cluster A` gained two extra recipe rows (7 total) so "Top
+  5 by time spent" actually truncates. `Foundry CPU`'s `craftDurationMs` was raised from M2's original
+  8s to 25s so a manual (or scripted) pass through Craft Detail reliably observes it complete in place
+  rather than racing a fixed dev-server-start timestamp.
+- **M3 verified**: `npm run dev` against the mock server with headless Chromium (Playwright, same setup
+  as M1/M2) confirmed: a busy card opens Craft Detail and an idle card still opens the drawer; the
+  tracked CPU renders all 4 stat cards, a live-ticking Elapsed, the `Calculating`→`~{eta}` transition
+  logic, all three columns populated (staggered Crafting/Waiting/Done, not everything landing in one
+  column), share bars, and a 5-row (of 7 items) collapsible bottleneck panel; the untracked CPU shows
+  exactly 2 stat cards, "Crafting - no tracking", `—` elapsed, no progress/share/bottleneck UI, and
+  "Completion needs job tracking" in Done; `Foundry CPU` completing while its Craft Detail page is open
+  freezes in place with `Took`, a `Completed` pill, and `Back to jobs` replacing `Cancel job` (Done still
+  shows the frozen active/pending numbers from the last snapshot before completion, matching the
+  prototype's own `done = finished ? items : …` - not zeroed just because the badge reads "complete");
+  switching sidebar sections or the grid selection while Craft Detail is open closes it back to a normal
+  section render; All-Grids mode opens a grid-2 CPU's detail with its grid label appended to the
+  subtitle; and cancel-with-confirm returns to Jobs - all with zero console/page errors. **Not yet
+  exercised against a real Forge server** (`./gradlew runServer`) - a real tracked job's per-item
+  columns/bottleneck/share math, real `cancelcpu` from this page, and the `craftsPerSec`-adjacent
+  NaN/dropped-`/get` path (this milestone no longer reads that field itself, but `estimateProgress`'s
+  `/get` fetch can still hit it) need in-game verification before relying on this milestone.

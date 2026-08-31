@@ -6,6 +6,7 @@ import "./ui/components.css";
 import "./app-shell.css";
 import "./views/browser.css";
 import "./views/jobs.css";
+import "./views/craft-detail.css";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Missing #app root element");

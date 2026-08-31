@@ -196,8 +196,22 @@ export const mockGrids: MockGrid[] = [
                         requested: 64,
                         stored: 210,
                     },
-                    { itemid: "appliedenergistics2:material_silicon", itemname: "Silicon", requested: 16, stored: 640 },
-                    { itemid: "minecraft:redstone", itemname: "Redstone", requested: 48, stored: 3400 },
+                    { itemid: "appliedenergistics2:material_silicon", itemname: "Silicon", requested: 24, stored: 640 },
+                    { itemid: "minecraft:redstone", itemname: "Redstone", requested: 40, stored: 3400 },
+                    // Two extra rows (beyond the 5 needed for the busy-CPU list) so "Top 5 by time
+                    // spent" actually truncates rather than showing every row.
+                    {
+                        itemid: "appliedenergistics2:material_certus_quartz_dust",
+                        itemname: "Pure Certus Quartz Crystal",
+                        requested: 32,
+                        stored: 96,
+                    },
+                    {
+                        itemid: "appliedenergistics2:material_calc_processor_press",
+                        itemname: "Calculation Processor Press",
+                        requested: 8,
+                        stored: 4,
+                    },
                 ],
             },
             {
@@ -322,9 +336,12 @@ export const mockGrids: MockGrid[] = [
         idleCpus: [{ name: "Outpost CPU", coProcessors: 1, availableStorage: 1024 * 1024 }],
         busyCpus: [
             {
-                // Short craftDurationMs so completion (toast + notification + sidebar pill decrement)
-                // fires within seconds of the dev server starting, instead of requiring a long wait -
-                // also the only busy CPU on a second grid, so the All-Grids fan-in touches both grids.
+                // Short craftDurationMs so completion (toast + notification + sidebar pill decrement,
+                // and M3's Craft Detail freezing in place) fires well within a manual dev-testing
+                // session, instead of requiring a long wait - also the only busy CPU on a second grid,
+                // so the All-Grids fan-in touches both grids. 25s (not M2's original 8s) so it also
+                // survives opening Craft Detail and watching it complete without a race against how
+                // long it takes to click through to it after the dev server starts.
                 name: "Foundry CPU",
                 coProcessors: 3,
                 availableStorage: 3 * 1024 * 1024,
@@ -336,7 +353,7 @@ export const mockGrids: MockGrid[] = [
                     quantity: 64,
                 },
                 startedAt: serverStart,
-                craftDurationMs: 8_000,
+                craftDurationMs: 25_000,
                 hasTrackingInfo: false,
                 recipe: [{ itemid: "minecraft:coal", itemname: "Coal", requested: 64, stored: 5200 }],
             },
@@ -424,24 +441,42 @@ export function toCpuList(grid: MockGrid): CpuList {
             usedStorage: cpu.usedStorage,
             coProcessors: cpu.coProcessors,
             hasTrackingInfo: cpu.hasTrackingInfo,
-            timeStarted: cpu.startedAt,
+            // GetCPUList.java only sets timeStarted inside its hasTrackingInfo branch.
+            timeStarted: cpu.hasTrackingInfo ? cpu.startedAt : 0,
         };
     }
     return list;
 }
 
+/**
+ * Recipe rows craft strictly in sequence (weighted by `requested`, so bigger sub-crafts take
+ * proportionally longer), each getting a `[windowStart, windowEnd]` slice of the overall craft
+ * duration - unlike the old uniform-fraction version, which advanced every row in lockstep and so could
+ * never produce a row sitting purely in Waiting (M3 needs Crafting/Waiting/Done to all be exercisable).
+ */
 export function toCompactedItems(cpu: MockBusyCpu): CompactedItem[] {
-    const fraction = craftProgress(cpu);
-    const elapsed = Date.now() - cpu.startedAt;
+    const overallFraction = craftProgress(cpu);
+    const totalWeight = cpu.recipe.reduce((a, r) => a + r.requested, 0) || 1;
+    let cumulativeWeight = 0;
     return cpu.recipe.map((row) => {
-        const craftedTotal = Math.min(row.requested, Math.round(row.requested * fraction));
+        const windowStart = cumulativeWeight / totalWeight;
+        cumulativeWeight += row.requested;
+        const windowEnd = cumulativeWeight / totalWeight;
+        const windowLength = Math.max(windowEnd - windowStart, 1e-6);
+        const rowProgress = Math.min(1, Math.max(0, (overallFraction - windowStart) / windowLength));
+
+        const craftedTotal = Math.round(row.requested * rowProgress);
         const remaining = row.requested - craftedTotal;
-        const active = remaining > 0 ? Math.min(4, remaining) : 0;
+        // Only "active" mid-window - not yet started (rowProgress 0) sits in Waiting, finished
+        // (rowProgress 1) sits in Done, matching the real `active>0`/`pending>0` column split.
+        const active = rowProgress > 0 && rowProgress < 1 ? Math.min(4, remaining) : 0;
         const pending = Math.max(0, remaining - active);
         // Guards the division-by-zero -> NaN that the real GetCPU.java can hit when timeSpentCrafting is
         // still 0 (see REDESIGN_MILESTONES.md Notes) - the mock should not paper over that shape, only avoid
         // producing an actual NaN in dev JSON (JSON has no NaN literal).
-        const timeSpentCrafting = cpu.hasTrackingInfo ? Math.round(elapsed * (row.requested / 64)) : 0;
+        const timeSpentCrafting = cpu.hasTrackingInfo
+            ? Math.round(cpu.craftDurationMs * windowLength * rowProgress)
+            : 0;
         const craftsPerSec = timeSpentCrafting > 0 ? craftedTotal / (timeSpentCrafting / 1000) : 0;
         return {
             itemid: row.itemid,

@@ -72,14 +72,16 @@ export function mockApiPlugin(): Plugin {
                         const busy = grid.busyCpus.find((c) => c.name === cpuName);
                         if (busy) {
                             const items = toCompactedItems(busy);
+                            // GetCPUList.java/GetCPU.java only set timeStarted/timeElapsed inside their
+                            // hasTrackingInfo branch - an untracked busy CPU reports neither.
                             ok(res, {
                                 size: busy.availableStorage,
                                 isBusy: true,
                                 finalOutput: busy.output,
                                 items,
                                 hasTrackingInfo: busy.hasTrackingInfo,
-                                timeStarted: busy.startedAt,
-                                timeElapsed: Date.now() - busy.startedAt,
+                                timeStarted: busy.hasTrackingInfo ? busy.startedAt : 0,
+                                timeElapsed: busy.hasTrackingInfo ? Date.now() - busy.startedAt : 0,
                             });
                             return;
                         }

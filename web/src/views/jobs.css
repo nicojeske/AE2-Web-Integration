@@ -84,12 +84,3 @@
     padding: 20px;
     font-size: 12px;
 }
-
-.cpu-drawer__expand {
-    align-self: flex-start;
-    padding-left: 0;
-}
-
-.cpu-drawer__cancel {
-    width: 100%;
-}
