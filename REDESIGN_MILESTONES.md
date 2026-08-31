@@ -82,7 +82,7 @@ Consequences to honour everywhere:
 ## Milestones
 
 ### - [x] M0 — Tracker, build pipeline, design system, app shell
-**Status:** Done — see Notes below for the commit sha once pushed.
+**Status:** Done — 34444a6e6b6d7d6558f9c286de534dac9c351095
 
 - This file, committed before any code.
 - `core/web/`: `package.json`, `tsconfig.json`, `vite.config.ts` (two entries → `webpage.html`,
