@@ -30,6 +30,12 @@ export function describeApiError(e: unknown, fallback: string): string {
             return "The plan isn't ready yet - try again in a moment";
         case "GRID_NOT_FOUND":
             return "This network is no longer available";
+        case "NO_PERMISSIONS":
+            return "You no longer have access to this network";
+        case "TRACKED_LIMIT_REACHED":
+            return "This network's tracked-item limit is full - untrack something first";
+        case "BAD_PARAM":
+            return "The server rejected that request - try reloading the page";
         case "TRACKING_NOT_FOUND":
             return "This job's tracking data is gone - the server may have restarted since it finished";
         case "SERVER_BUSY":

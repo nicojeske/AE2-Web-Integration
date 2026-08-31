@@ -64,4 +64,7 @@
     --series-4: var(--red);
     --series-5: var(--blue);
     --series-6: var(--emerald);
+
+    /* Statistics sparkline area fill (M8) */
+    --sparkline-area: rgba(139, 123, 245, 0.14);
 }

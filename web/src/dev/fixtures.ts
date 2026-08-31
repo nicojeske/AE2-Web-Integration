@@ -6,12 +6,15 @@ import type {
     DetailedItem,
     DimensionalCoords,
     GridSummary,
+    ItemHistoryResult,
     ItemStack,
     JobData,
     JobPlanItem,
+    StatsRange,
     TrackingDetail,
     TrackingHistoryElement,
 } from "../api/types.ts";
+import { HISTORY_NO_SAMPLE } from "../api/types.ts";
 
 export interface MockRecipeRow {
     itemid: string;
@@ -43,9 +46,20 @@ export interface MockGrid {
     busyCpus: MockBusyCpu[];
     history: TrackingHistoryElement[];
     trackingDetails: Map<number, TrackingDetail>;
+    /** M8: this grid's server-side tracked-item set (order matters - the server preserves insertion order). */
+    trackedItems: string[];
+    /** M8: when each tracked item's history begins - untrack/re-track resets it, mirroring `pruneTo`. */
+    historyStart: Map<string, number>;
 }
 
 const serverStart = Date.now();
+
+// M8 Statistics fixture tuning - deliberately small so the cap is reachable by clicking in dev.
+export const MOCK_TRACKED_LIMIT = 6;
+export const MOCK_SAMPLE_INTERVAL_MS = 5 * 60_000;
+export const MOCK_FINE_RETENTION_MS = 30 * 86_400_000;
+export const MOCK_HOURLY_RETENTION_DAYS = 365;
+const MOCK_HOURLY_BUCKET_MS = 60 * 60_000;
 
 export const mockGrids: MockGrid[] = [
     {
@@ -438,6 +452,27 @@ export const mockGrids: MockGrid[] = [
                 } satisfies TrackingDetail,
             ],
         ]),
+        // M8: five tracked items (one below the 6-item mock cap, so a sixth click reaches
+        // TRACKED_LIMIT_REACHED) covering a normal trend, a gap, a zero-baseline ramp, a
+        // just-started item, and a flat §-formatted one - see mockItemHistory's scenario table.
+        trackedItems: [
+            "minecraft:iron_ingot",
+            "minecraft:redstone",
+            "appliedenergistics2:material_silicon",
+            "appliedenergistics2:crystal_certus",
+            "appliedenergistics2:processor_calc",
+        ],
+        historyStart: new Map([
+            ["minecraft:iron_ingot", serverStart - 40 * 86_400_000],
+            ["minecraft:redstone", serverStart - 40 * 86_400_000],
+            // Recent on purpose (see mockBucketValue's silicon branch) - its zero-then-ramp shape is
+            // relative to this timestamp, not the full retention window, so it's visible within the
+            // default 7d card/compare range rather than only at "All time".
+            ["appliedenergistics2:material_silicon", serverStart - 6 * 86_400_000],
+            // Tracking "just started" - only the last ~12 minutes have any real samples.
+            ["appliedenergistics2:crystal_certus", serverStart - 12 * 60_000],
+            ["appliedenergistics2:processor_calc", serverStart - 40 * 86_400_000],
+        ]),
     },
     {
         key: 2,
@@ -488,6 +523,8 @@ export const mockGrids: MockGrid[] = [
         ],
         history: [],
         trackingDetails: new Map(),
+        trackedItems: ["minecraft:cobblestone"],
+        historyStart: new Map([["minecraft:cobblestone", serverStart - 40 * 86_400_000]]),
     },
 ];
 
@@ -680,6 +717,138 @@ export function toCompactedItems(cpu: MockBusyCpu): CompactedItem[] {
             craftsPerSec,
         };
     });
+}
+
+// M8 Statistics - deterministic history sampling. `mockItemHistory` reproduces
+// `ItemHistoryStore.readSeries`'s bucket/downsample arithmetic exactly (see REDESIGN_MILESTONES.md's
+// M7 notes) rather than approximating it, since the client's timestamp/count/gap handling depends on
+// that arithmetic being right - an approximate mock would hide exactly the bugs worth catching.
+
+function hashString(s: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+/** Deterministic pseudo-random in `[0,1)` from an itemid + fine-grained bucket index. */
+function seededNoise(itemid: string, bucket: number): number {
+    let h = (hashString(itemid) ^ Math.imul(bucket, 0x9e3779b1)) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), h | 1);
+    h ^= h + Math.imul(h ^ (h >>> 7), h | 61);
+    return ((h ^ (h >>> 14)) >>> 0) / 4_294_967_296;
+}
+
+function itemLiveQuantity(grid: MockGrid, itemid: string): number {
+    return grid.items.find((i) => i.itemid === itemid)?.quantity ?? 0;
+}
+
+// Deliberate gap window for the redstone scenario: [now-9h, now-6h), independent of historyStart -
+// exercises a broken line/area in the middle of a series that otherwise has plenty of real samples.
+const REDSTONE_GAP_START_MS_AGO = 9 * 3_600_000;
+const REDSTONE_GAP_END_MS_AGO = 6 * 3_600_000;
+
+/** Value at one bucket, or `HISTORY_NO_SAMPLE` - see the scenario table in mockItemHistory's caller. */
+function mockBucketValue(grid: MockGrid, itemid: string, bucketStartMs: number, now: number): number {
+    const start = grid.historyStart.get(itemid);
+    if (start === undefined || bucketStartMs < start) return HISTORY_NO_SAMPLE; // untracked, or predates tracking
+
+    if (itemid === "minecraft:redstone") {
+        const age = now - bucketStartMs;
+        if (age <= REDSTONE_GAP_START_MS_AGO && age >= REDSTONE_GAP_END_MS_AGO) return HISTORY_NO_SAMPLE;
+    }
+
+    const live = itemLiveQuantity(grid, itemid);
+    const fullSpanMs = MOCK_HOURLY_RETENTION_DAYS * 86_400_000;
+    const t = Math.min(1, Math.max(0, (bucketStartMs - (now - fullSpanMs)) / fullSpanMs));
+    const fineBucket = Math.floor(bucketStartMs / MOCK_SAMPLE_INTERVAL_MS);
+
+    let target: number;
+    let noiseAmplitude: number;
+    if (itemid === "appliedenergistics2:processor_calc") {
+        // Flat series (plus a §-formatted name) - exercises chartGeometry's span<=0 centering.
+        target = live;
+        noiseAmplitude = 0;
+    } else if (itemid === "appliedenergistics2:material_silicon") {
+        // Zero for the first 30% of *this item's own* tracked span, then ramps to the live value -
+        // deliberately relative to `historyStart` (recent, see the fixture literal below) rather than
+        // the full 365-day retention window, so the zero segment is actually visible within the
+        // default 7d card/compare range instead of being masked by the historyStart gate above.
+        // Exercises the compare modal's "peak" normalisation mode and the card's "n/a" delta pill.
+        const localSpan = Math.max(1, now - start);
+        const tLocal = Math.min(1, Math.max(0, (bucketStartMs - start) / localSpan));
+        target = tLocal < 0.3 ? 0 : live * ((tLocal - 0.3) / 0.7);
+        noiseAmplitude = target === 0 ? 0 : Math.max(1, live * 0.03);
+    } else {
+        // Normal upward trend - also what "just started" (certus, historyStart far into this range)
+        // and "has a gap" (redstone, gap applied above) both use for their real samples.
+        target = live * (0.55 + 0.45 * t);
+        noiseAmplitude = Math.max(1, live * 0.03);
+    }
+
+    const noise = (seededNoise(itemid, fineBucket) - 0.5) * 2 * noiseAmplitude;
+    return Math.max(0, Math.round(target + noise));
+}
+
+/**
+ * Mirrors `GetItemHistory`/`ItemHistoryStore.readSeries`: tier selection by span, absolute
+ * `floorDiv`-style buckets, `stepBuckets = ceil(totalBuckets/points)`, each output point is the
+ * newest non-gap bucket in its window (never an average). `count` and `stepMillis` are derived here
+ * exactly as the server derives them - callers must never assume `count === points`.
+ */
+export function mockItemHistory(
+    grid: MockGrid,
+    itemids: string[],
+    range: StatsRange,
+    pointsRequested: number,
+): ItemHistoryResult {
+    const now = Date.now();
+    const rangeMs: Record<StatsRange, number> = {
+        "24h": 86_400_000,
+        "7d": 7 * 86_400_000,
+        "30d": 30 * 86_400_000,
+        "1y": MOCK_HOURLY_RETENTION_DAYS * 86_400_000,
+        all: MOCK_HOURLY_RETENTION_DAYS * 86_400_000,
+    };
+    const span = rangeMs[range];
+    const resolution: "fine" | "hourly" = span <= MOCK_FINE_RETENTION_MS ? "fine" : "hourly";
+    const tierBucketMs = resolution === "fine" ? MOCK_SAMPLE_INTERVAL_MS : MOCK_HOURLY_BUCKET_MS;
+
+    const fromBucket = Math.floor((now - span) / tierBucketMs);
+    const toBucket = Math.floor(now / tierBucketMs);
+    const totalBuckets = toBucket - fromBucket + 1;
+    const stepBuckets = totalBuckets <= pointsRequested ? 1 : Math.ceil(totalBuckets / pointsRequested);
+    const count = Math.floor((toBucket - fromBucket) / stepBuckets) + 1;
+    const stepMillis = stepBuckets * tierBucketMs;
+
+    const series = itemids.map((itemid) => {
+        const points: number[] = [];
+        for (let i = 0; i < count; i++) {
+            const windowStartBucket = fromBucket + i * stepBuckets;
+            const windowEndBucket = Math.min(toBucket, windowStartBucket + stepBuckets - 1);
+            let value = HISTORY_NO_SAMPLE;
+            for (let b = windowEndBucket; b >= windowStartBucket; b--) {
+                const v = mockBucketValue(grid, itemid, b * tierBucketMs, now);
+                if (v !== HISTORY_NO_SAMPLE) {
+                    value = v;
+                    break;
+                }
+            }
+            points.push(value);
+        }
+        return { itemid, points };
+    });
+
+    return {
+        from: fromBucket * tierBucketMs,
+        to: toBucket * tierBucketMs,
+        stepMillis,
+        resolution,
+        limit: MOCK_TRACKED_LIMIT,
+        series,
+    };
 }
 
 interface MockIngredient {

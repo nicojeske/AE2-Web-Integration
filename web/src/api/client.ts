@@ -5,8 +5,11 @@ import type {
     Envelope,
     GridSettingsResult,
     GridSummary,
+    ItemHistoryResult,
     JobData,
     OrderResult,
+    StatsRange,
+    TrackedItemsResult,
     TrackingDetail,
     TrackingHistoryElement,
 } from "./types";
@@ -108,6 +111,37 @@ export function getTracking(gridId: number, id: number): Promise<TrackingDetail>
 
 export function setGridTracking(gridId: number, track: boolean): Promise<GridSettingsResult> {
     return withGridRefresh(() => apiGet(`gridsettings${query({ grid: gridId, track: track ? "1" : "0" })}`));
+}
+
+/**
+ * Omitting `items` asks the server for its own tracked set - the fetch strategy this client uses
+ * everywhere, to avoid ever sending a client-side tracked-item list that could drift from the server's.
+ */
+export function getItemHistory(
+    gridId: number,
+    range: StatsRange,
+    points: number,
+    items?: string[],
+): Promise<ItemHistoryResult> {
+    return withGridRefresh(() =>
+        apiGet(`itemhistory${query({ grid: gridId, range, points, items: items?.join(",") })}`),
+    );
+}
+
+export function getTrackedItems(gridId: number): Promise<TrackedItemsResult> {
+    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId })}`));
+}
+
+export function setTrackedItems(gridId: number, items: string[]): Promise<TrackedItemsResult> {
+    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId, set: items.join(",") })}`));
+}
+
+export function addTrackedItem(gridId: number, itemid: string): Promise<TrackedItemsResult> {
+    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId, add: itemid })}`));
+}
+
+export function removeTrackedItem(gridId: number, itemid: string): Promise<TrackedItemsResult> {
+    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId, remove: itemid })}`));
 }
 
 export function logout(): void {

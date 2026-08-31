@@ -239,8 +239,8 @@ exactly one job per item per cycle against a real server.
 **Done when** `./gradlew build` in `core/` is green with new tests, and the endpoints return sane
 series for a running server.
 
-### - [ ] M8 — Statistics: client
-**Status:** Not started
+### - [x] M8 — Statistics: client
+**Status:** Done — (pending commit)
 
 - Range segmented control (default 7d), "Manage tracked items" modal (420px, search, 16px checkboxes,
   Done) writing the server-side tracked set.
@@ -821,3 +821,109 @@ _(newest last)_
   concurrent HTTP load, and a real restart-preserves-history round trip need in-game verification before
   relying on this milestone. This milestone adds no frontend code, so `npm run build`'s committed output is
   untouched.
+- **M8**: Statistics is **single-grid only**, decided with the user during planning - the tracked set and
+  its 24-item cap are per-grid server-side (`GridData.trackedItems`), so unlike every other section
+  All-Grids mode gets a notice ("pick a single network") instead of a fan-out.
+- **M8**: The chart card's big mono number reads the **live `useItems()` stored quantity** for that itemid
+  (decided with the user), falling back to the last non-gap sample, then `—` - it can disagree with the
+  sparkline's own last point by up to one sample interval (5 min default), which is expected: the number
+  is "right now", the chart is "as of the last sample".
+- **M8**: The compare modal's "+ Add item to compare" dropdown lists **only the grid's tracked items**
+  (decided with the user) - an untracked id has no history at all, just an all-`-1` (no-sample) series,
+  i.e. a blank line with nothing to compare.
+- **M8 wire facts confirmed against the M7 Java** (`GetItemHistory.java`, `TrackedItems.java`,
+  `ItemHistoryStore.readSeries`) before writing the client: `series[].points.length` is
+  `floor((toBucket-fromBucket)/stepBuckets)+1`, which can be **less than** the requested `points` - the
+  client always derives point count/timestamps from the response array, never from the request. `to` is
+  the *start* of the last bucket, not the last point's timestamp. The **newest point is usually a gap**
+  (the last bucket is still filling; always true at `stepBuckets === 1`, e.g. a 24h request at
+  `points=500`) - every "current/last" read uses the newest *non-gap* sample. A 30d range downsamples
+  5-min buckets into ~6h windows but the response still reports `resolution:"fine"` - `describeResolution`
+  keys off `stepMillis`, not `resolution` alone, or the caption would lie. "All time" is the hourly
+  retention window (default 365 days), not unbounded - `retentionNote` derives the honest span from the
+  response's own `from`/`to` rather than hardcoding a number, so a retuned server self-describes correctly.
+- **M8**: `chartGeometry` (`views/statsModel.ts`) takes `(number | null)[]`, not the prototype's
+  `number[]` - `-1` is converted to `null` exactly once, at the API boundary (`toValues`). Gaps break the
+  plot into per-run SVG subpaths (`M…L…` per contiguous run) instead of one continuous path; the line
+  path carries `stroke-linecap="round"`, so an isolated real sample between two gaps renders as a visible
+  2px dot with no separate marker element needed. The area fill closes at **each segment's own** first/last
+  x (`M{x0},{h} L… L{xn},{h} Z`), not the prototype's `L{w},{h} L0,{h} Z` - closing at the viewBox edges
+  would smear fill across gaps and past the ends of a partial series. Two further deliberate deviations
+  from the prototype's `chartGeometry`: a flat/zero series centres at `h/2` (`span <= 0`) instead of being
+  welded to the floor by `span || 1`, and a lone sample sits at `x = w/2` instead of `x = 0`.
+- **M8**: Compare normalisation's baseline is the **first non-gap** value, never `values[0]` (usually `-1`)
+  and never the prototype's `values[0] || 1`. A zero baseline (a genuinely-zero first sample, not a gap)
+  has no meaningful percentage, so that series normalises to its **own peak** instead (`mode: "peak"`),
+  with a caption footnote naming it - rejected alternatives were silently dropping the series or dividing
+  by a fudge constant, both of which would misrepresent a real zero. An all-gap series is `mode: "none"`,
+  drawn nowhere, greyed in the legend, and excluded from the shared y-domain.
+- **M8**: The delta pill is `null` (renders a grey "n/a" badge) when there are fewer than two non-gap
+  samples in the range, or the first non-gap value is `0` (percent-of-zero is undefined) - it compares the
+  range's own first-to-last sample, not the live stored quantity, so it can disagree with the big number by
+  design (see the decision above).
+- **M8**: A sparkline has no per-point DOM elements for `Timeline.tsx`'s per-rect focus pattern to attach
+  to, so hover and keyboard share one `useChartHover` hook (`ui/useChartHover.ts`): pointer hover uses the
+  design's `round(x/width*(count-1))` rule off the HTML wrapper (never the stretched SVG); the same wrapper
+  is `tabIndex=0 role="img"` with Arrow/Home/End/Escape and a visually-hidden `aria-live="polite"` readout
+  span (new `.sr-only` utility in `ui/components.css`). Hovering a gap index shows no dot and reads
+  "{time} · No data" rather than snapping to a neighbouring real sample.
+- **M8**: `Checkbox` gained an additive `disabled` prop (drops `tabIndex`, sets `aria-disabled`, no-ops
+  the handlers) for the Manage Tracked modal's cap - a checkbox for an untracked item is disabled once
+  `tracked.length >= limit` rather than allowing a doomed click that the server would deny anyway.
+- **M8**: Unchecking a tracked row in the Manage Tracked modal expands an **inline confirm row** beneath it
+  (not a nested `Modal`, since two `useDialogA11y` focus traps stacked on top of each other would fight
+  over Tab/Escape) - the standing note above the list already says untracking deletes history, and this is
+  the second, per-item confirmation before the irreversible call.
+- **M8**: `state/stats.tsx`'s poll loop follows `cpus.tsx`'s self-scheduling `setTimeout` shape but, unlike
+  `cpus.tsx`, **restarts on both grid and range changes** (its effect depends on `[gridId, range]`) rather
+  than layering a separate "force an immediate fetch" effect on top for either - one fewer moving part, and
+  it mirrors `cpus.tsx`'s own restart-on-`selected`-change precedent. `active`/`compareActive`/
+  `compareRange` are read from refs each cycle and get small dedicated trigger effects instead, since they
+  shouldn't tear down the poll timer. Both endpoints are `IAsyncRequest`s (HTTP worker thread, never the
+  server tick), so the 60s poll cadence costs nothing against `CoreEngine`'s drain budget - the gate is
+  `active`/`document.hidden`, matching Shell's `detailScope` precedent for scoping expensive client work to
+  the visible surface, not server-thread cost.
+- **M8**: Tracked-set mutations are **optimistic and serialized** through a `useRef` promise chain (so
+  rapid clicking in the Manage Tracked modal can't interleave two in-flight requests), reverting the local
+  list and toasting `describeApiError` on failure, and re-fetching the authoritative set specifically on
+  `TRACKED_LIMIT_REACHED` (a two-tab race where another session filled the cap first).
+- **M8**: Saved views (`state/prefs.tsx`'s `statsViews`, `ae2.statsViews`) are scoped per-grid via a
+  `gridId` field rather than a separate storage key per grid - `Statistics.tsx` filters by
+  `selectedGrid.key` so the chip row swaps cleanly on a network switch. `id` is a string
+  (`` `${Date.now()}-${rand}` ``), not the prototype's bare `Date.now()`, which two saves in the same
+  millisecond would collide on. Loading a chip opens the compare modal at the view's own saved `range` and
+  does not touch the section's own range control.
+- **M8**: Dev fixtures (`fixtures.ts`) gained a real per-grid `trackedItems`/`historyStart` and
+  `mockItemHistory`, which **reproduces `ItemHistoryStore.readSeries`'s bucket/downsample arithmetic
+  exactly** (absolute `floorDiv` buckets, `stepBuckets = ceil(total/points)`, newest non-gap value per
+  window) rather than approximating it - the client's count/timestamp/gap handling depends on that
+  arithmetic being right, so an approximate mock would have hidden exactly the bugs worth catching. Five
+  scenarios on grid 1 exercise the gap/zero-baseline/just-started/flat paths (see the table in the M8 plan);
+  the mock's tracked-item cap is deliberately small (`MOCK_TRACKED_LIMIT = 6`, vs. the server's default 24)
+  so `TRACKED_LIMIT_REACHED` is reachable by clicking in dev rather than needing 24 real items. One fixture
+  bug caught by manual verification and fixed before landing: Silicon's "zero baseline then ramp" was
+  originally computed against the *full 365-day retention window's* position, but its own `historyStart`
+  (40 days ago) already sat past the zero segment's 30% threshold, so the zero branch was unreachable at
+  any range a person would actually look at. Fixed by computing that item's ramp relative to its own
+  `historyStart..now` span instead, and moving `historyStart` to 6 days ago so the shape is visible within
+  the default 7-day view without extra navigation - caught by hovering/reading the compare modal's caption
+  in the headless run, not by any type or build check.
+- **M8 verified**: `npm run typecheck` and `npm run format:check` clean; `npm run build` regenerates
+  `src/main/resources/assets/webpage.html` (committed in this commit). `npm run dev` against the mock
+  server with headless Chromium (Playwright, same setup as M1-M6) confirmed, with zero console/page errors
+  throughout: the All-Grids notice and the disabled `key === -1` grid excluded from selection; all four
+  ranges on the same card with the resolution caption changing correctly and "All time" showing the honest
+  retention note; Redstone's deliberate gap rendering as two broken subpaths in both the line *and* the
+  area fill (verified by hovering directly inside the gap window - no dot, "No data" - versus just outside
+  it, which shows a real value); Certus Quartz's "just started" card; Silicon's zero-baseline card reading
+  "n/a" on its delta pill; keyboard Arrow/Home/End/Escape traversal of a sparkline moving the tooltip and
+  live-region text correctly; the Manage Tracked modal's search, the cap reached at 6/6 with the 7th row's
+  checkbox `aria-disabled`, the inline untrack-confirm row's Cancel (no change) and Untrack (count drops,
+  history-reset stand-in fires) paths; the zero-tracked empty state on grid 2 after untracking its one item,
+  with "Manage tracked items" still reachable; the compare modal opening from a card's expand button, the
+  add-item dropdown listing only tracked items, the zero-baseline item's `peak`-mode caption footnote
+  appearing once its own zero segment fell inside the visible range, and a fixed-height raw-value readout;
+  and saving a compare view producing a working chip back on the Statistics header. **Not yet exercised
+  against a real Forge server** (`./gradlew runServer`) - a real 5-minute sampler's cadence, a real
+  restart-induced gap, and a real ~24-item grid's payload size need in-game verification before relying on
+  this milestone. This milestone made no Java changes, so `./gradlew build` was not re-run.

@@ -2,11 +2,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { Plugin } from "vite";
 
+import type { StatsRange } from "../api/types.ts";
+
 import {
     createJob,
     findGrid,
     findItemByHashcode,
+    MOCK_TRACKED_LIMIT,
     mockGrids,
+    mockItemHistory,
     mockJobs,
     recordTracking,
     settleCompletedJobs,
@@ -15,6 +19,11 @@ import {
     toGridSummaries,
     toJobData,
 } from "./fixtures.ts";
+
+const STATS_RANGES = new Set<StatsRange>(["24h", "7d", "30d", "1y", "all"]);
+const MAX_HISTORY_POINTS = 500;
+const DEFAULT_HISTORY_POINTS = 120;
+const MAX_TRACKED_ITEMID_LENGTH = 256;
 
 function respond(res: ServerResponse, status: string, data: unknown): void {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -217,7 +226,71 @@ export function mockApiPlugin(): Plugin {
                         if (params.has("track")) {
                             grid.isTrackingEnabled = params.get("track") === "1";
                         }
-                        ok(res, { isTracked: grid.isTrackingEnabled });
+                        ok(res, { isTracked: grid.isTrackingEnabled, trackedItems: grid.trackedItems });
+                        return;
+                    }
+                    case "/itemhistory": {
+                        const grid = findGrid(gridKey);
+                        if (!grid) return respond(res, "GRID_NOT_FOUND", null);
+                        const rangeParam = params.get("range") ?? "7d";
+                        if (!STATS_RANGES.has(rangeParam as StatsRange)) return respond(res, "BAD_PARAM", null);
+                        const range = rangeParam as StatsRange;
+                        const pointsParam = params.get("points");
+                        let points = DEFAULT_HISTORY_POINTS;
+                        if (pointsParam !== null) {
+                            const n = Number(pointsParam);
+                            if (!Number.isInteger(n) || n < 1) return respond(res, "BAD_PARAM", null);
+                            points = Math.min(n, MAX_HISTORY_POINTS);
+                        }
+                        const itemsParam = params.get("items");
+                        const itemids = itemsParam
+                            ? [
+                                  ...new Set(
+                                      itemsParam
+                                          .split(",")
+                                          .map((s) => s.trim())
+                                          .filter(Boolean),
+                                  ),
+                              ]
+                            : [...grid.trackedItems];
+                        ok(res, mockItemHistory(grid, itemids, range, points));
+                        return;
+                    }
+                    case "/trackeditems": {
+                        const grid = findGrid(gridKey);
+                        if (!grid) return respond(res, "GRID_NOT_FOUND", null);
+                        let next2 = grid.trackedItems;
+                        if (params.has("set")) {
+                            const raw = params.get("set") ?? "";
+                            const ids = raw === "" ? [] : raw.split(",").map((s) => s.trim());
+                            if (ids.some((id) => id.length > MAX_TRACKED_ITEMID_LENGTH)) {
+                                return respond(res, "BAD_PARAM", null);
+                            }
+                            next2 = [...new Set(ids.filter(Boolean))];
+                        }
+                        if (params.has("add")) {
+                            const id = (params.get("add") ?? "").trim();
+                            if (id.length === 0 || id.length > MAX_TRACKED_ITEMID_LENGTH) {
+                                return respond(res, "BAD_PARAM", null);
+                            }
+                            if (!next2.includes(id)) next2 = [...next2, id];
+                        }
+                        if (params.has("remove")) {
+                            const id = (params.get("remove") ?? "").trim();
+                            if (next2.includes(id)) {
+                                // Untracking destroys that item's history (ItemHistoryStore.pruneTo) - the
+                                // mock's stand-in is dropping historyStart, so a re-track genuinely restarts
+                                // the series instead of picking up where it left off.
+                                grid.historyStart.delete(id);
+                            }
+                            next2 = next2.filter((x) => x !== id);
+                        }
+                        if (next2.length > MOCK_TRACKED_LIMIT) return respond(res, "TRACKED_LIMIT_REACHED", null);
+                        for (const id of next2) {
+                            if (!grid.historyStart.has(id)) grid.historyStart.set(id, Date.now());
+                        }
+                        grid.trackedItems = next2;
+                        ok(res, { tracked: grid.trackedItems, limit: MOCK_TRACKED_LIMIT });
                         return;
                     }
                     default:

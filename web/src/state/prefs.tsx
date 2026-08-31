@@ -2,10 +2,13 @@ import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
 import { useCallback, useContext, useMemo, useState } from "preact/hooks";
 
+import type { StatsRange } from "../api/types";
+
 const FAVORITES_KEY = "ae2.favorites";
 const THRESHOLDS_KEY = "ae2.thresholds";
 const NOTIFY_KEY = "ae2.notifyEnabled";
 const BROWSER_FILTERS_KEY = "ae2.browserFilters";
+const STATS_VIEWS_KEY = "ae2.statsViews";
 
 /** Per-item auto-craft configuration, keyed by `prefsKey(gridId, itemid)`. Also used by M6. */
 export interface Thresholds {
@@ -47,6 +50,15 @@ export const DEFAULT_BROWSER_FILTERS: BrowserFilters = {
     sortOrder: 0,
 };
 
+/** A saved Statistics compare view (M8). Scoped to the grid it was saved on via `gridId`. */
+export interface StatsView {
+    id: string;
+    gridId: number;
+    name: string;
+    itemids: string[];
+    range: StatsRange;
+}
+
 function readJSON<T>(key: string, fallback: T): T {
     try {
         const raw = localStorage.getItem(key);
@@ -71,6 +83,9 @@ export interface PrefsContextValue {
     setThreshold: (key: string, field: keyof Thresholds, value: number | boolean) => void;
     setNotifyEnabled: (enabled: boolean) => void;
     setBrowserFilters: (update: (current: BrowserFilters) => BrowserFilters) => void;
+    statsViews: StatsView[];
+    addStatsView: (view: Omit<StatsView, "id">) => void;
+    removeStatsView: (id: string) => void;
 }
 
 const PrefsContext = createContext<PrefsContextValue | null>(null);
@@ -82,6 +97,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
     const [browserFilters, setBrowserFiltersState] = useState<BrowserFilters>(() =>
         readJSON(BROWSER_FILTERS_KEY, DEFAULT_BROWSER_FILTERS),
     );
+    const [statsViews, setStatsViews] = useState<StatsView[]>(() => readJSON(STATS_VIEWS_KEY, []));
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
@@ -139,6 +155,24 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
+    // `id` is a string, not a bare `Date.now()` - two saves in the same millisecond would collide.
+    const addStatsView = useCallback((view: Omit<StatsView, "id">) => {
+        setStatsViews((current) => {
+            const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const next = [...current, { ...view, id }];
+            writeJSON(STATS_VIEWS_KEY, next);
+            return next;
+        });
+    }, []);
+
+    const removeStatsView = useCallback((id: string) => {
+        setStatsViews((current) => {
+            const next = current.filter((v) => v.id !== id);
+            writeJSON(STATS_VIEWS_KEY, next);
+            return next;
+        });
+    }, []);
+
     const value = useMemo<PrefsContextValue>(
         () => ({
             favorites,
@@ -151,6 +185,9 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setThreshold,
             setNotifyEnabled,
             setBrowserFilters,
+            statsViews,
+            addStatsView,
+            removeStatsView,
         }),
         [
             favorites,
@@ -163,6 +200,9 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setThreshold,
             setNotifyEnabled,
             setBrowserFilters,
+            statsViews,
+            addStatsView,
+            removeStatsView,
         ],
     );
 

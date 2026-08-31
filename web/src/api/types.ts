@@ -148,7 +148,40 @@ export interface TrackingDetail {
     interfaceShare: InterfaceShare[];
 }
 
-/** `/gridsettings?grid=[&track=]` response. */
+/** `/gridsettings?grid=[&track=]` response. `trackedItems` was added alongside M7's history store. */
 export interface GridSettingsResult {
     isTracked: boolean;
+    trackedItems: string[];
+}
+
+/** `range` param shared by `/itemhistory` and (client-side only) the compare modal. */
+export type StatsRange = "24h" | "7d" | "30d" | "1y" | "all";
+
+/** Sentinel used in `/itemhistory`'s `points[]` for "no sample in that bucket" - never a stale repeat. */
+export const HISTORY_NO_SAMPLE = -1;
+
+/** One item's series inside `/itemhistory`'s response. */
+export interface ItemHistorySeries {
+    itemid: string;
+    points: number[];
+}
+
+/**
+ * `/itemhistory?grid=&range=&items=&points=` response. `to` is the START of the last bucket, not the
+ * last point's timestamp; `series[].points.length` can be less than the requested `points` - always
+ * derive point count/timestamps from the response, never from the request (REDESIGN_MILESTONES.md M7).
+ */
+export interface ItemHistoryResult {
+    from: number;
+    to: number;
+    stepMillis: number;
+    resolution: "fine" | "hourly";
+    limit: number;
+    series: ItemHistorySeries[];
+}
+
+/** `/trackeditems?grid=[&set=][&add=][&remove=]` response. */
+export interface TrackedItemsResult {
+    tracked: string[];
+    limit: number;
 }

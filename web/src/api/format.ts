@@ -2,6 +2,8 @@
 // section-sign (§) formatting codes from the AE2 item registry - these two are meant to be used
 // together: strip for plain-text contexts, parse for display.
 
+import type { StatsRange } from "./types";
+
 const EXTRA_FORMAT_CHARS = "klmno"; // obfuscated, bold, strikethrough, underline, italic
 const RESET_CHAR = "r";
 
@@ -106,4 +108,20 @@ export function formatTimestamp(ms: number): string {
         return `${date.toLocaleDateString("en-US", { day: "numeric", month: "short" })}, ${time}`;
     }
     return date.toLocaleString("en-US");
+}
+
+/**
+ * Short axis label for a Statistics chart, scaled to what's distinguishable at the range's own
+ * resolution - a clock time at 24h (5-min buckets), a day at 7d/30d, month+year at 1y/all (hourly
+ * buckets, so individual days aren't meaningful).
+ */
+export function formatAxisTime(ms: number, range: StatsRange): string {
+    const date = new Date(ms);
+    if (range === "24h") {
+        return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+    if (range === "7d" || range === "30d") {
+        return date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+    }
+    return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }

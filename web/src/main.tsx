@@ -10,6 +10,7 @@ import "./views/craft-detail.css";
 import "./views/order.css";
 import "./views/history.css";
 import "./views/favorites.css";
+import "./views/statistics.css";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Missing #app root element");

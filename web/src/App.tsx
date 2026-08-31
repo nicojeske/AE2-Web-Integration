@@ -9,6 +9,7 @@ import { NetworkProvider, useNetwork } from "./state/network";
 import { AutoCraftProvider } from "./state/autoCraft";
 import { OrderProvider, useOrder } from "./state/order";
 import { PrefsProvider, usePrefs } from "./state/prefs";
+import { StatsProvider, useStats } from "./state/stats";
 import { ToastProvider, useToast } from "./state/toast";
 import { OutdatedBanner } from "./shell/OutdatedBanner";
 import type { Section } from "./shell/section";
@@ -31,6 +32,7 @@ function Shell() {
     const { items, refresh: refreshItems } = useItems();
     const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
     const { refresh: refreshHistory } = useHistory();
+    const { setActive: setStatsActive, refresh: refreshStats } = useStats();
     const { favorites, thresholds, notifyEnabled, setNotifyEnabled } = usePrefs();
     const order = useOrder();
     const toast = useToast();
@@ -74,6 +76,14 @@ function Shell() {
         }
     }, [section, craftDetail, setDetailScope]);
 
+    // Same precedent as `detailScope` above: Statistics only polls while it's actually the visible
+    // surface, not just the selected section - CraftDetail/TrackingDetail/PlanDetail can all replace
+    // the section's own content regardless of `section`'s value.
+    const statsVisible = section === "stats" && !craftDetail && !historyDetail && !order.flow?.previewing;
+    useEffect(() => {
+        setStatsActive(statsVisible);
+    }, [statsVisible, setStatsActive]);
+
     const onToggleNotify = useCallback(() => {
         const next = !notifyEnabled;
         setNotifyEnabled(next);
@@ -83,9 +93,9 @@ function Shell() {
     }, [notifyEnabled, setNotifyEnabled]);
 
     const onRefresh = useCallback(async () => {
-        await Promise.all([refreshGrids(), refreshItems(), refreshCpus(), refreshHistory()]);
+        await Promise.all([refreshGrids(), refreshItems(), refreshCpus(), refreshHistory(), refreshStats()]);
         toast("Refreshed");
-    }, [refreshGrids, refreshItems, refreshCpus, refreshHistory, toast]);
+    }, [refreshGrids, refreshItems, refreshCpus, refreshHistory, refreshStats, toast]);
 
     // Scoped to whatever's currently loaded (the selected grid, or every grid in All-Grids mode) -
     // not every grid regardless of selection, which would mean fetching every grid's items just to
@@ -161,14 +171,16 @@ export function App() {
                     <ItemsProvider>
                         <CpusProvider>
                             <HistoryProvider>
-                                {/* Outside OrderProvider on purpose - the driver must never touch
-                                    useOrder()'s single UI flow slot, only the same underlying API
-                                    (via craftChain.ts) headlessly. */}
-                                <AutoCraftProvider>
-                                    <OrderProvider>
-                                        <Shell />
-                                    </OrderProvider>
-                                </AutoCraftProvider>
+                                <StatsProvider>
+                                    {/* Outside OrderProvider on purpose - the driver must never touch
+                                        useOrder()'s single UI flow slot, only the same underlying API
+                                        (via craftChain.ts) headlessly. */}
+                                    <AutoCraftProvider>
+                                        <OrderProvider>
+                                            <Shell />
+                                        </OrderProvider>
+                                    </AutoCraftProvider>
+                                </StatsProvider>
                             </HistoryProvider>
                         </CpusProvider>
                     </ItemsProvider>
