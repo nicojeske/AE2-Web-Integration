@@ -128,6 +128,16 @@
 .craft-detail__col-head--green {
     color: var(--green);
 }
+/* M4's plan-mode columns (Missing/To craft/From storage). */
+.craft-detail__col-head--red {
+    color: var(--red);
+}
+.craft-detail__col-head--purple {
+    color: var(--accent);
+}
+.craft-detail__col-head--teal {
+    color: var(--teal);
+}
 
 .craft-detail__col-title {
     font-family: var(--font-display);
@@ -150,6 +160,15 @@
 }
 .craft-detail__col-head--green .craft-detail__col-count {
     background: rgba(74, 222, 128, 0.133);
+}
+.craft-detail__col-head--red .craft-detail__col-count {
+    background: rgba(242, 96, 107, 0.133);
+}
+.craft-detail__col-head--purple .craft-detail__col-count {
+    background: rgba(139, 123, 245, 0.133);
+}
+.craft-detail__col-head--teal .craft-detail__col-count {
+    background: rgba(63, 215, 196, 0.133);
 }
 
 .craft-detail__item-card {
@@ -199,6 +218,18 @@
     background: rgba(74, 222, 128, 0.122);
     color: var(--green);
 }
+.craft-detail__item-badge--red {
+    background: rgba(242, 96, 107, 0.122);
+    color: var(--red);
+}
+.craft-detail__item-badge--purple {
+    background: rgba(139, 123, 245, 0.122);
+    color: var(--accent);
+}
+.craft-detail__item-badge--teal {
+    background: rgba(63, 215, 196, 0.122);
+    color: var(--teal);
+}
 
 .craft-detail__item-stats {
     display: grid;
@@ -238,6 +269,10 @@
     height: 100%;
     border-radius: var(--radius-xs);
     background: var(--accent);
+}
+/* M4's plan-mode "From storage" column - fed from `usedPercent`, not craft-time share. */
+.craft-detail__share-fill--teal {
+    background: var(--teal);
 }
 .craft-detail__share span {
     font-size: 10.5px;
@@ -343,4 +378,31 @@
 .craft-detail__actions {
     display: flex;
     gap: 10px;
+}
+
+/* M4's plan-mode actions row - wraps `.craft-detail__actions` so the "no CPU fits" reason can sit right
+   underneath the (disabled) Start button instead of floating loose in the page. */
+.craft-detail__actions-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.craft-detail__cpu-warning {
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+/* M4's plan-mode notices - the isSimulating explanation and inline order/plan errors. */
+.craft-detail__notice {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card-sm);
+    padding: 12px 14px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+.craft-detail__notice--error {
+    border-color: rgba(242, 96, 107, 0.35);
+    color: var(--red);
 }

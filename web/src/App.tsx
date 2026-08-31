@@ -5,6 +5,7 @@ import { getContext } from "./context";
 import { CpusProvider, useCpus } from "./state/cpus";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
+import { OrderProvider, useOrder } from "./state/order";
 import { DEFAULT_THRESHOLDS, prefsKey, PrefsProvider, usePrefs } from "./state/prefs";
 import { ToastProvider, useToast } from "./state/toast";
 import { OutdatedBanner } from "./shell/OutdatedBanner";
@@ -16,6 +17,8 @@ import { CraftDetail } from "./views/CraftDetail";
 import { Favorites } from "./views/Favorites";
 import { History } from "./views/History";
 import { Jobs } from "./views/Jobs";
+import { OrderModal } from "./views/OrderModal";
+import { PlanDetail } from "./views/PlanDetail";
 import { Statistics } from "./views/Statistics";
 
 function Shell() {
@@ -24,6 +27,7 @@ function Shell() {
     const { items, refresh: refreshItems } = useItems();
     const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
     const { favorites, thresholds, notifyEnabled, setNotifyEnabled } = usePrefs();
+    const order = useOrder();
     const toast = useToast();
     const [section, setSection] = useState<Section>("browser");
     const [search, setSearch] = useState("");
@@ -38,9 +42,18 @@ function Shell() {
     // new selection (a different grid entirely, in single-grid mode) - close it rather than showing a
     // stale/mismatched page. Sidebar drives grid selection directly via `useNetwork` (not through
     // Shell), so this has to watch `selected` rather than wrap a handler the way `changeSection` does.
+    // An in-progress order is discarded for the same reason - its job is tied to the grid it was
+    // computed against, and would otherwise validate CPUs on the wrong network.
     useEffect(() => {
         setCraftDetail(null);
+        order.discard();
+        // Deliberately just `selected` - `order.discard` changing identity (e.g. once the order it just
+        // discarded clears `flow`) must not re-run this effect a second time.
     }, [selected]);
+
+    const onOrderSubmitted = useCallback(() => {
+        changeSection("jobs");
+    }, [changeSection]);
 
     // Shell is the single writer of `detailScope` - the expensive per-CPU `/get` fan-in covers every
     // busy CPU while Jobs is the active section, narrows to just the one CPU Craft Detail is showing,
@@ -108,6 +121,8 @@ function Shell() {
                             cpuName={craftDetail.cpuName}
                             onClose={() => setCraftDetail(null)}
                         />
+                    ) : order.flow?.previewing ? (
+                        <PlanDetail onSubmitted={onOrderSubmitted} />
                     ) : (
                         <>
                             {section === "browser" && <Browser search={search} />}
@@ -125,6 +140,7 @@ function Shell() {
                     )}
                 </div>
             </div>
+            <OrderModal onSubmitted={onOrderSubmitted} />
         </div>
     );
 }
@@ -136,7 +152,9 @@ export function App() {
                 <NetworkProvider>
                     <ItemsProvider>
                         <CpusProvider>
-                            <Shell />
+                            <OrderProvider>
+                                <Shell />
+                            </OrderProvider>
                         </CpusProvider>
                     </ItemsProvider>
                 </NetworkProvider>

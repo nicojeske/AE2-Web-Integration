@@ -143,34 +143,52 @@ export function mockApiPlugin(): Plugin {
                             const data = toJobData(job);
                             if (!data.isDone) return respond(res, "JOB_NOT_DONE", null);
                             const grid = findGrid(job.gridKey);
+                            if (!grid) return respond(res, "GRID_NOT_FOUND", null);
                             const cpuName = params.get("cpu");
-                            const idleIdx = grid?.idleCpus.findIndex((c) => c.name === cpuName) ?? -1;
-                            if (!grid || idleIdx === -1) return respond(res, "CPU_NOT_FOUND", null);
-                            const cpu = grid.idleCpus.splice(idleIdx, 1)[0]!;
+                            const idleIdx = grid.idleCpus.findIndex((c) => c.name === cpuName);
+                            const busyCpu = grid.busyCpus.find((c) => c.name === cpuName);
+                            if (idleIdx === -1 && !busyCpu) return respond(res, "CPU_NOT_FOUND", null);
                             const itemMatch = findItemByHashcode(job.itemHashcode);
-                            grid.busyCpus.push({
-                                name: cpu.name,
-                                coProcessors: cpu.coProcessors,
-                                availableStorage: cpu.availableStorage,
-                                usedStorage: Math.round(data.bytesTotal),
-                                output: {
-                                    itemid: itemMatch?.item.itemid ?? "unknown",
-                                    itemname: itemMatch?.item.itemname ?? "Unknown",
-                                    hashcode: job.itemHashcode,
-                                    quantity: job.quantity,
-                                },
-                                startedAt: Date.now(),
-                                craftDurationMs: 60_000,
-                                hasTrackingInfo: grid.isTrackingEnabled,
-                                recipe: [
-                                    {
-                                        itemid: itemMatch?.item.itemid ?? "unknown",
+                            const outputItemid = itemMatch?.item.itemid ?? "unknown";
+
+                            if (busyCpu) {
+                                // Merge into an already-busy CPU crafting the same output - the real
+                                // AE2CraftingGrid.submitJob would refuse a genuine output mismatch even if
+                                // a stale client somehow posted one (the UI's own row validation is what
+                                // normally prevents this from ever being reachable by clicking).
+                                if (busyCpu.output.itemid !== outputItemid) {
+                                    return respond(res, "FAIL", "Target CPU is crafting a different item");
+                                }
+                                busyCpu.usedStorage =
+                                    (busyCpu.usedStorage === -1 ? 0 : busyCpu.usedStorage) +
+                                    Math.round(data.bytesTotal);
+                                busyCpu.craftDurationMs += 20_000;
+                            } else {
+                                const cpu = grid.idleCpus.splice(idleIdx, 1)[0]!;
+                                grid.busyCpus.push({
+                                    name: cpu.name,
+                                    coProcessors: cpu.coProcessors,
+                                    availableStorage: cpu.availableStorage,
+                                    usedStorage: Math.round(data.bytesTotal),
+                                    output: {
+                                        itemid: outputItemid,
                                         itemname: itemMatch?.item.itemname ?? "Unknown",
-                                        requested: job.quantity,
-                                        stored: itemMatch?.item.quantity ?? 0,
+                                        hashcode: job.itemHashcode,
+                                        quantity: job.quantity,
                                     },
-                                ],
-                            });
+                                    startedAt: Date.now(),
+                                    craftDurationMs: 60_000,
+                                    hasTrackingInfo: grid.isTrackingEnabled,
+                                    recipe: [
+                                        {
+                                            itemid: outputItemid,
+                                            itemname: itemMatch?.item.itemname ?? "Unknown",
+                                            requested: job.quantity,
+                                            stored: itemMatch?.item.quantity ?? 0,
+                                        },
+                                    ],
+                                });
+                            }
                             mockJobs.delete(jobId);
                             ok(res, null);
                             return;

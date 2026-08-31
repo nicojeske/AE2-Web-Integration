@@ -170,8 +170,8 @@ notifications fire only under the three conditions.
 **Done when** a real tracked job renders correctly end to end, an untracked job degrades exactly as
 specified, and cancel returns to Jobs.
 
-### - [ ] M4 — Order modal and plan-mode craft detail
-**Status:** Not started
+### - [x] M4 — Order modal and plan-mode craft detail
+**Status:** Done — commit sha pending (recorded in a follow-up commit, matching M2/M3)
 
 - Order modal (480px): item header, quantity stepper (`-512 -64 -1`, mono input, `+1 +64 +512`).
 - Real flow: re-fetch `items?grid=` for the hashcode → `order` → poll `job?id=` with a
@@ -524,3 +524,92 @@ _(newest last)_
   columns/bottleneck/share math, real `cancelcpu` from this page, and the `craftsPerSec`-adjacent
   NaN/dropped-`/get` path (this milestone no longer reads that field itself, but `estimateProgress`'s
   `/get` fetch can still hit it) need in-game verification before relying on this milestone.
+- **M4**: The busy-CPU merge-identity check was moved from `finalOutput.hashcode` (the old `webpage.html:1167`
+  rule) to `finalOutput.itemid`. `GetItems.java`/`GSONUtils.java` hash the *stack*, and on 1.20.1/1.21.1
+  `GenericStack` is a `(what, amount)` record whose hash includes the amount - a CPU's `finalOutput`
+  hashcode could then never equal the ordered item's storage-row hashcode, so merge-into-busy would
+  silently never be offered on those branches. `itemid` is stable everywhere; the (rare) cost is that two
+  NBT variants sharing one itemid could pass this check, but AE2's own `submitJob` still refuses a genuine
+  mismatch with `FAIL`, which this milestone now surfaces readably instead of as a raw status code.
+- **M4**: Added `src/api/errors.ts` (`describeApiError`) - the first milestone where a denial is common
+  enough in normal use (`ALL_CPU_BUSY`, a `FAIL` from AE2 itself with a real message in `payload`) to need
+  more than the raw status code in a toast/inline message. Reused by the order flow's inline error text.
+- **M4**: The real flow needed a "Calculating…" state the design prototype has no precedent for at all -
+  the prototype's order flow is entirely synchronous (`confirmOrder`/`buildPlan` run inside `setState`),
+  mocking byte cost as `qty * 4096` with no `job?id=` polling step. The real cost is only known after
+  `order` → poll `job?id=` reaches `isDone`, so `src/state/order.tsx`'s `OrderFlow.phase` adds
+  `"calculating"` between `"quantity"` and `"plan"`; the order modal shows an elapsed-seconds readout
+  during it (polling `job?id=` every 1s for the first 15s, then backing off to 2.5s - `Job` is a synced
+  request on the server thread, so a big plan shouldn't be hammered while it computes).
+- **M4**: Changing the quantity after a plan has been computed discards it (`job&cancel`, fire-and-forget)
+  and drops back to phase `"quantity"`, requiring an explicit "Calculate plan" press to get a new one -
+  decided with the user over auto-recomputing on a debounce (cheaper on the server-thread drain budget;
+  the prototype's own live re-validation-as-you-type has no real analogue once `bytesTotal` requires a
+  round trip) or locking the input once calculated (clunkier, no real benefit over just re-prompting).
+- **M4**: The plan-mode page preselects the first valid CPU the same way the order modal does
+  (`pickDefaultCpu`, mirroring `webpage.html:1177-1181`'s "first valid in list order", not smallest/best
+  fit). When none is valid, "Start Crafting" is disabled with an inline reason
+  ("No crafting CPU has room for this plan - needs {bytes}") rather than adding a third "back to order"
+  footer button - decided with the user to keep the design's two-button footer literally. The page also
+  re-validates the selected CPU live against the still-polling `/list` data (`isValidCpuForPlan`) rather
+  than trusting the choice frozen at plan-computation time, since `/list` keeps running in the background
+  for the whole time the plan page is open (M2's poller isn't scoped to a section) and the chosen CPU could
+  go idle-to-busy-elsewhere or lose headroom in the meantime; the reason text distinguishes "no CPU ever
+  fit" from "the one you picked stopped fitting".
+- **M4**: Unlike the prototype's plan-mode back button (which just clears local state, orphaning the
+  computed job server-side), both the header back arrow and "Discard plan" call `job&cancel` before
+  leaving - there is no path back to the order modal to keep a computed plan, since resubmitting a stale
+  CPU choice from a plan the user chose to leave makes no sense. A `pagehide` listener
+  (`navigator.sendBeacon`, falling back to `fetch(..., {keepalive:true})`) does the same cleanup if the tab
+  is closed mid-plan, since `GridData`'s job map has no idle expiry of its own.
+- **M4**: Extracted `src/views/craftDetailParts.tsx` (`CraftDetailHeader`, `StatCard`,
+  `CraftDetailColumns`) out of M3's `CraftDetail.tsx` so the new plan-mode page (`PlanDetail.tsx`) reuses
+  the same header/stat-card/three-column rendering instead of duplicating it; `craftDetailModel.ts`'s
+  `CraftDetailColumn.color` widened to add `red`/`purple`/`teal` for the plan page's Missing/To
+  craft/From storage columns. The per-item share-bar fill stays purple everywhere except the plan page's
+  teal "From storage" column (the only place `usedPercent` is ever nonzero on a real plan, per
+  `Job.java:106-111`) - not a fill-per-column-color rule, since that would have silently recolored M3's
+  already-verified active-mode share bars (amber/grey/green) instead of leaving them purple.
+- **M4**: New `src/state/order.tsx` (`OrderProvider`/`useOrder`) rather than local `Browser`/`Shell`
+  state - the plan preview is a full page that outlives the order modal (mirroring `CraftDetail`'s own
+  provider-backed pattern from M2/M3), and a future auto-craft driver (M6) will need to drive the same
+  order → plan → submit chain headlessly.
+- **M4**: `App.tsx`'s `Shell` renders `PlanDetail` whenever `useOrder().flow?.previewing` is true, rather
+  than adding a parallel `craftDetail`-style route-state slot for it - the plan page has no back-to-modal
+  path (previous note), so "previewing" is already the single source of truth for whether it should be
+  showing; a separate route enum would just have to be kept in sync with it. The existing grid-switch
+  effect (`useEffect` on `selected`) now also calls `order.discard()`, since a computed plan is tied to
+  the grid it was calculated against and would otherwise validate CPUs against the wrong network.
+- **M4 API fact**: `GetItems.java` clears the single global `hashcodeToStack` map on every call, and in
+  All-Grids mode `items.tsx`'s own fan-out is sequential - so `order.tsx`'s `calculate()` always re-fetches
+  `items?grid=<target grid>` directly (never `useItems().refresh()`) immediately before `order`, guaranteeing
+  the hashcode it submits is live for that grid regardless of which grid the Item Browser last fetched.
+- **M4**: Dev fixtures (`buildMockPlan` in `fixtures.ts`) generate a plan dynamically per ordered item from
+  a small per-item recipe table (falling back to a default two-ingredient recipe), bucketed and sorted the
+  same way `Job.java` does, instead of M0-era's three hardcoded rows - needed to exercise all three plan
+  columns, the teal share bar, and the sort order under `npm run dev`. A simulating plan appends one
+  synthetic fully-missing row rather than inflating an existing ingredient's shortfall - the first attempt
+  inflated ingredient index 0's `need`, but most fixture recipes' first ingredient is itself craftable, so
+  the shortfall landed in "to craft" instead of "missing" and the Missing column stayed empty. `/job&submit`
+  gained a merge-into-busy branch (previously only idle CPUs could be submitted to in the mock) plus a
+  `FAIL` response when a merge target's `finalOutput.itemid` doesn't match the ordered item, mirroring what
+  `AE2CraftingGrid.submitJob` would refuse server-side. Grid 2 gained one craftable item (`minecraft:brick`)
+  so an All-Grids order can target it - every other grid-2 row was stored-only.
+- **M4 verified**: `npm run dev` against the mock server with headless Chromium (Playwright, same setup as
+  M1-M3) confirmed: ordering opens the modal at qty 64; "Calculate plan" reaches idle/mergeable/invalid CPU
+  rows with the correct tags and byte comparisons (mergeable only for a busy CPU crafting the *same*
+  itemid; a `usedStorage === -1` CPU is always invalid); bumping the quantity after a plan exists collapses
+  back to "Calculate plan" and fires `job&cancel` for the superseded job; "Preview plan" renders the three
+  columns with the exact counts the mock's recipe math predicts, the teal share bar only on From-storage
+  rows, and the `Ready`/`Simulation` status pill; a simulating plan hides the CPU list behind a notice in
+  the modal, shows no Start button at all on the plan page, and correctly populates the Missing column;
+  a huge quantity drives every CPU invalid and disables Start with the "needs {bytes}" reason; backdrop
+  click, Escape, and the header/footer close controls all fire `job&cancel`; submitting end-to-end
+  navigates to Active Jobs with a toast and the CPU shows busy on the next poll; ordering in All-Grids mode
+  targets the source grid's own `items`/`order`/`job` calls throughout, never the wrong grid; and once
+  every CPU on a grid is busy, a fresh order surfaces `ALL_CPU_BUSY` as the readable
+  "Every crafting CPU is busy…" text rather than a raw status code - all with zero console/page errors.
+  M3's active-mode Craft Detail (busy card → detail, back → Jobs) was spot-checked and is unaffected by the
+  `craftDetailParts.tsx` extraction. **Not yet exercised against a real Forge server**
+  (`./gradlew runServer`) - a real `bytesTotal`/bucketed plan, a real merge into a busy CPU, and a real
+  `isSimulating` plan from AE2 itself need in-game verification before relying on this milestone.

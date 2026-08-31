@@ -16,12 +16,16 @@ export interface CraftDetailItemRow {
     badgeText: string;
     /** `0..1`, or `null` when untracked or this item has no recorded time. */
     sharePct: number | null;
+    /** Caption after the share bar - defaults to "% of craft time" (active mode) when omitted; the
+     *  plan-mode page (M4) passes "% of stock" for its `usedPercent`-fed bar. */
+    shareCaption?: string;
 }
 
 export interface CraftDetailColumn {
     key: CraftDetailColumnKey;
     title: string;
-    color: "amber" | "grey" | "green";
+    /** `red`/`purple`/`teal` are M4's plan-mode columns (Missing/To craft/From storage); the rest are M3's. */
+    color: "amber" | "grey" | "green" | "red" | "purple" | "teal";
     rows: CraftDetailItemRow[];
     emptyText: string;
 }

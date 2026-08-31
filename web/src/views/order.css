@@ -1,0 +1,167 @@
+/* Order modal (M4). `.modal`/`.modal__*` (components.css) supply the dialog chrome; these rules cover
+   only what's specific to this modal's header and body. */
+
+.order-modal__icon {
+    flex: 0 0 38px;
+}
+
+.order-modal__heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.order-modal__name {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.order-modal__sub {
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+.order-modal__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.order-modal__section + .order-modal__section {
+    margin-top: 4px;
+}
+
+.order-modal__label {
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+}
+
+.order-modal__stepper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.order-modal__step {
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: var(--radius-btn-sm);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+}
+.order-modal__step:hover {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+}
+
+.order-modal__qty-input {
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 9px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    width: 100px;
+}
+
+.order-modal__calculating,
+.order-modal__notice {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card-sm);
+    padding: 10px 12px;
+}
+
+.order-modal__cpu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.order-modal__cpu-row {
+    text-align: left;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--bg-sunken);
+    color: var(--text-primary);
+    padding: 9px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    cursor: pointer;
+    font: inherit;
+}
+.order-modal__cpu-row:disabled {
+    cursor: not-allowed;
+}
+
+.order-modal__cpu-row--invalid {
+    color: var(--cpu-row-invalid-text);
+}
+
+.order-modal__cpu-row--mergeable {
+    border-color: var(--merge-row-border);
+    background: var(--merge-row-bg);
+    color: var(--amber);
+}
+.order-modal__cpu-row--mergeable.order-modal__cpu-row--selected {
+    border-color: var(--amber);
+    background: var(--merge-selected-bg);
+    color: var(--amber);
+}
+
+.order-modal__cpu-row--idle {
+    color: var(--accent-selected-text);
+}
+.order-modal__cpu-row--idle.order-modal__cpu-row--selected {
+    border-color: var(--accent);
+    background: var(--idle-selected-bg);
+    color: var(--accent-selected-text);
+}
+
+.order-modal__cpu-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.order-modal__cpu-tag {
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.85;
+}
+
+.order-modal__cpu-row-detail {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.order-modal__bytes {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+.order-modal__error {
+    font-size: 12px;
+    color: var(--red);
+}

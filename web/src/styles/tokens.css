@@ -26,6 +26,14 @@
     --checkbox-border: #343c60;
     --disabled-bg: #2a2f45;
 
+    /* Order modal CPU rows (M4) - values the handoff uses only on this screen. */
+    --cpu-row-invalid-text: #6b7086;
+    --accent-selected-text: #e5e2ff;
+    --merge-row-border: #3a3620;
+    --merge-row-bg: #171a12;
+    --merge-selected-bg: rgba(245, 185, 66, 0.12);
+    --idle-selected-bg: rgba(139, 123, 245, 0.12);
+
     /* Typography */
     --font-display: "Space Grotesk", sans-serif;
     --font-body: "IBM Plex Sans", sans-serif;

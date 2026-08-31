@@ -8,6 +8,7 @@ import type {
     GridSummary,
     ItemStack,
     JobData,
+    JobPlanItem,
     TrackingDetail,
     TrackingHistoryElement,
 } from "../api/types.ts";
@@ -332,6 +333,9 @@ export const mockGrids: MockGrid[] = [
             // Deliberately no fluids in this grid (unlike grid 1) - lets the Items/Fluids toolbar
             // pill be exercised appearing and disappearing when switching networks.
             { hashcode: 2004, itemid: "minecraft:granite", itemname: "Granite", quantity: 8000, craftable: false },
+            // Grid 2's one craftable item - lets an M4 order/plan test target grid 2 in All-Grids mode
+            // (every other row here is stored-only, unlike grid 1).
+            { hashcode: 2005, itemid: "minecraft:brick", itemname: "Brick", quantity: 340, craftable: true },
         ],
         idleCpus: [{ name: "Outpost CPU", coProcessors: 1, availableStorage: 1024 * 1024 }],
         busyCpus: [
@@ -493,6 +497,127 @@ export function toCompactedItems(cpu: MockBusyCpu): CompactedItem[] {
     });
 }
 
+interface MockIngredient {
+    itemid: string;
+    itemname: string;
+    /** How much of this ingredient one unit of the output needs, before the `/8` scale-down below. */
+    perUnit: number;
+    craftable: boolean;
+}
+
+/**
+ * A handful of the fixture items' "recipes", loosely mirroring their real AE2 sub-crafts closely enough
+ * to bucket into all three plan columns (missing/to-craft/from-storage) - not meant to be dimensionally
+ * accurate. `DEFAULT_INGREDIENTS` covers every other craftable item in the fixtures.
+ */
+const MOCK_RECIPE_TREE: Record<string, MockIngredient[]> = {
+    "appliedenergistics2:processor_calc": [
+        { itemid: "appliedenergistics2:crystal_fluix", itemname: "Fluix Crystal", perUnit: 3, craftable: true },
+        {
+            itemid: "appliedenergistics2:crystal_certus",
+            itemname: "Certus Quartz Crystal",
+            perUnit: 4,
+            craftable: false,
+        },
+        { itemid: "appliedenergistics2:material_silicon", itemname: "Silicon", perUnit: 1.5, craftable: true },
+        { itemid: "minecraft:redstone", itemname: "Redstone", perUnit: 2.5, craftable: true },
+        {
+            itemid: "appliedenergistics2:material_calc_processor_press",
+            itemname: "Calculation Processor Press",
+            perUnit: 0.25,
+            craftable: false,
+        },
+    ],
+    "appliedenergistics2:crystal_fluix": [
+        {
+            itemid: "appliedenergistics2:crystal_certus",
+            itemname: "Certus Quartz Crystal",
+            perUnit: 1,
+            craftable: false,
+        },
+        { itemid: "minecraft:redstone", itemname: "Redstone", perUnit: 1, craftable: true },
+        { itemid: "appliedenergistics2:material_silicon", itemname: "Silicon", perUnit: 1, craftable: true },
+    ],
+    "minecraft:brick": [{ itemid: "minecraft:raw_iron", itemname: "Raw Iron", perUnit: 4, craftable: false }],
+};
+
+const DEFAULT_INGREDIENTS: MockIngredient[] = [
+    { itemid: "minecraft:redstone", itemname: "Redstone", perUnit: 1, craftable: true },
+    { itemid: "appliedenergistics2:material_silicon", itemname: "Silicon", perUnit: 1, craftable: true },
+];
+
+function storedQuantity(gridKey: number, itemid: string): number {
+    return findGrid(gridKey)?.items.find((i) => i.itemid === itemid)?.quantity ?? 0;
+}
+
+/**
+ * Bucketed and sorted the way `Job.java` fills/sorts a real plan (`missing`/`requested`/`stored` are
+ * mutually exclusive per row there - see `Job.java:106-122`) so `PlanDetail`'s three columns and sort
+ * order are exercisable under `npm run dev`, not just against a real server.
+ */
+function buildMockPlan(job: MockJob): JobPlanItem[] {
+    const match = findItemByHashcode(job.itemHashcode);
+    const outputItemid = match?.item.itemid ?? "unknown";
+    const outputName = match?.item.itemname ?? "Unknown";
+    const ingredients = MOCK_RECIPE_TREE[outputItemid] ?? DEFAULT_INGREDIENTS;
+
+    const rows: JobPlanItem[] = [
+        // Job.java's summary always includes the top-level target itself alongside its sub-crafts.
+        {
+            itemid: outputItemid,
+            itemname: outputName,
+            stored: 0,
+            requested: job.quantity,
+            missing: 0,
+            steps: 1,
+            usedPercent: 0,
+        },
+    ];
+
+    for (const ing of ingredients) {
+        const have = storedQuantity(job.gridKey, ing.itemid);
+        const need = Math.max(1, Math.ceil((job.quantity * ing.perUnit) / 8));
+        const fromStorage = Math.min(need, have);
+        const shortfall = need - fromStorage;
+        rows.push({
+            itemid: ing.itemid,
+            itemname: ing.itemname,
+            stored: fromStorage,
+            requested: ing.craftable ? shortfall : 0,
+            missing: ing.craftable ? 0 : shortfall,
+            steps: ing.craftable && shortfall > 0 ? 1 : 0,
+            usedPercent: shortfall === 0 && fromStorage > 0 && have > 0 ? fromStorage / have : 0,
+        });
+    }
+
+    if (job.isSimulating) {
+        // A real isSimulating plan means AE2 couldn't fully source *something*; forcing one ingredient's
+        // own shortfall large only pushed it into "to craft" when that ingredient happened to be
+        // craftable (i.e. most fixture recipes) - a plain synthetic unmet base resource guarantees the
+        // Missing column and the "couldn't fully source" notice are always reachable in dev, regardless
+        // of which item was ordered.
+        rows.push({
+            itemid: "minecraft:diamond",
+            itemname: "Diamond",
+            stored: 0,
+            requested: 0,
+            missing: Math.max(1, Math.round(job.quantity / 4)),
+            steps: 1,
+            usedPercent: 0,
+        });
+    }
+
+    return rows.sort((a, b) => {
+        if (a.missing > 0 && b.missing > 0) return b.missing - a.missing;
+        if (a.missing > 0 && b.missing === 0) return -1;
+        if (a.missing === 0 && b.missing > 0) return 1;
+        if (a.requested > 0 && b.requested > 0) return b.steps - a.steps;
+        if (a.requested > 0 && b.requested === 0) return -1;
+        if (a.requested === 0 && b.requested > 0) return 1;
+        return b.stored - a.stored;
+    });
+}
+
 interface MockJob {
     id: number;
     gridKey: number;
@@ -500,6 +625,9 @@ interface MockJob {
     itemHashcode: number;
     quantity: number;
     isSimulating: boolean;
+    /** How long `/job` reports `isDone: false` for - varied so the modal's "Calculating…" state is
+     *  actually visible under `npm run dev` instead of always resolving near-instantly. */
+    calcDelayMs: number;
 }
 
 let nextJobId = 1;
@@ -514,47 +642,22 @@ export function createJob(gridKey: number, itemHashcode: number, quantity: numbe
         quantity,
         // Every 5th order comes back as a simulated (unsubmittable) plan, so the UI has something to exercise.
         isSimulating: nextJobId % 5 === 0,
+        calcDelayMs: 900 + Math.round(Math.random() * 1600),
     };
     mockJobs.set(job.id, job);
     return job;
 }
 
 export function toJobData(job: MockJob): JobData {
-    const isDone = Date.now() - job.createdAt > 900;
+    const isDone = Date.now() - job.createdAt > job.calcDelayMs;
     if (!isDone) return { isDone: false, isSimulating: false, bytesTotal: 0, plan: null };
-    const bytesTotal = job.quantity * 4096;
     return {
         isDone: true,
         isSimulating: job.isSimulating,
-        bytesTotal,
-        plan: [
-            {
-                itemid: "appliedenergistics2:crystal_certus",
-                itemname: "Certus Quartz Crystal",
-                stored: 210,
-                requested: 0,
-                missing: job.isSimulating ? job.quantity * 2 : 0,
-                steps: 1,
-                usedPercent: 0,
-            },
-            {
-                itemid: "minecraft:redstone",
-                itemname: "Redstone",
-                stored: 3400,
-                requested: job.quantity,
-                missing: 0,
-                steps: 1,
-                usedPercent: 0,
-            },
-            {
-                itemid: "appliedenergistics2:crystal_fluix",
-                itemname: "Fluix Crystal",
-                stored: 860,
-                requested: 0,
-                missing: 0,
-                steps: 0,
-                usedPercent: 0.12,
-            },
-        ],
+        // Real bytesTotal only depends on the plan once computed; the mock keeps the same qty-scaled
+        // stand-in `webpage.html`'s prototype used, which already puts some CPUs out of reach at a big
+        // enough quantity (exercising the order modal's "invalid" CPU state via the qty stepper alone).
+        bytesTotal: job.quantity * 4096,
+        plan: buildMockPlan(job),
     };
 }

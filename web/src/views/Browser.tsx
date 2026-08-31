@@ -3,8 +3,8 @@ import { useMemo } from "preact/hooks";
 import { formatNumber } from "../api/format";
 import { useItems } from "../state/items";
 import { useNetwork } from "../state/network";
+import { useOrder } from "../state/order";
 import { DEFAULT_THRESHOLDS, prefsKey, usePrefs } from "../state/prefs";
-import { useToast } from "../state/toast";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -22,7 +22,7 @@ export function Browser({ search }: BrowserProps) {
     const { items, loading, error, failedGrids, refresh } = useItems();
     const { selected, selectedGrid } = useNetwork();
     const { thresholds, isFavorite, toggleFavorite, browserFilters, setBrowserFilters } = usePrefs();
-    const toast = useToast();
+    const { startOrder } = useOrder();
 
     const isAllGrids = selected === "all";
     const hasFluids = useMemo(() => items.some((it) => it.isFluid), [items]);
@@ -42,9 +42,13 @@ export function Browser({ search }: BrowserProps) {
     const cycleSortBy = () => setBrowserFilters((s) => ({ ...s, sortBy: ((s.sortBy + 1) % 3) as 0 | 1 | 2 }));
     const cycleSortOrder = () => setBrowserFilters((s) => ({ ...s, sortOrder: s.sortOrder === 0 ? 1 : 0 }));
 
-    // Keep the full row in the handler signature - M4 replaces only the body with the real order flow.
-    const onCraft = (_item: BrowserItem) => {
-        toast("Order modal lands in M4");
+    const onCraft = (item: BrowserItem) => {
+        startOrder({
+            sourceGridId: item.sourceGridId,
+            gridLabel: item.gridLabel,
+            itemid: item.itemid,
+            itemname: item.itemname,
+        });
     };
 
     if (selected !== "all" && (!selectedGrid || selectedGrid.key === -1)) {

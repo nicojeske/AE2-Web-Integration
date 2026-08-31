@@ -1,4 +1,3 @@
-import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { ApiError, cancelCpu } from "../api/client";
@@ -6,26 +5,19 @@ import { skipSpecialFormat } from "../api/format";
 import { useCpus } from "../state/cpus";
 import { useNetwork } from "../state/network";
 import { useToast } from "../state/toast";
-import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
 import { Modal } from "../ui/Modal";
 import { ProgressBar } from "../ui/ProgressBar";
+import { CraftDetailColumns, CraftDetailHeader, StatCard } from "./craftDetailParts";
 import { buildActiveCraftDetail, isJobFinished, snapshotOf } from "./craftDetailModel";
 import type { CraftDetailSnapshot } from "./craftDetailModel";
-import type { BadgeVariant } from "../ui/Badge";
 
 export interface CraftDetailProps {
     gridId: number;
     cpuName: string;
     onClose: () => void;
 }
-
-const STATUS_BADGE: Record<"amber" | "green" | "grey", BadgeVariant> = {
-    amber: "amber",
-    green: "green",
-    grey: "grey",
-};
 
 export function CraftDetail({ gridId, cpuName, onClose }: CraftDetailProps) {
     const { cpus, suppressCompletion, refresh } = useCpus();
@@ -142,46 +134,7 @@ export function CraftDetail({ gridId, cpuName, onClose }: CraftDetailProps) {
                 </section>
             )}
 
-            <section className="craft-detail__columns">
-                {view.columns.map((col) => (
-                    <section className="craft-detail__column" key={col.key}>
-                        <div className={`craft-detail__col-head craft-detail__col-head--${col.color}`}>
-                            <span className="craft-detail__col-title">{col.title}</span>
-                            <span className="craft-detail__col-count">{col.rows.length}</span>
-                        </div>
-                        {col.rows.map((row) => (
-                            <div className="craft-detail__item-card" key={row.itemid}>
-                                <div className="craft-detail__item-head">
-                                    <FormattedText text={row.itemname} className="craft-detail__item-name" />
-                                    <span className={`craft-detail__item-badge craft-detail__item-badge--${col.color}`}>
-                                        {row.badgeText}
-                                    </span>
-                                </div>
-                                <div className="craft-detail__item-stats">
-                                    {row.stats.map((st) => (
-                                        <div className="craft-detail__item-stat" key={st.label}>
-                                            <span>{st.label}</span>
-                                            <span>{st.value}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                                {row.sharePct !== null && (
-                                    <div className="craft-detail__share">
-                                        <div className="craft-detail__share-track">
-                                            <div
-                                                className="craft-detail__share-fill"
-                                                style={{ width: `${Math.round(row.sharePct * 100)}%` }}
-                                            />
-                                        </div>
-                                        <span>{Math.round(row.sharePct * 100)}% of craft time</span>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                        {col.rows.length === 0 && <div className="craft-detail__col-empty">{col.emptyText}</div>}
-                    </section>
-                ))}
-            </section>
+            <CraftDetailColumns columns={view.columns} />
 
             {view.bottleneck && view.bottleneck.length > 0 && (
                 <section className="craft-detail__bottleneck">
@@ -248,50 +201,5 @@ export function CraftDetail({ gridId, cpuName, onClose }: CraftDetailProps) {
                 </Modal>
             )}
         </section>
-    );
-}
-
-interface CraftDetailHeaderProps {
-    outputName: string;
-    outputQty: number | null;
-    subtitle: string;
-    statusLabel: string;
-    statusVariant: "amber" | "green" | "grey";
-    onClose: () => void;
-}
-
-function CraftDetailHeader({
-    outputName,
-    outputQty,
-    subtitle,
-    statusLabel,
-    statusVariant,
-    onClose,
-}: CraftDetailHeaderProps) {
-    return (
-        <section className="craft-detail__header">
-            <button type="button" className="craft-detail__back" title="Back to jobs" onClick={onClose}>
-                ←
-            </button>
-            <div className="craft-detail__heading">
-                <span className="craft-detail__title">
-                    {outputQty === null ? outputName : <FormattedText text={outputName} />}
-                    {outputQty !== null && ` x${outputQty.toLocaleString("en-US")}`}
-                </span>
-                <span className="craft-detail__subtitle">{subtitle}</span>
-            </div>
-            <Badge variant={STATUS_BADGE[statusVariant]} size="md">
-                {statusLabel}
-            </Badge>
-        </section>
-    );
-}
-
-function StatCard({ label, children }: { label: string; children: ComponentChildren }) {
-    return (
-        <div className="craft-detail__stat-card">
-            <span className="craft-detail__stat-label">{label}</span>
-            <span className="craft-detail__stat-value">{children}</span>
-        </div>
     );
 }
