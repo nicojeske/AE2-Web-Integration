@@ -171,7 +171,7 @@ notifications fire only under the three conditions.
 specified, and cancel returns to Jobs.
 
 ### - [x] M4 — Order modal and plan-mode craft detail
-**Status:** Done — commit sha pending (recorded in a follow-up commit, matching M2/M3)
+**Status:** Done — 5cfb86a
 
 - Order modal (480px): item header, quantity stepper (`-512 -64 -1`, mono input, `+1 +64 +512`).
 - Real flow: re-fetch `items?grid=` for the hashcode → `order` → poll `job?id=` with a
