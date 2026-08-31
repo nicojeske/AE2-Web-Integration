@@ -190,7 +190,7 @@ specified, and cancel returns to Jobs.
 simulated plan is clearly explained instead of offering a dead button.
 
 ### - [x] M5 — Crafting History and tracking detail
-**Status:** Done — commit sha pending (recorded in a follow-up commit, matching M2/M3/M4)
+**Status:** Done — f4ddc24
 
 - History rows from `trackinghistory` (`{name} x{qty}` over timestamp, mono duration,
   Completed/Cancelled pill), clicking opens the detail.
