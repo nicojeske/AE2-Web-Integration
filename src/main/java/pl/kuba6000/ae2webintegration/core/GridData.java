@@ -4,7 +4,11 @@ import java.io.File;
 import java.io.Reader;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
@@ -38,6 +42,23 @@ public class GridData {
     private static Iterator<GridData> craftingPlanMaintenanceCursor;
 
     public boolean isTracked = false;
+
+    /**
+     * Items this grid samples stored-count history for (see {@code ItemHistoryStore}). Persisted here,
+     * next to {@link #isTracked}, since it is small and settings-shaped - the bulk sampled history itself
+     * lives in its own file. Replaced wholesale, never mutated in place: the server-thread sampler reads
+     * this field concurrently with HTTP threads writing it via {@code TrackedItems}, so a torn in-place
+     * edit must never be visible.
+     */
+    private volatile Set<String> trackedItems = new LinkedHashSet<>();
+
+    public Set<String> getTrackedItems() {
+        return trackedItems;
+    }
+
+    public void setTrackedItems(Collection<String> items) {
+        trackedItems = Collections.unmodifiableSet(new LinkedHashSet<>(items));
+    }
 
     @GSONUtils.SkipGSON
     public AE2JobTracker trackingInfo = new AE2JobTracker();

@@ -22,6 +22,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.IAE;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
+import pl.kuba6000.ae2webintegration.core.interfaces.IAEMeInventoryItem;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEPlayerData;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAECraftingGrid;
@@ -79,6 +80,7 @@ final class TestGridFixtures {
         private final Set<Integer> permitted = new HashSet<>();
         boolean securityGridPresent = true;
         boolean pathingGridPresent = true;
+        private IAEStorageGrid storageGrid;
 
         TestGrid(long securityKey, boolean securityAvailable, boolean booting, AEControllerState state,
             int... alsoPermitted) {
@@ -116,6 +118,12 @@ final class TestGridFixtures {
             return this;
         }
 
+        /** Stocks this grid with the given itemid/amount stacks, for tests reading its storage list. */
+        TestGrid withStorage(TestStack... stacks) {
+            this.storageGrid = new TestStorageGrid(new TestStackList(stacks));
+            return this;
+        }
+
         // --- IAEGrid ---
         @Override
         public IAECraftingGrid web$getCraftingGrid() {
@@ -129,7 +137,7 @@ final class TestGridFixtures {
 
         @Override
         public IAEStorageGrid web$getStorageGrid() {
-            return null;
+            return storageGrid;
         }
 
         @Override
@@ -223,6 +231,106 @@ final class TestGridFixtures {
                 }
             }
             return -1;
+        }
+    }
+
+    static class TestKey implements IAEKey {
+
+        final String itemid;
+
+        TestKey(String itemid) {
+            this.itemid = itemid;
+        }
+
+        @Override
+        public String web$getItemID() {
+            return itemid;
+        }
+
+        @Override
+        public String web$getDisplayName() {
+            return itemid;
+        }
+
+        @Override
+        public boolean web$isCraftable(IAEGrid grid) {
+            return false;
+        }
+
+        @Override
+        public boolean web$isSameType(IAEKey other) {
+            return other instanceof TestKey && itemid.equals(((TestKey) other).itemid);
+        }
+    }
+
+    static class TestStack implements IAEGenericStack {
+
+        private final TestKey key;
+        private final long amount;
+
+        TestStack(String itemid, long amount) {
+            this.key = new TestKey(itemid);
+            this.amount = amount;
+        }
+
+        @Override
+        public IAEKey web$what() {
+            return key;
+        }
+
+        @Override
+        public long web$amount() {
+            return amount;
+        }
+
+        @Override
+        public IAEGenericStack web$copy() {
+            return this;
+        }
+    }
+
+    static class TestStackList implements IStackList {
+
+        private final List<IAEGenericStack> stacks;
+
+        TestStackList(TestStack... stacks) {
+            this.stacks = new ArrayList<>(Arrays.asList(stacks));
+        }
+
+        @Override
+        public long web$getAmount(IAEKey key) {
+            long total = 0;
+            for (IAEGenericStack stack : stacks) {
+                if (stack.web$what()
+                    .web$isSameType(key)) {
+                    total += stack.web$amount();
+                }
+            }
+            return total;
+        }
+
+        @Override
+        public Iterable<IAEGenericStack> web$stacks() {
+            return stacks;
+        }
+    }
+
+    static class TestStorageGrid implements IAEStorageGrid {
+
+        private final IStackList storageList;
+
+        TestStorageGrid(IStackList storageList) {
+            this.storageList = storageList;
+        }
+
+        @Override
+        public IStackList web$getStorageList() {
+            return storageList;
+        }
+
+        @Override
+        public IAEMeInventoryItem web$getInventory() {
+            return null;
         }
     }
 

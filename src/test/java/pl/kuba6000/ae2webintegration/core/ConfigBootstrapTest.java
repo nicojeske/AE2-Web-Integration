@@ -29,6 +29,10 @@ class ConfigBootstrapTest {
         ConfigBootstrap.discordMinimumCraftingDurationSecondsValue = () -> 0;
         ConfigBootstrap.discordMinimumCraftingAmountValue = () -> 0;
         ConfigBootstrap.trackingTrackMachineCraftingValue = () -> false;
+        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 5;
+        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 30;
+        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 365;
+        ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue = () -> 24;
     }
 
     @Test
@@ -36,8 +40,8 @@ class ConfigBootstrapTest {
         RecordingConfigBuilder builder = new RecordingConfigBuilder();
         ConfigBootstrap.init(builder);
 
-        // Should have exactly 12 config key definitions
-        assertEquals(12, builder.calls.size(), "expected exactly 12 config key definitions");
+        // Should have exactly 16 config key definitions
+        assertEquals(16, builder.calls.size(), "expected exactly 16 config key definitions");
 
         // Verify all expected keys with their types
         assertContainsCall("int", "port", builder.calls);
@@ -52,6 +56,10 @@ class ConfigBootstrapTest {
         assertContainsCall("int", "discord_minimum_crafting_duration_seconds", builder.calls);
         assertContainsCall("int", "discord_minimum_crafting_amount", builder.calls);
         assertContainsCall("boolean", "track_machine_crafting", builder.calls);
+        assertContainsCall("int", "statistics_sample_interval_minutes", builder.calls);
+        assertContainsCall("int", "statistics_fine_retention_days", builder.calls);
+        assertContainsCall("int", "statistics_hourly_retention_days", builder.calls);
+        assertContainsCall("int", "statistics_max_tracked_items_per_grid", builder.calls);
     }
 
     @Test
@@ -86,6 +94,26 @@ class ConfigBootstrapTest {
                     break;
                 case "track_machine_crafting":
                     assertEquals(false, call.defValue, call.key + " default");
+                    break;
+                case "statistics_sample_interval_minutes":
+                    assertEquals(5, call.defValue, "statistics_sample_interval_minutes default");
+                    assertEquals(1, call.min, "statistics_sample_interval_minutes min");
+                    assertEquals(60, call.max, "statistics_sample_interval_minutes max");
+                    break;
+                case "statistics_fine_retention_days":
+                    assertEquals(30, call.defValue, "statistics_fine_retention_days default");
+                    assertEquals(1, call.min, "statistics_fine_retention_days min");
+                    assertEquals(90, call.max, "statistics_fine_retention_days max");
+                    break;
+                case "statistics_hourly_retention_days":
+                    assertEquals(365, call.defValue, "statistics_hourly_retention_days default");
+                    assertEquals(1, call.min, "statistics_hourly_retention_days min");
+                    assertEquals(3650, call.max, "statistics_hourly_retention_days max");
+                    break;
+                case "statistics_max_tracked_items_per_grid":
+                    assertEquals(24, call.defValue, "statistics_max_tracked_items_per_grid default");
+                    assertEquals(1, call.min, "statistics_max_tracked_items_per_grid min");
+                    assertEquals(128, call.max, "statistics_max_tracked_items_per_grid max");
                     break;
                 case "password":
                     // Password should be a non-empty random string
@@ -134,6 +162,26 @@ class ConfigBootstrapTest {
                 .intValue(),
             "DISCORD_MINIMUM_CRAFTING_AMOUNT");
         assertEquals(false, ConfigBootstrap.trackingTrackMachineCraftingValue.get(), "TRACK_MACHINE_CRAFTING");
+        assertEquals(
+            5,
+            ConfigBootstrap.statisticsSampleIntervalMinutesValue.get()
+                .intValue(),
+            "STATISTICS_SAMPLE_INTERVAL_MINUTES");
+        assertEquals(
+            30,
+            ConfigBootstrap.statisticsFineRetentionDaysValue.get()
+                .intValue(),
+            "STATISTICS_FINE_RETENTION_DAYS");
+        assertEquals(
+            365,
+            ConfigBootstrap.statisticsHourlyRetentionDaysValue.get()
+                .intValue(),
+            "STATISTICS_HOURLY_RETENTION_DAYS");
+        assertEquals(
+            24,
+            ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue.get()
+                .intValue(),
+            "STATISTICS_MAX_TRACKED_ITEMS_PER_GRID");
         // Password should be a non-empty random string (generated at init time)
         String password = ConfigBootstrap.aePasswordValue.get();
         assertNotNull(password, "password should not be null");

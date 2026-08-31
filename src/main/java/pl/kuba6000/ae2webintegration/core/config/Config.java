@@ -61,6 +61,23 @@ public class Config {
         return ConfigBootstrap.trackingTrackMachineCraftingValue.get();
     }
 
+    // Statistics
+    public static int STATISTICS_SAMPLE_INTERVAL_MINUTES() {
+        return ConfigBootstrap.statisticsSampleIntervalMinutesValue.get();
+    }
+
+    public static int STATISTICS_FINE_RETENTION_DAYS() {
+        return ConfigBootstrap.statisticsFineRetentionDaysValue.get();
+    }
+
+    public static int STATISTICS_HOURLY_RETENTION_DAYS() {
+        return ConfigBootstrap.statisticsHourlyRetentionDaysValue.get();
+    }
+
+    public static int STATISTICS_MAX_TRACKED_ITEMS_PER_GRID() {
+        return ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue.get();
+    }
+
     // --- Directory / file setup ---
 
     public static void init(File configDirectory) {

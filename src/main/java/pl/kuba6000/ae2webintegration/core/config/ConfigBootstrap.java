@@ -35,6 +35,13 @@ public class ConfigBootstrap {
 
     public static IConfigValue<Boolean> trackingTrackMachineCraftingValue = () -> false;
 
+    // --- Statistics ---
+
+    public static IConfigValue<Integer> statisticsSampleIntervalMinutesValue = () -> 5;
+    public static IConfigValue<Integer> statisticsFineRetentionDaysValue = () -> 30;
+    public static IConfigValue<Integer> statisticsHourlyRetentionDaysValue = () -> 365;
+    public static IConfigValue<Integer> statisticsMaxTrackedItemsPerGridValue = () -> 24;
+
     private ConfigBootstrap() {}
 
     /**
@@ -100,6 +107,31 @@ public class ConfigBootstrap {
             "track_machine_crafting",
             false,
             "Track crafting jobs run directly by machines? (Not manually ordered)");
+
+        statisticsSampleIntervalMinutesValue = builder.defineInt(
+            "statistics_sample_interval_minutes",
+            5,
+            1,
+            60,
+            "How often, in minutes, to sample stored counts for tracked statistics items");
+        statisticsFineRetentionDaysValue = builder.defineInt(
+            "statistics_fine_retention_days",
+            30,
+            1,
+            90,
+            "How many days of full-resolution (sample-interval) statistics history to keep per item");
+        statisticsHourlyRetentionDaysValue = builder.defineInt(
+            "statistics_hourly_retention_days",
+            365,
+            1,
+            3650,
+            "How many days of hourly-rollup statistics history to keep per item, beyond the fine-resolution window");
+        statisticsMaxTrackedItemsPerGridValue = builder.defineInt(
+            "statistics_max_tracked_items_per_grid",
+            24,
+            1,
+            128,
+            "Maximum number of items a single grid may track statistics history for");
     }
 
 }

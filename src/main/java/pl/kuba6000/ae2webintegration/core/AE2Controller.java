@@ -35,10 +35,12 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
+import pl.kuba6000.ae2webintegration.core.ae2request.async.GetItemHistory;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.GetTracking;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.GetTrackingHistory;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.GridSettings;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.IAsyncRequest;
+import pl.kuba6000.ae2webintegration.core.ae2request.async.TrackedItems;
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.CancelCPU;
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.GetCPU;
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.GetCPUList;
@@ -272,6 +274,8 @@ public class AE2Controller {
                 newServer.createContext("/trackinghistory", new ASyncRequestHandler(GetTrackingHistory.class));
                 newServer.createContext("/gettracking", new ASyncRequestHandler(GetTracking.class));
                 newServer.createContext("/gridsettings", new ASyncRequestHandler(GridSettings.class));
+                newServer.createContext("/itemhistory", new ASyncRequestHandler(GetItemHistory.class));
+                newServer.createContext("/trackeditems", new ASyncRequestHandler(TrackedItems.class));
                 newServer.createContext("/auth", new AuthHandler());
                 newServer.createContext("/", new WebHandler());
                 newServer.setExecutor(newServerThread);

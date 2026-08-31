@@ -58,6 +58,8 @@ History section — dropping the toggle would make those unreachable.
 | `job?grid=&id=` | `{isDone, isSimulating, bytesTotal, plan[{itemid,itemname,stored,requested,missing,steps,usedPercent}]}` | Poll until `isDone`; `&cancel` discards, `&submit&cpu=` submits |
 | `cancelcpu?grid=&cpu=` | — | `CPU_NOT_BUSY` when idle |
 | `trackinghistory?grid=` / `gettracking?grid=&id=` / `gridsettings?grid=&track=` | async | Can answer `REFRESH_REQUIRED`; retry once after re-fetching `grids` (port the existing `getJSONWithGridRefresh` logic, old `webpage.html:1125`) |
+| `itemhistory?grid=&range=24h\|7d\|30d\|1y\|all&items=<csv>&points=` (M7) | async | `{from,to,stepMillis,resolution,limit,series:[{itemid,points[]}]}`; `points[]` entries are `-1` for "no sample in that bucket", never a stale repeat |
+| `trackeditems?grid=&set=<csv>` / `&add=<itemid>` / `&remove=<itemid>` (M7) | async | Read/write the per-grid tracked-item set that `itemhistory` samples for; `{tracked:[...],limit}`; write denies `TRACKED_LIMIT_REACHED` over the configured cap |
 
 Consequences to honour everywhere:
 
@@ -217,8 +219,8 @@ longer exist anywhere in the built page.
 **Done when** thresholds persist, low-stock states agree with the Browser badges, and auto-craft starts
 exactly one job per item per cycle against a real server.
 
-### - [ ] M7 — Statistics: server-side history store (Java)
-**Status:** Not started
+### - [x] M7 — Statistics: server-side history store (Java)
+**Status:** Done — commit pending
 
 - `core/.../tracking/ItemHistoryStore.java` (or similar): per-grid tracked-item set + fixed-resolution
   ring buffer of stored counts. Suggested defaults: one sample per 5 minutes, 30 days retention
@@ -755,3 +757,67 @@ _(newest last)_
   (`./gradlew runServer`) - a real `ALL_CPU_BUSY` backoff, a real simulating plan, and real server-thread
   load from the 30s `items` timer need in-game verification before relying on this milestone. This
   milestone made no Java changes, so `./gradlew build` was not re-run.
+- **M7**: Two-tier retention rather than the single 5-min/30-day buffer this file originally sketched -
+  decided with the user during planning: a 5-minute tier retaining 30 days (8640 slots/item) plus an
+  hourly rollup retaining 365 days (8760 slots/item), so the design's "All time" range (M8) is honestly
+  labelled instead of quietly meaning "the last 30 days". Both tiers are written on every sample
+  (`ItemHistoryStore.sample`); the hourly tier is last-write-wins within the hour, never an average - kept
+  deliberately integer-only (no floating point anywhere in the new store) to avoid the
+  NaN-serialization/non-lenient-`GSON_BUILDER` hazard already logged under M0/M2/M3/M5 for other
+  crafts-per-second-shaped fields.
+- **M7**: Sampled history is persisted to its own `itemhistory.json`, not folded into `griddata.json` -
+  `/gridsettings` writes the whole `GridData` object synchronously on the calling (HTTP worker) thread
+  today, and a multi-item grid's ring buffers are large enough (~4.5 MB in memory per grid at the 24-item
+  default cap) that doing the same for history would put a multi-MB `fsync` in the way of an unrelated
+  settings write. `ItemHistoryStore` instead snapshots on the server thread and writes on a lazily-created
+  single daemon background thread (at most one write in flight; a newer snapshot supersedes whatever is
+  still queued), flushed periodically (`CoreEngine`, 15 min) when dirty, and written synchronously once
+  more on `onServerStopping` since blocking a deliberate shutdown is fine. The **tracked-item set itself**
+  (just an item-id list) stays on `GridData`/`griddata.json`, next to `isTracked` - it is small and
+  settings-shaped, and `/gridsettings`'s response payload gains a `trackedItems` array as a result
+  (harmless and additive; `web/src/api/types.ts` picks it up in M8).
+- **M7**: `-1` is the ring buffer's "no sample" sentinel (stored counts are always `>= 0`), both in memory
+  and on the wire (`/itemhistory`'s `points[]`) - a server that was offline reads back as `-1` gaps, never
+  as a stale repeat of the last known value before the outage. Advancing a ring past a gap actively clears
+  the skipped slots for exactly this reason.
+- **M7**: The sampler mirrors `CoreEngine.runPlanMaintenance`'s existing resumable-cursor shape
+  (`CoreEngine.runHistorySampling`), but at a coarser grain: one whole grid's storage-list walk (the same
+  O(network size) cost `/items` pays) per tick, never a batch, since `PLAN_SWEEP_GRIDS_PER_TICK`'s "several
+  cheap grids per tick" doesn't apply once the per-grid work is `/items`-sized. A grid is sampled iff its
+  tracked-item set is non-empty - independent of `GridData.isTracked`, which gates job tracking, not
+  statistics. `Config.getConfigDirectory() == null` (Config never initialized, or a startup that failed
+  partway - `CoreEngine.onServerStopped`'s own javadoc already covers that case) makes every
+  `ItemHistoryStore` save/load a no-op rather than writing a stray relative-path file into the process's
+  working directory; this was caught by an *existing* test (`CoreEngineTickPumpTest`'s
+  `serverStoppingAnswersEveryQueuedRequestImmediately`) that calls `onServerStopping()` without ever
+  calling `Config.init()`.
+- **M7**: `RingSeries.fromSnapshot` reconciles a persisted buffer against whatever is currently configured:
+  a capacity-only mismatch (a retention setting changed) **resizes**, keeping the newest overlapping
+  samples; a bucket-size mismatch (the sample interval changed) **discards** that tier's data outright,
+  since the bucket numbering itself no longer lines up - covered in
+  `tracking/ItemHistoryPersistenceTest`. The hourly tier's bucket size is fixed (always one hour) and so
+  is never affected by a fine-tier interval change, only its capacity.
+- **M7**: `example_website/index.php`'s reconciliation with the "no milestone may add a new HTTP route"
+  rule (this file's Verification section): confirmed the PHP proxy forwards any `?API=<path>&...` straight
+  through with no route whitelist (`example_website/index.php`'s `$_GET['API']` branch), so the two new
+  routes are transparent to it - it simply has no UI that calls them yet.
+- **M7**: New JUnit coverage: `tracking/ItemHistoryStoreTest` (`RingSeries` wraparound/gap/overwrite
+  mechanics, plus `sample`/`pruneTo` - summing several stacks per itemid, a tracked-but-absent item
+  recording a real `0`, an untracked item never recorded, the hourly tier's last-write-wins),
+  `tracking/ItemHistoryReadTest` (tier selection by span, downsampling picks the newest value per window,
+  gaps survive downsampling, `from`/`to`/`stepMillis` arithmetic), `tracking/ItemHistoryPersistenceTest`
+  (save→load round trip, a malformed file is never overwritten and memory is kept, the resize/discard
+  reconciliation above - both via hand-authored JSON fixtures, `CoreDataTest`'s own pattern, since
+  `ItemHistoryStore`'s on-disk DTOs are private), `CoreEngineHistorySamplingTest` (one grid sampled per
+  tick, a grid with no tracked items excluded from a pass, a grid going offline mid-pass skipped without
+  failing the pass, the interval gate), and `ItemHistoryRequestTest` (`GRID_NOT_FOUND`/`BAD_PARAM`/the cap
+  denial/an unknown itemid's all-gap series/a read never creating a `GridData` entry, mirroring
+  `AsyncRequestAuthorizationTest`'s existing invariant for the other async endpoints).
+  `TestGridFixtures` gained `TestGrid.withStorage`/`TestStack`/`TestStackList`/`TestKey`/`TestStorageGrid`
+  for the sampler tests (`web$getStorageGrid()` previously always returned `null`).
+- **M7 verified**: `./gradlew spotlessApply` then `./gradlew build` - all new and existing JUnit tests
+  green, formatting clean. **Not yet exercised against a real Forge server** (`./gradlew runServer`) - the
+  real `web$getStorageList()`/`web$getCraftingGrid()` walk, the background-writer thread under real
+  concurrent HTTP load, and a real restart-preserves-history round trip need in-game verification before
+  relying on this milestone. This milestone adds no frontend code, so `npm run build`'s committed output is
+  untouched.
