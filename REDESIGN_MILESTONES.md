@@ -220,7 +220,7 @@ longer exist anywhere in the built page.
 exactly one job per item per cycle against a real server.
 
 ### - [x] M7 — Statistics: server-side history store (Java)
-**Status:** Done — commit pending
+**Status:** Done — f604986
 
 - `core/.../tracking/ItemHistoryStore.java` (or similar): per-grid tracked-item set + fixed-resolution
   ring buffer of stored counts. Suggested defaults: one sample per 5 minutes, 30 days retention
