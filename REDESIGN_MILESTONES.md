@@ -202,8 +202,8 @@ simulated plan is clearly explained instead of offering a dead button.
 **Done when** history lists and opens, both timelines render, and the old Chart.js/jQuery CDN tags no
 longer exist anywhere in the built page.
 
-### - [ ] M6 — Favorites and auto-craft
-**Status:** Not started
+### - [x] M6 — Favorites and auto-craft
+**Status:** Done — commit pending
 
 - One wrapping row per favourite: name + `{grid} - {n} stored`, three 80px number inputs (Alert below,
   Keep stock at, Batch size), Auto-craft checkbox, Low stock/OK pill, Craft button, 28px remove.
@@ -689,3 +689,69 @@ _(newest last)_
   `timings[]`/interface names/locations, and the `gettracking` NaN/dropped-response hazard on a very short
   real craft, need in-game verification before relying on this milestone. This milestone made no Java
   changes, so `./gradlew build` was not re-run.
+- **M6**: Extracted `src/state/craftChain.ts` (`computePlan`) out of `order.tsx`'s original `calculate()` -
+  the auto-craft driver needs the exact same items→order→job-poll chain headlessly, and duplicating it
+  would let the two drift. Added one thing the original lacked: a poll timeout (`PlanTimeoutError`,
+  ~120s default) that cancels the job and throws, rather than polling `job?id=` forever - `order.tsx`'s
+  interactive flow inherits this for free. `order.tsx.calculate()` is now a thin wrapper with unchanged
+  behaviour (`describeApiError` already falls back to `e.message` for a plain `Error`, so `ItemGoneError`
+  needed no special-casing at the call site).
+- **M6**: The auto-craft driver (`src/state/autoCraft.tsx`) deliberately never touches `useOrder()` -
+  that provider is a single UI flow slot (`OrderModal` renders for *any* non-previewing flow, and
+  `startOrder` overwrites whatever exists), so a headless driver sharing it would pop the order modal
+  open on the user or clobber a manual order in progress. It drives `craftChain.ts` directly instead, and
+  is mounted in `App.tsx` outside `OrderProvider` to make that boundary visible. Verified live under
+  `npm run dev` that opening a manual order while auto-craft is active is unaffected either way.
+- **M6**: Auto-craft serializes to **one chain in flight globally** (a `useRef` flag, not per-item) -
+  every step (`items`, `order`, `job`, `list`, `submit`) is a synced request on the server thread under
+  `CoreEngine`'s 5ms/tick drain budget and the 32-slot `AE2Controller.requests` queue, so even two
+  favourites both wanting to craft must queue rather than fan out. Evaluation itself needs no timer of
+  its own - it piggybacks on the two polls that already exist (a `useEffect` on the `cpus`/`items` array
+  identities), since both already carry a natural cadence and both already pause while
+  `document.hidden`.
+- **M6**: `items` has no poll of its own (caveat table), so the driver arms a 30s `refreshItems()` timer,
+  but only while at least one auto-craft-enabled favourite is resolvable in the currently loaded items -
+  a network with none costs nothing extra. Confirmed live: the Favorites row's stored count only
+  advances in ~30s steps after a craft completes server-side, exactly tracking this timer rather than
+  the CPU poll's faster 2.5s/5s cadence.
+- **M6**: Failure handling (a simulating plan, no valid CPU, or any thrown error incl. `ALL_CPU_BUSY`)
+  cancels the computed job (if one exists) and backs the item off for 5 minutes, via one `fail()` path
+  used from every failure site rather than three duplicated branches. Cleanup on grid switch/unmount
+  mirrors `order.tsx`'s own generation-counter + `pagehide`/`sendBeacon` shape, since `GridData`'s job map
+  has no idle expiry of its own.
+- **M6**: Low-stock derivation (`favorited && quantity < alertBelow`) was duplicated inline in both
+  `Browser.tsx` and `App.tsx`'s sidebar-pill calculation; both now call a single `isLowStock` helper in
+  `browserModel.ts` (alongside a new `alertBelowFor`) so the Browser badge, sidebar pill, and this
+  milestone's Favorites pill can never disagree. Also fixed `sortItems`' favourite-pin key to call
+  `prefsKey` instead of a raw duplicated template literal.
+- **M6**: Favourites whose grid isn't part of the currently loaded `items` (a different single grid
+  selected, or the network is unreachable) can't be resolved into a row - unlike the design prototype,
+  which drops them with no explanation, the pane counts them and shows a dim footer note ("N favorites on
+  other networks - switch to All Grids to see them"), decided with the user. Auto-craft only ever drives
+  favourites resolvable in the loaded items, consistent with M1's existing sidebar-pill scoping.
+- **M6**: No number-input primitive exists in `ui/` - the three threshold fields keep local "draft" string
+  state (`Favorites.tsx`'s `NumberField`) so a field can be emptied while typing without snapping back to
+  a sanitized value on every keystroke, committing (whole, clamped to its own minimum, falling back to the
+  previous value if unparsable) on blur/Enter rather than on every `onInput`.
+- **M6**: `fixtures.ts`'s `settleCompletedJobs` never credited a completed job's output back into
+  `grid.items`' stored quantity - harmless before this milestone (nothing read it back), but would have
+  made auto-craft re-fire forever under `npm run dev` once a job "finished". Fixed to add
+  `finalOutput.quantity` to the matching item on completion (real AE2 does this implicitly; the
+  prototype's own tick loop does too). Added `minecraft:charcoal` (qty 40, craftable, under the default
+  `alertBelow`) to grid 1 so auto-craft has a fixture item to exercise end to end.
+- **M6 verified**: `npm run dev` against the mock server with headless Chromium (Playwright, same setup
+  M1-M5 used), including a network-request trace of `/order`/`/job`/`/cancelcpu` over a 150s run,
+  confirmed: the empty state, star→row→remove round trip, all three threshold fields persisting across
+  reload, and the Low stock/OK pill agreeing with the Browser badge; enabling auto-craft on the Charcoal
+  fixture placed exactly one order, computed and submitted a real plan to the one idle CPU, credited
+  stock on completion, and - once the CPU freed again - correctly re-fired *only* then (no order was ever
+  placed while a CPU was already crafting the same item, and no overlap/duplicate order was observed
+  across three full cycles); the 30s stock-refresh timer's cadence was directly visible in when the
+  displayed stored count advanced; and opening a manual order from the Browser while auto-craft was
+  active left both flows independent (the modal stayed open, uninterrupted) - all with zero console/page
+  errors. The simulating-plan backoff path was not deterministically exercised (the mock's "every 5th
+  job simulates" fixture didn't land on an auto-craft job during these runs) - it was verified by code
+  review of the shared `fail()` path instead. **Not yet exercised against a real Forge server**
+  (`./gradlew runServer`) - a real `ALL_CPU_BUSY` backoff, a real simulating plan, and real server-thread
+  load from the 30s `items` timer need in-game verification before relying on this milestone. This
+  milestone made no Java changes, so `./gradlew build` was not re-run.

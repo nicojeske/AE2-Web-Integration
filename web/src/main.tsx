@@ -9,6 +9,7 @@ import "./views/jobs.css";
 import "./views/craft-detail.css";
 import "./views/order.css";
 import "./views/history.css";
+import "./views/favorites.css";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Missing #app root element");

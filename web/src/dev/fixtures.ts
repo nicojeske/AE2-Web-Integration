@@ -161,6 +161,16 @@ export const mockGrids: MockGrid[] = [
             // A native fluid's itemid has no colon at all on 1.7.10/1.12.2 (fluid.getName()) - unlike
             // the ae2fc fluid-drop item above, which is a real item id. Both should trip isFluidId.
             { hashcode: 1018, itemid: "molten.fluix", itemname: "Molten Fluix", quantity: 4000, craftable: false },
+            // Under the default alertBelow (100) *and* craftable - star this one with Auto-craft on in
+            // dev to exercise the M6 driver end to end (order -> plan -> submit -> stock credited on
+            // completion via settleCompletedJobs, above).
+            {
+                hashcode: 1019,
+                itemid: "minecraft:charcoal",
+                itemname: "Charcoal",
+                quantity: 40,
+                craftable: true,
+            },
         ],
         idleCpus: [{ name: "Assembly Cluster B", coProcessors: 2, availableStorage: 2 * 1024 * 1024 }],
         busyCpus: [
@@ -535,6 +545,11 @@ export function settleCompletedJobs(grid: MockGrid): void {
                 coProcessors: cpu.coProcessors,
                 availableStorage: cpu.availableStorage,
             });
+            // Credit the crafted output back into stock - without this, a favourite that dropped below
+            // its keepStock would never rise again under npm run dev, and M6's auto-craft driver would
+            // just keep re-firing on it forever.
+            const outputItem = grid.items.find((i) => i.itemid === cpu.output.itemid);
+            if (outputItem) outputItem.quantity += cpu.output.quantity;
         }
     }
 }

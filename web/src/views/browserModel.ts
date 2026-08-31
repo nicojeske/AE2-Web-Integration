@@ -1,4 +1,5 @@
 import type { BrowserItem } from "../state/items";
+import { DEFAULT_THRESHOLDS, prefsKey, type Thresholds } from "../state/prefs";
 
 /** Labels for the "Stored/Craftable" toolbar pill; index is the cycled state (default 2). */
 export const STORED_CRAFTABLE = ["Stored only", "Craftable only", "Stored & craftable"] as const;
@@ -68,6 +69,26 @@ export function sortItems(
         if (sortBy === 1) return a.quantity - b.quantity;
         return a.mod.localeCompare(b.mod);
     };
-    const favRank = (it: BrowserItem): number => (isFavorite(`${it.sourceGridId}:${it.itemid}`) ? 1 : 0);
+    const favRank = (it: BrowserItem): number => (isFavorite(prefsKey(it.sourceGridId, it.itemid)) ? 1 : 0);
     return rows.slice().sort((a, b) => favRank(b) - favRank(a) || primary(a, b) * dir);
+}
+
+/** The `alertBelow` in effect for a prefs key, falling back to the favoriting default. */
+export function alertBelowFor(thresholds: Record<string, Thresholds>, key: string): number {
+    return thresholds[key]?.alertBelow ?? DEFAULT_THRESHOLDS.alertBelow;
+}
+
+/**
+ * Low stock is only ever shown for favourited items (the badge/pill is a favourites feature - an
+ * un-favourited item has no `alertBelow` to compare against). Shared by the Browser badge, the sidebar
+ * pill (`App.tsx`) and the Favorites pane (M6) so the three can never disagree.
+ */
+export function isLowStock(
+    item: Pick<BrowserItem, "sourceGridId" | "itemid" | "quantity">,
+    favorites: Record<string, true>,
+    thresholds: Record<string, Thresholds>,
+): boolean {
+    const key = prefsKey(item.sourceGridId, item.itemid);
+    if (!favorites[key]) return false;
+    return item.quantity < alertBelowFor(thresholds, key);
 }

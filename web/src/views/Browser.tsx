@@ -4,14 +4,14 @@ import { formatNumber } from "../api/format";
 import { useItems } from "../state/items";
 import { useNetwork } from "../state/network";
 import { useOrder } from "../state/order";
-import { DEFAULT_THRESHOLDS, prefsKey, usePrefs } from "../state/prefs";
+import { prefsKey, usePrefs } from "../state/prefs";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
 import { StarIcon } from "../ui/icons";
-import { filterItems, ITEMS_TYPE, SORT_BY, sortItems, STORED_CRAFTABLE } from "./browserModel";
+import { filterItems, isLowStock, ITEMS_TYPE, SORT_BY, sortItems, STORED_CRAFTABLE } from "./browserModel";
 import type { BrowserItem } from "../state/items";
 
 export interface BrowserProps {
@@ -21,7 +21,7 @@ export interface BrowserProps {
 export function Browser({ search }: BrowserProps) {
     const { items, loading, error, failedGrids, refresh } = useItems();
     const { selected, selectedGrid } = useNetwork();
-    const { thresholds, isFavorite, toggleFavorite, browserFilters, setBrowserFilters } = usePrefs();
+    const { favorites, thresholds, isFavorite, toggleFavorite, browserFilters, setBrowserFilters } = usePrefs();
     const { startOrder } = useOrder();
 
     const isAllGrids = selected === "all";
@@ -103,8 +103,7 @@ export function Browser({ search }: BrowserProps) {
                     {filtered.map((item) => {
                         const key = prefsKey(item.sourceGridId, item.itemid);
                         const favorited = isFavorite(key);
-                        const alertBelow = thresholds[key]?.alertBelow ?? DEFAULT_THRESHOLDS.alertBelow;
-                        const lowStock = favorited && item.quantity < alertBelow;
+                        const lowStock = isLowStock(item, favorites, thresholds);
                         return (
                             <Card key={`${item.sourceGridId}:${item.itemid}`} className="item-card">
                                 <button

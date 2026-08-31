@@ -5,10 +5,11 @@ import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { cancelJob, getItems, getJob, order as orderRequest, submitJob } from "../api/client";
+import { cancelJob, submitJob } from "../api/client";
 import { describeApiError } from "../api/errors";
 import type { JobData } from "../api/types";
 import { clampQuantity, pickDefaultCpu } from "../views/orderModel";
+import { computePlan } from "./craftChain";
 import { useCpus } from "./cpus";
 import { useToast } from "./toast";
 
@@ -40,11 +41,6 @@ export interface StartOrderItem {
 }
 
 const DEFAULT_QUANTITY = 64;
-/** Poll `job?id=` every 1s for the first 15s (typical small plans), then back off to 2.5s - `Job` is a
- *  synced request on the server thread, so a large plan shouldn't be hammered while it computes. */
-const FAST_POLL_MS = 1000;
-const SLOW_POLL_MS = 2500;
-const FAST_POLL_WINDOW_MS = 15_000;
 
 export interface OrderContextValue {
     flow: OrderFlow | null;
@@ -60,10 +56,6 @@ export interface OrderContextValue {
 }
 
 const OrderContext = createContext<OrderContextValue | null>(null);
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export function OrderProvider({ children }: { children?: ComponentChildren }) {
     const { cpus, refresh: refreshCpus } = useCpus();
@@ -162,53 +154,34 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
 
         void (async () => {
             try {
-                // A direct single-grid fetch, not useItems().refresh(): GetItems.java clears the one
-                // global hashcodeToStack map on every call, and in All-Grids mode items.tsx's fan-out is
-                // sequential, so only a fresh call against *this* grid guarantees a live hashcode
-                // (REDESIGN_MILESTONES.md caveat 3).
-                const rows = await getItems(snapshot.gridId);
+                const handle = await computePlan(
+                    { gridId: snapshot.gridId, itemid: snapshot.itemid, quantity: snapshot.quantity },
+                    {
+                        isStale: () => generationRef.current !== generation,
+                        onJobId: (jobId) => setFlow((f) => (f ? { ...f, jobId } : f)),
+                    },
+                );
+                if (!handle) return; // superseded
+
+                // Fresh /list so CPU validation runs against current storage, not a snapshot from
+                // before the plan was computed.
+                await refreshCpus();
                 if (generationRef.current !== generation) return;
-                const row = rows.find((r) => r.itemid === snapshot.itemid);
-                if (!row) {
-                    setFlow((f) =>
-                        f ? { ...f, phase: "quantity", error: "That item is no longer on this network" } : f,
-                    );
-                    return;
-                }
-
-                const { jobID } = await orderRequest(snapshot.gridId, row.hashcode, snapshot.quantity);
-                if (generationRef.current !== generation) {
-                    cancelPending(jobID, snapshot.gridId);
-                    return;
-                }
-                setFlow((f) => (f ? { ...f, jobId: jobID } : f));
-
-                const startedPolling = Date.now();
-                for (;;) {
-                    if (generationRef.current !== generation) return;
-                    const job = await getJob(snapshot.gridId, jobID);
-                    if (generationRef.current !== generation) return;
-                    if (job.isDone) {
-                        // Fresh /list so CPU validation runs against current storage, not a snapshot from
-                        // before the plan was computed.
-                        await refreshCpus();
-                        if (generationRef.current !== generation) return;
-                        const candidates = cpusRef.current.filter((c) => c.sourceGridId === snapshot.gridId);
-                        const defaultCpu = pickDefaultCpu(candidates, job.bytesTotal, snapshot.itemid);
-                        setFlow((f) => (f ? { ...f, phase: "plan", job, selectedCpu: defaultCpu, error: null } : f));
-                        return;
-                    }
-                    const elapsed = Date.now() - startedPolling;
-                    await sleep(elapsed < FAST_POLL_WINDOW_MS ? FAST_POLL_MS : SLOW_POLL_MS);
-                }
+                const candidates = cpusRef.current.filter((c) => c.sourceGridId === snapshot.gridId);
+                const defaultCpu = pickDefaultCpu(candidates, handle.job.bytesTotal, snapshot.itemid);
+                setFlow((f) =>
+                    f ? { ...f, phase: "plan", job: handle.job, selectedCpu: defaultCpu, error: null } : f,
+                );
             } catch (e) {
                 if (generationRef.current !== generation) return;
+                // describeApiError already falls back to e.message for a plain Error (e.g. craftChain's
+                // ItemGoneError/PlanTimeoutError), matching the original inline copy for each.
                 setFlow((f) =>
                     f ? { ...f, phase: "quantity", error: describeApiError(e, "Failed to calculate plan") } : f,
                 );
             }
         })();
-    }, [cancelPending, refreshCpus]);
+    }, [refreshCpus]);
 
     const selectCpu = useCallback((name: string) => {
         setFlow((f) => (f && f.phase === "plan" ? { ...f, selectedCpu: name } : f));

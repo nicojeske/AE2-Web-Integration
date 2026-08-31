@@ -6,8 +6,9 @@ import { CpusProvider, useCpus } from "./state/cpus";
 import { HistoryProvider, useHistory } from "./state/history";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
+import { AutoCraftProvider } from "./state/autoCraft";
 import { OrderProvider, useOrder } from "./state/order";
-import { DEFAULT_THRESHOLDS, prefsKey, PrefsProvider, usePrefs } from "./state/prefs";
+import { PrefsProvider, usePrefs } from "./state/prefs";
 import { ToastProvider, useToast } from "./state/toast";
 import { OutdatedBanner } from "./shell/OutdatedBanner";
 import type { Section } from "./shell/section";
@@ -22,6 +23,7 @@ import { OrderModal } from "./views/OrderModal";
 import { PlanDetail } from "./views/PlanDetail";
 import { Statistics } from "./views/Statistics";
 import { TrackingDetail } from "./views/TrackingDetail";
+import { isLowStock } from "./views/browserModel";
 
 function Shell() {
     const context = getContext();
@@ -88,16 +90,10 @@ function Shell() {
     // Scoped to whatever's currently loaded (the selected grid, or every grid in All-Grids mode) -
     // not every grid regardless of selection, which would mean fetching every grid's items just to
     // feed this badge (the tracker flags server-thread cost from `items`/`get` as a risk to watch).
-    const lowStockFavCount = useMemo(() => {
-        let count = 0;
-        for (const item of items) {
-            const key = prefsKey(item.sourceGridId, item.itemid);
-            if (!favorites[key]) continue;
-            const alertBelow = thresholds[key]?.alertBelow ?? DEFAULT_THRESHOLDS.alertBelow;
-            if (item.quantity < alertBelow) count++;
-        }
-        return count;
-    }, [items, favorites, thresholds]);
+    const lowStockFavCount = useMemo(
+        () => items.reduce((count, item) => count + (isLowStock(item, favorites, thresholds) ? 1 : 0), 0),
+        [items, favorites, thresholds],
+    );
 
     return (
         <div className="app-shell">
@@ -165,9 +161,14 @@ export function App() {
                     <ItemsProvider>
                         <CpusProvider>
                             <HistoryProvider>
-                                <OrderProvider>
-                                    <Shell />
-                                </OrderProvider>
+                                {/* Outside OrderProvider on purpose - the driver must never touch
+                                    useOrder()'s single UI flow slot, only the same underlying API
+                                    (via craftChain.ts) headlessly. */}
+                                <AutoCraftProvider>
+                                    <OrderProvider>
+                                        <Shell />
+                                    </OrderProvider>
+                                </AutoCraftProvider>
                             </HistoryProvider>
                         </CpusProvider>
                     </ItemsProvider>
