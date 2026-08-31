@@ -240,7 +240,7 @@ exactly one job per item per cycle against a real server.
 series for a running server.
 
 ### - [x] M8 — Statistics: client
-**Status:** Done — (pending commit)
+**Status:** Done — 2437060
 
 - Range segmented control (default 7d), "Manage tracked items" modal (420px, search, 16px checkboxes,
   Done) writing the server-side tracked set.
