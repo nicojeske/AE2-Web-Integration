@@ -152,7 +152,7 @@ All-Grids mode, and low-stock badges reflect stored thresholds.
 notifications fire only under the three conditions.
 
 ### - [x] M3 — Craft detail, active mode
-**Status:** Done — pending commit sha (recorded in an immediate follow-up commit, per repo convention)
+**Status:** Done — b24ac505e2463d328d56d9a11242d9b7f69fe08f
 
 - Header (back button, `{item} x{qty}`, subtitle, status pill), stat strip (Output, Elapsed/Took,
   Est. remaining — `~{time}` once progress ≥15% and elapsed >20s else "Calculating", Crafts/sec from
