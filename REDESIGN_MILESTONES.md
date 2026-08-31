@@ -115,7 +115,7 @@ server and against a real server, network selection persists (localStorage — r
 grid" behaviour), and core CI is green.
 
 ### - [x] M1 — Item Browser
-**Status:** Done — commit sha TBD (recorded in a follow-up commit, per the M0 precedent)
+**Status:** Done — 29d6d58246482a1522ad1e685fe740f25c82b4c1
 
 - Filter pills (stored/craftable, items/fluids, sort A-Z/# stored/mod, asc/desc — cycling on click as
   today), `{n} of {m} shown`, search input in the topbar, `auto-fill minmax(220px,1fr)` card grid.
