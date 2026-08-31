@@ -114,8 +114,8 @@ Consequences to honour everywhere:
 server and against a real server, network selection persists (localStorage — restores the old "default
 grid" behaviour), and core CI is green.
 
-### - [ ] M1 — Item Browser
-**Status:** Not started
+### - [x] M1 — Item Browser
+**Status:** Done — commit sha TBD (recorded in a follow-up commit, per the M0 precedent)
 
 - Filter pills (stored/craftable, items/fluids, sort A-Z/# stored/mod, asc/desc — cycling on click as
   today), `{n} of {m} shown`, search input in the topbar, `auto-fill minmax(220px,1fr)` card grid.
@@ -329,3 +329,54 @@ _(newest last)_
   not call `.serializeSpecialFloatingPointValues()`. Whichever milestone first renders `craftsPerSec`
   (M3) should watch for this in real testing; the real fix is a small Java change (guard the division, or
   make the builder lenient) that belongs on its own, separately reviewed.
+- **M1**: Removed the stale nested `core/` submodule worktree (a leftover `1.7.10`-checkout artifact -
+  `core` is only a real submodule on the version branches, not on `core`). All paths this file calls
+  `core/web/…` are therefore just `web/…` at the repo root from here on.
+- **M1**: `GetItems.java` synthesises craft-only rows via `web$stackOf(craftable, 0)`, so the real
+  payload contains `quantity: 0` craftable items - the prototype's "Stored only" (`craftable === false`)
+  would hide every craftable item actually in stock. Reimplemented as `quantity > 0` / `craftable` /
+  both, confirmed with the user.
+- **M1**: No server field distinguishes fluids from items, and `web$getItemID()` differs per version
+  branch (1.7.10/1.12.2: colon-free for native fluids; 1.20.1/1.21.1: same `namespace:path` shape as
+  items, indistinguishable). Classified client-side in `src/views/browserModel.ts` (`isFluidId`: no
+  colon, or an `ae2fc:fluid_drop*` prefix) and the Items/Fluids toolbar pill only renders when the
+  current list actually contains a fluid - so it simply doesn't appear on 1.20.1/1.21.1 rather than
+  being a dead control that can empty the grid.
+- **M1**: All-Grids `items` fan-out (`src/state/items.tsx`) is sequential, not concurrent -
+  `GetItems.handle` clears a single global static `hashcodeToStack` map on every call, and the synced
+  request queue is a 32-slot `ArrayBlockingQueue` that answers `SERVER_BUSY` on overflow. Per-grid
+  failures are collected into `failedGrids` and surfaced as a dim warning line instead of blanking the
+  whole browser.
+- **M1**: Added `src/state/prefs.tsx` (favorites/thresholds/notifyEnabled/browserFilters, all
+  localStorage-persisted, keyed on `itemid` never `hashcode` - `hashcode` is a transient ordering token
+  a global map wipes on every `items` call) and `src/state/items.tsx` (the shared `items` fetch/fan-out
+  store). Both are `.tsx` rather than the originally sketched `prefs.ts`/`items.ts`, since `prefs.tsx`
+  renders a provider and `items.tsx` needs JSX for the same reason. The four browser filter/sort
+  selections are persisted too (legacy `webpage.html` cookie-persisted them for 7 days; not on the
+  "Dropped from old UI" list).
+- **M1**: Kept the "Enable tracking for this grid" sidebar checkbox scoped to a single real grid
+  (hidden in All-Grids mode and for the disabled `key === -1` admin-only entry) - `gridsettings` is
+  per-grid and denies `GRID_NOT_FOUND` for `-1`.
+- **M1**: The sidebar's red low-stock-favorites count pill is scoped to whatever is currently loaded
+  (the selected grid, or every grid in All-Grids mode), not every grid regardless of selection like the
+  prototype. Fetching every grid's items just to feed a sidebar badge would run against this file's own
+  "server-thread cost" risk; the badge simply agrees with the Item Browser's own low-stock badges.
+- **M1**: Search matches the §-stripped item name (`plainName`, always up to date; the legacy
+  `webpage.html` matched the raw §-coded name, so a query spanning a colour code could never match) or
+  the raw `itemid` (the legacy UI never searched it).
+- **M1**: `.item-icon` border-radius corrected from `--radius-sm` (6px, M0) to `--radius-md` (8px) -
+  the design specifies radius 8 for the item tile (`radius="8"` on the prototype's `image-slot`).
+- **M1**: Refresh now awaits both the grid-list and items refetches before toasting "Refreshed" (the
+  prototype toasts immediately, before any data exists).
+- **M1**: Extended the mock fixtures (`src/dev/fixtures.ts`) to ~18 items across 6 mods in grid 1,
+  including two `quantity: 0, craftable: true` rows, two rows under the default `alertBelow` (100), one
+  colon-free native-fluid id alongside the existing `ae2fc:fluid_drop:*` row, and removed grid 2's only
+  fluid so switching networks demonstrates the Items/Fluids pill appearing and disappearing.
+- **M1 verified**: `npm run dev` against the mock server with a headless Chromium (Playwright,
+  downloaded for this session only - no browser automation tool was otherwise available) confirmed all
+  four toolbar pills cycle correctly, the `{n} of {m}` count, search, every sort × order, favorites
+  pinning to the top, low-stock/craftable/not-craftable badge combinations, the sidebar low-stock pill,
+  the fluids pill appearing/disappearing per grid, All-Grids fan-out counts (hand-verified against the
+  fixture data), the tracking checkbox's full round trip against the mock `gridsettings` endpoint, and
+  the Craft stub toast - with zero console/page errors. Not yet exercised against a real Forge server
+  (`./gradlew runServer`) - do that before relying on this milestone in-game.

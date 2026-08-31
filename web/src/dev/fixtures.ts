@@ -97,6 +97,69 @@ export const mockGrids: MockGrid[] = [
                 craftable: true,
             },
             { hashcode: 1008, itemid: "ae2fc:fluid_drop:water", itemname: "Water", quantity: 64000, craftable: false },
+            // Extra mods, plus the shapes M1 needs real fixture coverage for:
+            {
+                hashcode: 1009,
+                itemid: "thermalfoundation:material",
+                itemname: "Tin Ingot",
+                quantity: 320,
+                craftable: true,
+            },
+            // Craft-only, unstored - GetItems.java synthesises these via web$stackOf(craftable, 0).
+            {
+                hashcode: 1010,
+                itemid: "thermalfoundation:material_copper",
+                itemname: "Copper Ingot",
+                quantity: 0,
+                craftable: true,
+            },
+            {
+                hashcode: 1011,
+                itemid: "immersiveengineering:metal_aluminum",
+                itemname: "Aluminum",
+                quantity: 0,
+                craftable: true,
+            },
+            {
+                hashcode: 1012,
+                itemid: "immersiveengineering:metal_steel",
+                itemname: "Steel Ingot",
+                quantity: 512,
+                craftable: true,
+            },
+            // Under the default alertBelow (100) - star these in dev to see "Low stock".
+            {
+                hashcode: 1013,
+                itemid: "biomesoplenty:gem_amethyst",
+                itemname: "Amethyst",
+                quantity: 88,
+                craftable: false,
+            },
+            {
+                hashcode: 1014,
+                itemid: "biomesoplenty:log_mahogany",
+                itemname: "Mahogany Log",
+                quantity: 2200,
+                craftable: false,
+            },
+            {
+                hashcode: 1015,
+                itemid: "mekanism:ingot_osmium",
+                itemname: "Osmium Ingot",
+                quantity: 960,
+                craftable: true,
+            },
+            { hashcode: 1016, itemid: "mekanism:dust_iron", itemname: "Dust (Iron)", quantity: 3050, craftable: true },
+            {
+                hashcode: 1017,
+                itemid: "appliedenergistics2:quartz",
+                itemname: "Certus Quartz",
+                quantity: 1500,
+                craftable: true,
+            },
+            // A native fluid's itemid has no colon at all on 1.7.10/1.12.2 (fluid.getName()) - unlike
+            // the ae2fc fluid-drop item above, which is a real item id. Both should trip isFluidId.
+            { hashcode: 1018, itemid: "molten.fluix", itemname: "Molten Fluix", quantity: 4000, craftable: false },
         ],
         idleCpus: [{ name: "Assembly Cluster B", coProcessors: 2, availableStorage: 2 * 1024 * 1024 }],
         busyCpus: [
@@ -226,7 +289,9 @@ export const mockGrids: MockGrid[] = [
             },
             { hashcode: 2002, itemid: "minecraft:coal", itemname: "Coal", quantity: 5200, craftable: false },
             { hashcode: 2003, itemid: "minecraft:raw_iron", itemname: "Raw Iron", quantity: 2100, craftable: false },
-            { hashcode: 2004, itemid: "ae2fc:fluid_drop:lava", itemname: "Lava", quantity: 8000, craftable: false },
+            // Deliberately no fluids in this grid (unlike grid 1) - lets the Items/Fluids toolbar
+            // pill be exercised appearing and disappearing when switching networks.
+            { hashcode: 2004, itemid: "minecraft:granite", itemname: "Granite", quantity: 8000, craftable: false },
         ],
         idleCpus: [{ name: "Outpost CPU", coProcessors: 1, availableStorage: 1024 * 1024 }],
         busyCpus: [],

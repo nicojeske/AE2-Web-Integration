@@ -62,7 +62,10 @@ export function NetworkProvider({ children }: { children?: ComponentChildren }) 
         [grids, selected],
     );
 
-    const value: NetworkContextValue = { grids, loading, error, selected, selectedGrid, selectGrid, refresh };
+    const value = useMemo<NetworkContextValue>(
+        () => ({ grids, loading, error, selected, selectedGrid, selectGrid, refresh }),
+        [grids, loading, error, selected, selectedGrid, selectGrid, refresh],
+    );
 
     return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;
 }

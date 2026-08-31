@@ -1,0 +1,114 @@
+/* Item Browser (M1) */
+
+.browser__toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.browser__count {
+    margin-left: auto;
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.browser__warning {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.browser__error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.item-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.item-card {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+}
+
+.item-card__star {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    padding: 2px;
+    line-height: 0;
+}
+
+.item-card__head {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding-right: 20px;
+}
+
+.item-card__title {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.item-card__name {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.item-card__mod {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.item-card__stored {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.item-card__stored-value {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.item-card__stored-label {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.item-card__badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+    flex-wrap: wrap;
+}
+
+.item-card__craft {
+    margin-left: auto;
+}
+
+.item-card__not-craftable {
+    font-size: 11px;
+    color: var(--text-dim);
+}

@@ -1,7 +1,11 @@
 import type { ComponentType } from "preact";
+import { useEffect, useState } from "preact/hooks";
 
+import { ApiError, setGridTracking } from "../api/client";
+import type { GridSummary } from "../api/types";
 import { useNetwork } from "../state/network";
 import type { GridSelection } from "../state/network";
+import { useToast } from "../state/toast";
 import { Checkbox } from "../ui/Checkbox";
 import { cx } from "../ui/cx";
 import type { IconProps } from "../ui/icons";
@@ -29,6 +33,39 @@ const NAV_ITEMS: { section: Section; label: string; icon: ComponentType<IconProp
     { section: "stats", label: "Statistics", icon: ChartIcon },
 ];
 
+/**
+ * `gridsettings?track=` is the only way to switch tracking on anywhere in the mod, and tracking
+ * gates the craft-detail progress UI, the bottleneck panel and the whole Crafting History section -
+ * kept as a deliberate deviation from the design (see REDESIGN_MILESTONES.md).
+ */
+function GridTrackingCheckbox({ grid, onTracked }: { grid: GridSummary; onTracked: () => Promise<void> }) {
+    const toast = useToast();
+    const [checked, setChecked] = useState(grid.isTrackingEnabled);
+
+    // Re-seed when the selected grid changes (including after selectGrid to a different network).
+    useEffect(() => {
+        setChecked(grid.isTrackingEnabled);
+    }, [grid.key, grid.isTrackingEnabled]);
+
+    const onChange = async (next: boolean) => {
+        setChecked(next);
+        try {
+            const result = await setGridTracking(grid.key, next);
+            setChecked(result.isTracked);
+            await onTracked();
+        } catch (e) {
+            setChecked(grid.isTrackingEnabled);
+            toast(e instanceof ApiError ? e.status : "Failed to update tracking");
+        }
+    };
+
+    return (
+        <Checkbox checked={checked} onChange={(next) => void onChange(next)}>
+            <span className="sidebar__network-tracking-label">Enable tracking for this grid</span>
+        </Checkbox>
+    );
+}
+
 export function Sidebar({
     section,
     onSectionChange,
@@ -40,7 +77,7 @@ export function Sidebar({
     isAdmin,
     onLogout,
 }: SidebarProps) {
-    const { grids, selected, selectedGrid, selectGrid } = useNetwork();
+    const { grids, selected, selectedGrid, selectGrid, refresh } = useNetwork();
 
     return (
         <aside className="sidebar">
@@ -71,6 +108,9 @@ export function Sidebar({
                     ))}
                 </select>
                 <span className="sidebar__network-meta">{gridMetaLine(selected, grids, selectedGrid)}</span>
+                {selectedGrid && selectedGrid.key !== -1 && (
+                    <GridTrackingCheckbox grid={selectedGrid} onTracked={refresh} />
+                )}
             </div>
 
             <nav className="sidebar__nav">

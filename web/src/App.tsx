@@ -1,8 +1,10 @@
-import { useCallback, useState } from "preact/hooks";
+import { useCallback, useMemo, useState } from "preact/hooks";
 
 import { logout } from "./api/client";
 import { getContext } from "./context";
+import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
+import { DEFAULT_THRESHOLDS, prefsKey, PrefsProvider, usePrefs } from "./state/prefs";
 import { ToastProvider, useToast } from "./state/toast";
 import { OutdatedBanner } from "./shell/OutdatedBanner";
 import type { Section } from "./shell/section";
@@ -14,35 +16,41 @@ import { History } from "./views/History";
 import { Jobs } from "./views/Jobs";
 import { Statistics } from "./views/Statistics";
 
-const NOTIFY_STORAGE_KEY = "ae2.notifyEnabled";
-
-function readNotifyEnabled(): boolean {
-    return localStorage.getItem(NOTIFY_STORAGE_KEY) === "1";
-}
-
 function Shell() {
     const context = getContext();
-    const { refresh } = useNetwork();
+    const { refresh: refreshGrids } = useNetwork();
+    const { items, refresh: refreshItems } = useItems();
+    const { favorites, thresholds, notifyEnabled, setNotifyEnabled } = usePrefs();
     const toast = useToast();
     const [section, setSection] = useState<Section>("browser");
     const [search, setSearch] = useState("");
-    const [notifyEnabled, setNotifyEnabled] = useState(readNotifyEnabled);
 
     const onToggleNotify = useCallback(() => {
-        setNotifyEnabled((enabled) => {
-            const next = !enabled;
-            localStorage.setItem(NOTIFY_STORAGE_KEY, next ? "1" : "0");
-            if (next && "Notification" in window && Notification.permission === "default") {
-                void Notification.requestPermission();
-            }
-            return next;
-        });
-    }, []);
+        const next = !notifyEnabled;
+        setNotifyEnabled(next);
+        if (next && "Notification" in window && Notification.permission === "default") {
+            void Notification.requestPermission();
+        }
+    }, [notifyEnabled, setNotifyEnabled]);
 
-    const onRefresh = useCallback(() => {
-        void refresh();
+    const onRefresh = useCallback(async () => {
+        await Promise.all([refreshGrids(), refreshItems()]);
         toast("Refreshed");
-    }, [refresh, toast]);
+    }, [refreshGrids, refreshItems, toast]);
+
+    // Scoped to whatever's currently loaded (the selected grid, or every grid in All-Grids mode) -
+    // not every grid regardless of selection, which would mean fetching every grid's items just to
+    // feed this badge (the tracker flags server-thread cost from `items`/`get` as a risk to watch).
+    const lowStockFavCount = useMemo(() => {
+        let count = 0;
+        for (const item of items) {
+            const key = prefsKey(item.sourceGridId, item.itemid);
+            if (!favorites[key]) continue;
+            const alertBelow = thresholds[key]?.alertBelow ?? DEFAULT_THRESHOLDS.alertBelow;
+            if (item.quantity < alertBelow) count++;
+        }
+        return count;
+    }, [items, favorites, thresholds]);
 
     return (
         <div className="app-shell">
@@ -50,7 +58,7 @@ function Shell() {
                 section={section}
                 onSectionChange={setSection}
                 busyCount={0}
-                lowStockFavCount={0}
+                lowStockFavCount={lowStockFavCount}
                 notifyEnabled={notifyEnabled}
                 onToggleNotify={onToggleNotify}
                 username={context.username}
@@ -63,10 +71,10 @@ function Shell() {
                     section={section}
                     search={section === "browser" ? search : undefined}
                     onSearchChange={section === "browser" ? setSearch : undefined}
-                    onRefresh={onRefresh}
+                    onRefresh={() => void onRefresh()}
                 />
                 <div className="content">
-                    {section === "browser" && <Browser />}
+                    {section === "browser" && <Browser search={search} />}
                     {section === "jobs" && <Jobs />}
                     {section === "history" && <History />}
                     {section === "favorites" && <Favorites />}
@@ -80,9 +88,13 @@ function Shell() {
 export function App() {
     return (
         <ToastProvider>
-            <NetworkProvider>
-                <Shell />
-            </NetworkProvider>
+            <PrefsProvider>
+                <NetworkProvider>
+                    <ItemsProvider>
+                        <Shell />
+                    </ItemsProvider>
+                </NetworkProvider>
+            </PrefsProvider>
         </ToastProvider>
     );
 }
