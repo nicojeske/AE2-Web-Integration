@@ -1,255 +1,29 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Roboto:wght@300;400&display=swap');
-        *,html,body{
-            margin: 0;
-            padding: 0;
-            font-family: "Montserrat", sans-serif;
-            font-optical-sizing: auto;
-            font-style: normal;
-            color: #e0e0e0;
-            font-weight: 400;
-            list-style-position: inside;
-        }
-        b{
-            font-weight: 500;
-        }
-        body{
-            background-color: #101219;
-            color: #e0e0e0;
-        }
-        html,body{
-            height: 100%;
-            width: 100%;
-        }
-        body>h1{
-            text-align: center;
-            letter-spacing: 10px;
-            font-weight: 800;
-            color: #fff;
-            font-size: 2.5em;
-        }
-        footer {
-            position: fixed;
-            Width: 100%;
-            bottom: 0;
-            background-color: #9292926b;
-            padding: 10px;
-            transition: 0.2s;
-        }
-
-        footer:hover{
-            background-color: #929292;
-        }
-
-        a{
-            color: #80cbc4;
-            transition: 0.2s;
-        }
-
-        a:hover{
-            color: #a7ffeb;
-            text-decoration: underline;
-        }
-
-        #maincontent{
-            width: 90%;
-            height: 90%;
-            margin: 0 auto;
-            display: flex;
-        }
-
-        #main{
-            padding: 20px;
-            margin: auto;
-            background-color: #222736;
-            border: black solid 1px;
-            border-radius: 5px;
-
-        }
-
-        #mainrow
-        {
-            display: flex;
-            flex-direction: row;
-        }
-
-        #maininfo{
-            text-align: center;
-        }
-
-        input, select {
-            background-color: #2b3555;
-            accent-color: #9b59b6;
-            border: 0;
-            padding: 5px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            margin-top: 3px;
-        }
-
-        input[type='submit'], button{
-            background-color: #292f47;
-            border: 0;
-            border-radius: 5px;
-            padding: 5px;
-            transition: 0.2s;
-        }
-
-        input[type='submit']:hover, button:hover{
-            background-color: #363e5e;
-            cursor: pointer;
-        }
-
-        input[type='checkbox']{
-            transform: translateY(1px);
-        }
-
-        form {
-            width: 25vw;
-            text-align: center;
-            padding: 20px;
-            border-right: rgb(216, 216, 216) dashed 1px;
-            border-left: rgb(216, 216, 216) dashed 1px;
-            border-collapse: collapse;
-        }
-
-        #cookiemonster{
-            z-index: 1000;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            backdrop-filter: blur(5px);
-        }
-        #cookiemonster > section{
-            margin: auto auto;
-            display: flex;
-            flex-direction: column;
-            text-align: center;
-            background-color: #222736;
-            border: black solid 1px;
-            border-radius: 5px;
-            padding: 20px;
-        }
-        #cookiemonster > section > *{
-            margin: 3px;
-        }
-
-        h2{
-            font-weight: bold;
-        }
-    </style>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
-    <title>AE2</title>
-</head>
-<body>
-<h1>UNIVERSAL WEB TERMINAL</h1>
-<section id="cookiemonster" style="display: none;">
-    <section>
-        <h2>Cookie Notice 🍪</h2>
-        <p>Before you continue, please note that this website uses cookies to:</p>
-        <ul>
-            <li>Save your terminal preferences</li>
-            <li>Enable login functionality</li>
-            <li>Improve your overall experience</li>
-        </ul>
-        <p>By clicking "Accept", you consent to our use of cookies.</p>
-        <button onclick="acceptCookies();">Accept Cookies</button>
-    </section>
-</section>
-<section id="maincontent">
-    <section id="main">
-        <section id="maininfo">
-
-        </section>
-        <section id="mainrow">
-            <form action="" method="POST" id="formlogin">
-                <b>This service requires authentication</b><br><br>
-                <label for="username">Username</label><br>
-                <input type="text" id="username" name="username" placeholder="Enter username" required><br>
-                <label for="password">Password</label><br>
-                <input type="password" id="password" name="password" placeholder="Enter password" required><br>
-                <input type="checkbox" id="remember" name="remember"> <label for="remember">Remember me for 7 days</label><br><br><br>
-                <input type="submit" value="Enter">
-            </form>
-            <form action="" method="POST" id="formregister">
-                <b>Or register</b><br><br>
-                <label for="rusername">Username (in-game)</label><br>
-                <input type="text" id="rusername" name="register" placeholder="Enter username" required autocomplete="off"><br>
-                <label for="rpassword">Password</label><br>
-                <input type="password" id="rpassword" name="password" placeholder="Enter password" required autocomplete="off"><br>
-                <input type="checkbox" id="remainder" name="remainder" required autocomplete="off"> <label for="remainder">I understand that the password entered above<br> will be visible to the server owner once continued!</label><br><br>
-                <input type="submit" value="Continue">
-            </form>
-        </section>
-    </section>
-</section>
-
-<script>
-
-    const IS_PUBLIC_MODE = _REPLACE_ME_IS_PUBLIC_MODE; // Replace with your actual public mode variable
-
-    if (!IS_PUBLIC_MODE){
-        document.getElementById("formregister").style.display = "none"; // Hide the registration form in public mode
-        document.getElementById("username").value = "Admin";
-        document.getElementById("username").readOnly = true;
-    }
-
-    var url = new URL(window.location.href);
-    if (url.searchParams.get("notonline") !== null){
-        document.getElementById("maininfo").innerHTML = "<b style='color: #db4848;'>You have to be on the server (online) to perform this action!</b><br><br>";
-        window.history.replaceState(null, document.title, window.location.pathname); // Clear the URL parameter
-    } else if (url.searchParams.get("invalidpassword") !== null) {
-        document.getElementById("maininfo").innerHTML = "<b style='color: #db4848;'>Invalid password!</b><br><br>";
-        window.history.replaceState(null, document.title, window.location.pathname); // Clear the URL parameter
-    } else if (url.searchParams.get("invaliduser") !== null) {
-        document.getElementById("maininfo").innerHTML = "<b style='color: #db4848;'>Invalid username!</b><br><br>";
-        window.history.replaceState(null, document.title, window.location.pathname); // Clear the URL parameter
-    } else if (url.searchParams.get("confirmregistration") !== null) {
-        document.getElementById("maininfo").innerHTML = "<b style='color: #78b83d;'>Please enter this command in the game to finish registration:<br>/ae2webintegration auth " + url.searchParams.get("token") + "</b><br><br>";
-        window.history.replaceState(null, document.title, window.location.pathname); // Clear the URL parameter
-    }
-
-    function acceptCookies(){
-        document.cookie = "cookiesAccepted=true; max-age=" + 60 * 60 * 24 * 7 + "; path=/"; // Set cookie for 7 days
-        document.getElementById("cookiemonster").style.display = "none"; // Hide the cookie monster section
-    }
-
-    function getCookie(cname) {
-        let name = cname + "=";
-        let ca = document.cookie.split(';');
-        for(let i = 0; i < ca.length; i++) {
-            let c = ca[i];
-            while (c.charAt(0) == ' ') {
-                c = c.substring(1);
-            }
-            if (c.indexOf(name) == 0) {
-                return c.substring(name.length, c.length);
-            }
-        }
-        return "";
-    }
-
-    if (getCookie("cookiesAccepted") !== "true"){
-        document.getElementById("cookiemonster").style.display = "flex"; // Show the cookie monster section
-    }
-    else {
-        document.cookie = "cookiesAccepted=true; max-age=" + 60 * 60 * 24 * 7 + "; path=/";
-    }
-
-</script>
-
-<br><br>
-<footer>
-    This service is hosted using <a href="https://github.com/kuba6000/AE2-Web-Integration">AE2 Web Integration</a> Made by <a href="https://github.com/kuba6000">@kuba6000</a>
-</footer>
-</body>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+    <title>AE2 Terminal - Sign in</title>
+    <script>
+      // Substituted server-side by AE2Controller.WebHandler (string replace, not templating) - keep
+      // this token byte-for-byte, it is matched literally. This page is only ever served logged out,
+      // so it must never reference _REPLACE_ME_USERNAME/_REPLACE_ME_IS_ADMIN - those are only
+      // substituted for an authenticated request (AE2Controller.java) and would ship as literal,
+      // invalid JS here.
+      window.__AE2_LOGIN__ = {
+        isPublicMode: _REPLACE_ME_IS_PUBLIC_MODE,
+      };
+    </script>
+    <script type="module">var e,t,n,r,i,a,o,s,c,l,u,d,f,p,m={},h=[],g=/acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i,_=Array.isArray;function v(e,t){for(var n in t)e[n]=t[n];return e}function y(e){e&&e.parentNode&&e.parentNode.removeChild(e)}function b(t,n,r){var i,a,o,s={};for(o in n)o==`key`?i=n[o]:o==`ref`?a=n[o]:s[o]=n[o];if(arguments.length>2&&(s.children=arguments.length>3?e.call(arguments,2):r),typeof t==`function`&&t.defaultProps!=null)for(o in t.defaultProps)s[o]===void 0&&(s[o]=t.defaultProps[o]);return x(t,s,i,a,null)}function x(e,r,i,a,o){var s={type:e,props:r,key:i,ref:a,__k:null,__:null,__b:0,__e:null,__c:null,constructor:void 0,__v:o??++n,__i:-1,__u:0};return o==null&&t.vnode!=null&&t.vnode(s),s}function S(e){return e.children}function C(e,t){this.props=e,this.context=t}function w(e,t){if(t==null)return e.__?w(e.__,e.__i+1):null;for(var n;t<e.__k.length;t++)if((n=e.__k[t])!=null&&n.__e!=null)return n.__e;return typeof e.type==`function`?w(e):null}function T(e){if(e.__P&&e.__d){var n=e.__v,r=n.__e,i=[],a=[],o=v({},n);o.__v=n.__v+1,t.vnode&&t.vnode(o),I(e.__P,o,n,e.__n,e.__P.namespaceURI,32&n.__u?[r]:null,i,r??w(n),!!(32&n.__u),a),o.__v=n.__v,o.__.__k[o.__i]=o,te(i,o,a),n.__e=n.__=null,o.__e!=r&&E(o)}}function E(e){if((e=e.__)!=null&&e.__c!=null)return e.__e=e.__c.base=null,e.__k.some(function(t){if(t!=null&&t.__e!=null)return e.__e=e.__c.base=t.__e}),E(e)}function D(e){(!e.__d&&(e.__d=!0)&&r.push(e)&&!O.__r++||i!=t.debounceRendering)&&((i=t.debounceRendering)||a)(O)}function O(){try{for(var e,t=1;r.length;)r.length>t&&r.sort(o),e=r.shift(),t=r.length,T(e)}finally{r.length=O.__r=0}}function k(e,t,n,r,i,a,o,s,c,l,u){var d,f,p,g,_,v,y=r&&r.__k||h,b=t.length;for(c=A(n,t,y,c,b),d=0;d<b;d++)(p=n.__k[d])!=null&&(f=p.__i!=-1&&y[p.__i]||m,p.__i=d,v=I(e,p,f,i,a,o,s,c,l,u),g=p.__e,p.ref&&f.ref!=p.ref&&(f.ref&&L(f.ref,null,p),u.push(p.ref,p.__c||g,p)),_==null&&g!=null&&(_=g),4&p.__u?(c=j(p,c,e),f.__e&&(f.__e=null)):typeof p.type==`function`&&v!==void 0?c=v:g&&(c=g.nextSibling),p.__u&=-7);return n.__e=_,c}function A(e,t,n,r,i){var a,o,s,c,l,u=n.length,d=u,f=0;for(e.__k=Array(i),a=0;a<i;a++)(o=t[a])!=null&&typeof o!=`boolean`&&typeof o!=`function`?(typeof o==`string`||typeof o==`number`||typeof o==`bigint`||o.constructor==String?o=e.__k[a]=x(null,o,null,null,null):_(o)?o=e.__k[a]=x(S,{children:o},null,null,null):o.constructor===void 0&&o.__b>0?o=e.__k[a]=x(o.type,o.props,o.key,o.ref?o.ref:null,o.__v):e.__k[a]=o,c=a+f,o.__=e,o.__b=e.__b+1,s=null,(l=o.__i=M(o,n,c,d))!=-1&&(d--,(s=n[l])&&(s.__u|=2)),s==null||s.__v==null?(l==-1&&(i>u?f--:i<u&&f++),typeof o.type!=`function`&&(o.__u|=4)):l!=c&&(l==c-1?f--:l==c+1?f++:(l>c?f--:f++,o.__u|=4))):e.__k[a]=null;if(d)for(a=0;a<u;a++)(s=n[a])!=null&&!(2&s.__u)&&(s.__e==r&&(r=w(s)),ie(s,s));return r}function j(e,t,n){var r,i;if(typeof e.type==`function`){for(r=e.__k,i=0;r&&i<r.length;i++)r[i]&&(r[i].__=e,t=j(r[i],t,n));return t}e.__e!=t&&(t&&e.type&&!t.parentNode&&(t=w(e)),t=n.insertBefore(e.__e,t||null));do t&&=t.nextSibling;while(t!=null&&t.nodeType==8);return t}function M(e,t,n,r){var i,a,o,s=e.key,c=e.type,l=t[n],u=l!=null&&!(2&l.__u);if(l===null&&s==null||u&&s==l.key&&c==l.type)return n;if(r>+!!u){for(i=n-1,a=n+1;i>=0||a<t.length;)if((l=t[o=i>=0?i--:a++])!=null&&!(2&l.__u)&&s==l.key&&c==l.type)return o}return-1}function N(e,t,n){t[0]==`-`?e.setProperty(t,n??``):e[t]=n==null?``:typeof n!=`number`||g.test(t)?n:n+`px`}function P(e,t,n,r,i){var a,o;n:if(t==`style`){if(typeof n==`string`)e.style.cssText=n;else{if(typeof r==`string`&&(e.style.cssText=r=``),r)for(t in r)n&&t in n||N(e.style,t,``);if(n)for(t in n)r&&n[t]==r[t]||N(e.style,t,n[t])}}else if(t[0]==`o`&&t[1]==`n`)a=t!=(t=t.replace(u,`$1`)),o=t.toLowerCase(),t=o in e||t==`onFocusOut`||t==`onFocusIn`?o.slice(2):t.slice(2),e.l||={},e.l[t+a]=n,n?r?n[l]=r[l]:(n[l]=d,e.addEventListener(t,a?p:f,a)):e.removeEventListener(t,a?p:f,a);else{if(i==`http://www.w3.org/2000/svg`)t=t.replace(/xlink(H|:h)/,`h`).replace(/sName$/,`s`);else if(t!=`width`&&t!=`height`&&t!=`href`&&t!=`list`&&t!=`form`&&t!=`tabIndex`&&t!=`download`&&t!=`rowSpan`&&t!=`colSpan`&&t!=`role`&&t!=`popover`&&t in e)try{e[t]=n??``;break n}catch{}typeof n==`function`||(n==null||!1===n&&t[4]!=`-`?e.removeAttribute(t):e.setAttribute(t,t==`popover`&&n==1?``:n))}}function F(e){return function(n){if(this.l){var r=this.l[n.type+e];if(n[c]==null)n[c]=d++;else if(n[c]<r[l])return;return r(t.event?t.event(n):n)}}}function I(e,n,r,i,a,o,s,c,l,u){var d,f,p,m,g,b,x,T,E,D,O,A,j,M,N,P,F=n.type;if(n.constructor!==void 0)return null;128&r.__u&&(l=!!(32&r.__u),o=[c=n.__e=r.__e]),(d=t.__b)&&d(n);n:if(typeof F==`function`){f=s.length;try{if(E=n.props,D=F.prototype&&F.prototype.render,O=(d=F.contextType)&&i[d.__c],A=d?O?O.props.value:d.__:i,r.__c?T=(p=n.__c=r.__c).__=p.__E:(D?n.__c=p=new F(E,A):(n.__c=p=new C(E,A),p.constructor=F,p.render=ae),O&&O.sub(p),p.state||(p.state={}),p.__n=i,m=p.__d=!0,p.__h=[],p._sb=[]),D&&p.__s==null&&(p.__s=p.state),D&&F.getDerivedStateFromProps!=null&&(p.__s==p.state&&(p.__s=v({},p.__s)),v(p.__s,F.getDerivedStateFromProps(E,p.__s))),g=p.props,b=p.state,p.__v=n,m)D&&F.getDerivedStateFromProps==null&&p.componentWillMount!=null&&p.componentWillMount(),D&&p.componentDidMount!=null&&p.__h.push(p.componentDidMount);else{if(D&&F.getDerivedStateFromProps==null&&E!==g&&p.componentWillReceiveProps!=null&&p.componentWillReceiveProps(E,A),n.__v==r.__v||!p.__e&&p.shouldComponentUpdate!=null&&!1===p.shouldComponentUpdate(E,p.__s,A)){n.__v!=r.__v&&(p.props=E,p.state=p.__s,p.__d=!1),n.__e=r.__e,n.__k=r.__k,n.__k.some(function(e){e&&(e.__=n)}),h.push.apply(p.__h,p._sb),p._sb=[],p.__h.length&&s.push(p),c=w(r);break n}p.componentWillUpdate!=null&&p.componentWillUpdate(E,p.__s,A),D&&p.componentDidUpdate!=null&&p.__h.push(function(){p.componentDidUpdate(g,b,x)})}if(p.context=A,p.props=E,p.__P=e,p.__e=!1,j=t.__r,M=0,D)p.state=p.__s,p.__d=!1,j&&j(n),d=p.render(p.props,p.state,p.context),h.push.apply(p.__h,p._sb),p._sb=[];else do p.__d=!1,j&&j(n),d=p.render(p.props,p.state,p.context),p.state=p.__s;while(p.__d&&++M<25);p.state=p.__s,p.getChildContext!=null&&(i=v(v({},i),p.getChildContext())),D&&!m&&p.getSnapshotBeforeUpdate!=null&&(x=p.getSnapshotBeforeUpdate(g,b)),N=d!=null&&d.type===S&&d.key==null?ne(d.props.children):d,c=k(e,_(N)?N:[N],n,r,i,a,o,s,c,l,u),p.base=n.__e,n.__u&=-161,p.__h.length&&s.push(p),T&&(p.__E=p.__=null)}catch(e){if(s.length=f,n.__v=null,l||o!=null){if(e.then){for(n.__u|=l?160:128;c&&c.nodeType==8&&c.nextSibling;)c=c.nextSibling;o!=null&&(o[o.indexOf(c)]=null),n.__e=c}else if(o!=null)for(P=o.length;P--;)y(o[P])}else n.__e=r.__e;n.__k??=r.__k||[],e.then||ee(n),t.__e(e,n,r)}}else o==null&&n.__v==r.__v?(n.__k=r.__k,n.__e=r.__e):c=n.__e=re(r.__e,n,r,i,a,o,s,l,u);return(d=t.diffed)&&d(n),128&n.__u?void 0:c}function ee(e){e&&(e.__c&&(e.__c.__e=!0),e.__k&&e.__k.some(ee))}function te(e,n,r){for(var i=0;i<r.length;i++)L(r[i],r[++i],r[++i]);t.__c&&t.__c(n,e),e.some(function(n){try{e=n.__h,n.__h=[],e.some(function(e){e.call(n)})}catch(e){t.__e(e,n.__v)}})}function ne(e){return typeof e!=`object`||!e||e.__b>0?e:_(e)?e.map(ne):e.constructor===void 0?v({},e):null}function re(n,r,i,a,o,s,c,l,u){var d,f,p,h,g,v,b,x=i.props||m,S=r.props,C=r.type;if(C==`svg`?o=`http://www.w3.org/2000/svg`:C==`math`?o=`http://www.w3.org/1998/Math/MathML`:o||=`http://www.w3.org/1999/xhtml`,s!=null){for(d=0;d<s.length;d++)if((g=s[d])&&`setAttribute`in g==!!C&&(C?g.localName==C:g.nodeType==3)){n=g,s[d]=null;break}}if(n==null){if(C==null)return document.createTextNode(S);n=document.createElementNS(o,C,S.is&&S),l&&=(t.__m&&t.__m(r,s),!1),s=null}if(C==null)x===S||l&&n.data==S||(n.data=S);else{if(s=C==`textarea`&&S.defaultValue!=null?null:s&&e.call(n.childNodes),!l&&s!=null)for(x={},d=0;d<n.attributes.length;d++)x[(g=n.attributes[d]).name]=g.value;for(d in x)g=x[d],d==`dangerouslySetInnerHTML`?p=g:d==`children`||d in S||d==`value`&&`defaultValue`in S||d==`checked`&&`defaultChecked`in S||P(n,d,null,g,o);for(d in S)g=S[d],d==`children`?h=g:d==`dangerouslySetInnerHTML`?f=g:d==`value`?v=g:d==`checked`?b=g:l&&typeof g!=`function`||x[d]===g||P(n,d,g,x[d],o);if(f)l||p&&(f.__html==p.__html||f.__html==n.innerHTML)||(n.innerHTML=f.__html),r.__k=[];else if(p&&(n.innerHTML=``),k(r.type==`template`?n.content:n,_(h)?h:[h],r,i,a,C==`foreignObject`?`http://www.w3.org/1999/xhtml`:o,s,c,s?s[0]:i.__k&&w(i,0),l,u),s!=null)for(d=s.length;d--;)y(s[d]);l&&C!=`textarea`||(d=`value`,C==`progress`&&v==null?n.removeAttribute(`value`):v!=null&&(v!==n[d]||C==`progress`&&!v||C==`option`&&v!=x[d])&&P(n,d,v,x[d],o),d=`checked`,b!=null&&b!=n[d]&&P(n,d,b,x[d],o))}return n}function L(e,n,r){try{if(typeof e==`function`){var i=typeof e.__u==`function`;i&&e.__u(),i&&n==null||(e.__u=e(n))}else e.current=n}catch(e){t.__e(e,r)}}function ie(e,n,r){var i,a;if(t.unmount&&t.unmount(e),(i=e.ref)&&(i.current&&i.current!=e.__e||L(i,null,n)),(i=e.__c)!=null){if(i.componentWillUnmount)try{i.componentWillUnmount()}catch(e){t.__e(e,n)}i.base=i.__P=i.__n=null}if(i=e.__k)for(a=0;a<i.length;a++)i[a]&&ie(i[a],n,r||typeof e.type!=`function`);r||y(e.__e),e.__c=e.__=e.__e=void 0}function ae(e,t,n){return this.constructor(e,n)}function oe(n,r,i){var a,o,s,c;r==document&&(r=document.documentElement),t.__&&t.__(n,r),o=(a=typeof i==`function`)?null:i&&i.__k||r.__k,s=[],c=[],I(r,n=(!a&&i||r).__k=b(S,null,[n]),o||m,m,r.namespaceURI,!a&&i?[i]:o?null:r.firstChild?e.call(r.childNodes):null,s,!a&&i?i:o?o.__e:r.firstChild,a,c),te(s,n,c),n.props.children=null}e=h.slice,t={__e:function(e,t,n,r){for(var i,a,o;t=t.__;)if((i=t.__c)&&!i.__)try{if((a=i.constructor)&&a.getDerivedStateFromError!=null&&(i.setState(a.getDerivedStateFromError(e)),o=i.__d),i.componentDidCatch!=null&&(i.componentDidCatch(e,r||{}),o=i.__d),o)return i.__E=i}catch(t){e=t}throw e}},n=0,C.prototype.setState=function(e,t){var n=this.__s!=null&&this.__s!=this.state?this.__s:this.__s=v({},this.state);typeof e==`function`&&(e=e(v({},n),this.props)),e&&v(n,e),e!=null&&this.__v&&(t&&this._sb.push(t),D(this))},C.prototype.forceUpdate=function(e){this.__v&&(this.__e=!0,e&&this.__h.push(e),D(this))},C.prototype.render=S,r=[],a=typeof Promise==`function`?Promise.prototype.then.bind(Promise.resolve()):setTimeout,o=function(e,t){return e.__v.__b-t.__v.__b},O.__r=0,s=Math.random().toString(8),c=`__d`+s,l=`__a`+s,u=/(PointerCapture)$|Capture$/i,d=0,f=F(!1),p=F(!0);var R,z,B,V,H=0,U=[],W=t,G=W.__b,K=W.__r,q=W.diffed,se=W.__c,ce=W.unmount,le=W.__;function ue(e,t){W.__h&&W.__h(z,e,H||t),H=0;var n=z.__H||(z.__H={__:[],__h:[]});return e>=n.__.length&&n.__.push({}),n.__[e]}function J(e){return H=1,de(he,e)}function de(e,t,n){var r=ue(R++,2);if(r.t=e,!r.__c&&(r.__=[n?n(t):he(void 0,t),function(e){var t=r.__N?r.__N[0]:r.__[0],n=r.t(t,e);t!==n&&(r.__N=[n,r.__[1]],r.__c.setState({}))}],r.__c=z,!z.__f)){var i=function(e,t,n){if(!r.__c.__H)return!0;var i=!1,o=r.__c.props!==e;if(r.__c.__H.__.some(function(e){if(e.__N){i=!0;var t=e.__[0];e.__=e.__N,e.__N=void 0,t!==e.__[0]&&(o=!0)}}),a){var s=a.call(this,e,t,n);return i?s||o:s}return!i||o};z.__f=!0;var a=z.shouldComponentUpdate,o=z.componentWillUpdate;z.componentWillUpdate=function(e,t,n){if(this.__e){var r=a;a=void 0,i(e,t,n),a=r}o&&o.call(this,e,t,n)},z.shouldComponentUpdate=i}return r.__N||r.__}function fe(){for(var e;e=U.shift();){var t=e.__H;if(e.__P&&t)try{t.__h.some(Y),t.__h.some(X),t.__h=[]}catch(n){t.__h=[],W.__e(n,e.__v)}}}W.__b=function(e){z=null,G&&G(e)},W.__=function(e,t){e&&t.__k&&t.__k.__m&&(e.__m=t.__k.__m),le&&le(e,t)},W.__r=function(e){K&&K(e),R=0;var t=(z=e.__c).__H;t&&(B===z?(t.__h=[],z.__h=[],t.__.some(function(e){e.__N&&(e.__=e.__N),e.u=e.__N=void 0})):(t.__h.some(Y),t.__h.some(X),t.__h=[],R=0)),B=z},W.diffed=function(e){q&&q(e);var t=e.__c;t&&t.__H&&(t.__H.__h.length&&(U.push(t)!==1&&V===W.requestAnimationFrame||((V=W.requestAnimationFrame)||me)(fe)),t.__H.__.some(function(e){e.u&&=(e.__H=e.u,void 0)})),B=z=null},W.__c=function(e,t){t.some(function(e){try{e.__h.some(Y),e.__h=e.__h.filter(function(e){return!e.__||X(e)})}catch(n){t.some(function(e){e.__h&&=[]}),t=[],W.__e(n,e.__v)}}),se&&se(e,t)},W.unmount=function(e){ce&&ce(e);var t,n=e.__c;n&&n.__H&&(n.__H.__.some(function(e){try{Y(e)}catch(e){t=e}}),n.__H=void 0,t&&W.__e(t,n.__v))};var pe=typeof requestAnimationFrame==`function`;function me(e){var t,n=function(){clearTimeout(r),pe&&cancelAnimationFrame(t),setTimeout(e)},r=setTimeout(n,35);pe&&(t=requestAnimationFrame(n))}function Y(e){var t=z,n=e.__c;typeof n==`function`&&(e.__c=void 0,n()),z=t}function X(e){var t=z;e.__c=e.__(),z=t}function he(e,t){return typeof t==`function`?t(e):t}function Z(...e){return e.filter(Boolean).join(` `)}var ge=0;Array.isArray;function Q(e,n,r,i,a,o){n||={};var s,c,l=n;if(`ref`in l)for(c in l={},n)c==`ref`?s=n[c]:l[c]=n[c];var u={type:e,props:l,key:r,ref:s,__k:null,__:null,__b:0,__e:null,__c:null,constructor:void 0,__v:--ge,__i:-1,__u:0,__source:a,__self:o};if(typeof e==`function`&&(s=e.defaultProps))for(c in s)l[c]===void 0&&(l[c]=s[c]);return t.vnode&&t.vnode(u),u}function $({variant:e=`secondary`,size:t=`md`,className:n,children:r,...i}){let a=e===`pill`||e===`icon`||e===`text`?null:`btn--${t}`;return Q(`button`,{className:Z(`btn`,`btn--${e}`,a,n),...i,children:r})}function _e({options:e,value:t,onChange:n,className:r}){return Q(`div`,{className:Z(`segmented`,r),role:`tablist`,children:e.map(e=>Q(`button`,{type:`button`,role:`tab`,"aria-selected":e.value===t,className:Z(`segmented__option`,e.value===t&&`segmented__option--active`),onClick:()=>n(e.value),children:e.label},e.value))})}function ve(){return window.__AE2_LOGIN__}function ye(){let e=new URL(window.location.href).searchParams,t=null;return e.has(`notonline`)?t={kind:`error`,text:`You have to be on the server (online) to perform this action.`}:e.has(`invalidpassword`)?t={kind:`error`,text:`Invalid password.`}:e.has(`invaliduser`)?t={kind:`error`,text:`Invalid username.`}:e.has(`confirmregistration`)&&(t={kind:`confirm-registration`,command:`/ae2webintegration auth ${e.get(`token`)??``}`}),t&&window.history.replaceState(null,document.title,window.location.pathname),t}function be(){return Q(`div`,{className:`sidebar__brand login-brand`,children:[Q(`div`,{className:`sidebar__brand-mark`}),Q(`span`,{className:`sidebar__brand-name`,children:`AE2 TERMINAL`})]})}function xe({banner:e}){let[t,n]=J(!1);return e?e.kind===`error`?Q(`div`,{className:`login-banner login-banner--error`,role:`alert`,children:e.text}):Q(`div`,{className:`login-banner login-banner--success`,role:`status`,children:[Q(`p`,{children:`Run this command in game to finish registration:`}),Q(`div`,{className:`login-banner__command`,children:[Q(`code`,{children:e.command}),Q(`button`,{type:`button`,className:`btn btn--text login-banner__copy`,onClick:()=>{navigator.clipboard?.writeText(e.command).then(()=>{n(!0),setTimeout(()=>n(!1),2e3)}).catch(()=>{})},children:t?`Copied`:`Copy`})]})]}):null}function Se(){let e=ve(),[t]=J(ye),[n,r]=J(`signin`),i=e.isPublicMode&&n===`register`;return Q(`div`,{className:`login-page`,children:[Q(`div`,{className:`login-card`,children:[Q(be,{}),Q(xe,{banner:t}),e.isPublicMode&&Q(_e,{className:`login-mode-switch`,value:n,onChange:r,options:[{value:`signin`,label:`Sign in`},{value:`register`,label:`Register`}]}),i?Q(`form`,{className:`login-form`,method:`POST`,action:``,children:[Q(`h1`,{className:`login-form__title`,children:`Register an account`}),Q(`p`,{className:`login-form__hint`,children:`You must be online in-game to start registration, and will need to run a command there to finish it.`}),Q(`label`,{className:`login-form__label`,htmlFor:`rusername`,children:`Username (in-game)`}),Q(`input`,{id:`rusername`,name:`register`,type:`text`,className:`login-form__input`,placeholder:`Enter username`,required:!0,autoFocus:!0,autoComplete:`off`}),Q(`label`,{className:`login-form__label`,htmlFor:`rpassword`,children:`Password`}),Q(`input`,{id:`rpassword`,name:`password`,type:`password`,className:`login-form__input`,placeholder:`Enter password`,required:!0,autoComplete:`off`}),Q(`label`,{className:`login-checkbox`,children:[Q(`input`,{type:`checkbox`,name:`remainder`,required:!0}),Q(`span`,{className:`login-checkbox__box`}),`I understand that the password entered above will be visible to the server owner once continued.`]}),Q($,{type:`submit`,variant:`primary`,className:`login-form__submit`,children:`Continue`})]}):Q(`form`,{className:`login-form`,method:`POST`,action:``,children:[Q(`h1`,{className:`login-form__title`,children:`Sign in to your network`}),Q(`label`,{className:`login-form__label`,htmlFor:`username`,children:`Username`}),Q(`input`,{id:`username`,name:`username`,type:`text`,className:`login-form__input`,placeholder:`Enter username`,required:!0,autoFocus:e.isPublicMode,readOnly:!e.isPublicMode,value:e.isPublicMode?void 0:`Admin`,autoComplete:`username`}),Q(`label`,{className:`login-form__label`,htmlFor:`password`,children:`Password`}),Q(`input`,{id:`password`,name:`password`,type:`password`,className:`login-form__input`,placeholder:`Enter password`,required:!0,autoFocus:!e.isPublicMode,autoComplete:`current-password`}),Q(`label`,{className:`login-checkbox`,children:[Q(`input`,{type:`checkbox`,name:`remember`}),Q(`span`,{className:`login-checkbox__box`}),`Remember me for 7 days`]}),Q($,{type:`submit`,variant:`primary`,className:`login-form__submit`,children:`Sign in`})]})]}),Q(`footer`,{className:`login-footer`,children:[`Hosted using`,` `,Q(`a`,{href:`https://github.com/kuba6000/AE2-Web-Integration`,target:`_blank`,rel:`noreferrer`,children:`AE2 Web Integration`}),` `,`- made by`,` `,Q(`a`,{href:`https://github.com/kuba6000`,target:`_blank`,rel:`noreferrer`,children:`@kuba6000`})]})]})}var Ce=document.getElementById(`app`);if(!Ce)throw Error(`Missing #app root element`);oe(Q(Se,{}),Ce);</script>
+    <style rel="stylesheet" crossorigin>:root{--bg-app:#0b0d14;--bg-panel:#11141d;--bg-card:#161a26;--bg-sunken:#0e111a;--bg-hover:#1c2136;--border:#232842;--border-subtle:#1f2333;--border-hover:#343c60;--text-primary:#f1f3f9;--text-secondary:#c7cbe0;--text-muted:#9aa1b8;--text-dim:#5f6579;--accent:#8b7bf5;--accent-hover:#a396f8;--accent-soft-text:#c7bfff;--teal:#3fd7c4;--green:#4ade80;--amber:#f5b942;--red:#f2606b;--blue:#60a5fa;--emerald:#34d399;--star-inactive:#3a3f57;--checkbox-border:#343c60;--disabled-bg:#2a2f45;--cpu-row-invalid-text:#6b7086;--accent-selected-text:#e5e2ff;--merge-row-border:#3a3620;--merge-row-bg:#171a12;--merge-selected-bg:#f5b9421f;--idle-selected-bg:#8b7bf51f;--font-display:"Space Grotesk", sans-serif;--font-body:"IBM Plex Sans", sans-serif;--font-mono:"IBM Plex Mono", monospace;--radius-xs:4px;--radius-sm:6px;--radius-btn-sm:7px;--radius-md:8px;--radius-card-sm:10px;--radius-card:12px;--radius-modal:14px;--radius-pill:20px;--shadow-float:0 8px 24px #0006;--backdrop-order:#05060a99;--backdrop-compare:#05060aa6;--backdrop-drawer:#05060a80;--series-1:var(--accent);--series-2:var(--teal);--series-3:var(--amber);--series-4:var(--red);--series-5:var(--blue);--series-6:var(--emerald);--sparkline-area:#8b7bf524}*,:before,:after{box-sizing:border-box}html,body,#app{height:100%}body{background:var(--bg-app);color:var(--text-primary);font-family:var(--font-body);margin:0}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:var(--bg-panel)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}a{color:var(--teal)}a:hover{color:#7ce8da}button,input,select{font:inherit;color:inherit}@media (prefers-reduced-motion:reduce){*,:before,:after{transition-duration:.001ms!important;animation-duration:.001ms!important;animation-iteration-count:1!important}}.mc-fmt-0{color:#000}.mc-fmt-1{color:#00a}.mc-fmt-2{color:#0a0}.mc-fmt-3{color:#0aa}.mc-fmt-4{color:#a00}.mc-fmt-5{color:#a0a}.mc-fmt-6{color:#fa0}.mc-fmt-7{color:#aaa}.mc-fmt-8{color:#555}.mc-fmt-9{color:#55f}.mc-fmt-a{color:#5f5}.mc-fmt-b{color:#5ff}.mc-fmt-c{color:#f55}.mc-fmt-d{color:#f5f}.mc-fmt-e{color:#ff5}.mc-fmt-f{color:#fff}.mc-fmt-l{font-weight:700}.mc-fmt-m{text-decoration:line-through}.mc-fmt-n{text-decoration:underline}.mc-fmt-o{font-style:italic}.btn{border-radius:var(--radius-md);font-family:var(--font-body);cursor:pointer;white-space:nowrap;border:0;justify-content:center;align-items:center;gap:6px;display:inline-flex}.btn:disabled{cursor:not-allowed}.btn--md{padding:9px 14px;font-size:13px}.btn--sm{border-radius:var(--radius-btn-sm);padding:7px 12px;font-size:12px}.btn--primary{background:var(--accent);color:var(--bg-app);font-weight:600}.btn--primary:hover:not(:disabled){background:var(--accent-hover)}.btn--primary:disabled{background:var(--disabled-bg);color:var(--text-dim)}.btn--secondary{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary)}.btn--secondary:hover:not(:disabled){background:var(--bg-hover);color:var(--text-primary)}.btn--ghost{border:1px solid var(--border);color:var(--text-secondary);background:0 0}.btn--ghost:hover:not(:disabled){border-color:var(--border-hover)}.btn--danger{color:var(--red);background:#f2606b1f;border:1px solid #f2606b4d;font-weight:500}.btn--danger:hover:not(:disabled){background:#f2606b33}.btn--pill{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius-pill);padding:7px 14px;font-size:12px}.btn--pill:hover:not(:disabled){border-color:var(--border-hover);color:var(--text-primary)}.btn--icon{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);flex:0 0 32px;width:32px;height:32px;padding:0;font-size:15px}.btn--icon:hover:not(:disabled){border-color:var(--border-hover)}.btn--text{color:var(--text-dim);background:0 0;border:0;padding:4px 6px;font-size:12px}.btn--text:hover:not(:disabled){color:var(--red)}.badge{border-radius:var(--radius-sm);white-space:nowrap;align-items:center;font-size:11px;font-weight:500;line-height:1.4;display:inline-flex}.badge--md{padding:4px 10px}.badge--sm{padding:3px 8px}.badge--green{color:var(--green);background:#4ade8024}.badge--amber{color:var(--amber);background:#f5b94224}.badge--red{color:var(--red);background:#f2606b24}.badge--grey{color:var(--text-muted);background:#9aa1b824}.badge--teal{color:var(--teal);background:#3fd7c41f}.badge--purple{color:var(--accent);background:#8b7bf524}.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-card)}.card--clickable{cursor:pointer}.card--clickable:hover{border-color:var(--border-hover)}.progress-track{background:var(--bg-sunken);border-radius:var(--radius-xs);overflow:hidden}.progress-fill{border-radius:var(--radius-xs);height:100%;transition:width .4s}.segmented{background:var(--bg-card);border-radius:var(--radius-md);gap:2px;padding:3px;display:inline-flex}.segmented__option{color:var(--text-muted);font-size:12.5px;font-family:var(--font-body);border-radius:calc(var(--radius-md) - 2px);cursor:pointer;background:0 0;border:0;padding:6px 12px}.segmented__option--active{background:var(--accent);color:var(--bg-app);font-weight:500}.checkbox-row{cursor:pointer;align-items:center;gap:8px;display:flex}.checkbox-box{border-radius:var(--radius-xs);border:1px solid var(--checkbox-border);background:0 0;flex:0 0 16px;width:16px;height:16px}.checkbox-box--checked{background:var(--accent);border-color:var(--accent)}.checkbox-row--disabled{cursor:not-allowed;opacity:.5}.item-icon{border-radius:var(--radius-md);font-family:var(--font-display);color:#ffffffeb;text-transform:uppercase;flex-shrink:0;justify-content:center;align-items:center;font-weight:700;display:flex}.toast-host{z-index:1000;flex-direction:column;gap:10px;display:flex;position:fixed;bottom:24px;right:24px}.toast{background:var(--bg-card);border:1px solid var(--border-hover);border-radius:var(--radius-card-sm);color:var(--text-primary);box-shadow:var(--shadow-float);padding:12px 16px;font-size:13px}.modal-backdrop{z-index:900;justify-content:center;align-items:center;display:flex;position:fixed;inset:0}.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-modal);flex-direction:column;max-height:90vh;display:flex}.modal__header{border-bottom:1px solid var(--border-subtle);align-items:center;gap:10px;padding:16px 20px;display:flex}.modal__title{font-family:var(--font-display);flex:1;margin:0;font-size:16px;font-weight:600}.modal__close{color:var(--text-muted);cursor:pointer;background:0 0;border:0;padding:4px;font-size:16px;line-height:1}.modal__close:hover{color:var(--text-primary)}.modal__body{padding:18px 20px;overflow-y:auto}.modal__footer{border-top:1px solid var(--border-subtle);justify-content:flex-end;gap:10px;padding:14px 20px;display:flex}.drawer-backdrop{z-index:900;justify-content:flex-end;display:flex;position:fixed;inset:0}.drawer{background:var(--bg-panel);border-left:1px solid var(--border-subtle);flex-direction:column;width:420px;max-width:100vw;height:100%;display:flex}.drawer__header{border-bottom:1px solid var(--border-subtle);align-items:flex-start;gap:10px;padding:18px 20px;display:flex}.drawer__title{font-family:var(--font-display);margin:0;font-size:15px;font-weight:600}.drawer__subtitle{color:var(--text-dim);margin-top:2px;font-size:12px}.drawer__close{color:var(--text-muted);cursor:pointer;background:0 0;border:0;margin-left:auto;font-size:16px}.drawer__close:hover{color:var(--text-primary)}.drawer__body{flex-direction:column;flex:1;gap:10px;padding:16px 20px;display:flex;overflow-y:auto}.drawer__footer{border-top:1px solid var(--border-subtle);padding:16px 20px}.sr-only{clip:rect(0, 0, 0, 0);white-space:nowrap;border:0;width:1px;height:1px;margin:-1px;padding:0;position:absolute;overflow:hidden}.login-page{flex-direction:column;justify-content:center;align-items:center;gap:20px;min-height:100vh;padding:24px;display:flex}.login-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-modal);flex-direction:column;gap:20px;width:100%;max-width:400px;padding:28px 24px;display:flex}.login-brand{justify-content:center;padding:0}.login-mode-switch{align-self:stretch}.login-banner{border-radius:var(--radius-md);padding:12px 14px;font-size:13px;line-height:1.5}.login-banner--error{border:1px solid var(--red);color:var(--red);background:#f2606b24}.login-banner--success{border:1px solid var(--green);color:var(--text-primary);background:#4ade8024}.login-banner--success p{color:var(--green);margin:0 0 8px}.login-banner__command{background:var(--bg-sunken);border:1px solid var(--border);border-radius:var(--radius-sm);justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;display:flex}.login-banner__command code{font-family:var(--font-mono);color:var(--text-primary);word-break:break-all;font-size:12.5px}.login-banner__copy{color:var(--accent-soft-text);flex:none}.login-form{flex-direction:column;gap:8px;display:flex}.login-form__title{font-family:var(--font-display);color:var(--text-primary);margin:0 0 6px;font-size:17px;font-weight:600}.login-form__hint{color:var(--text-muted);margin:0 0 4px;font-size:12px}.login-form__label{text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-top:6px;font-size:11px}.login-form__input{background:var(--bg-sunken);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);font-family:var(--font-body);box-sizing:border-box;width:100%;padding:9px 12px;font-size:13.5px}.login-form__input:focus{border-color:var(--border-hover);outline:none}.login-form__input:read-only{color:var(--text-muted)}.login-checkbox{color:var(--text-secondary);cursor:pointer;align-items:flex-start;gap:8px;margin-top:8px;font-size:12px;display:flex}.login-checkbox input{opacity:0;cursor:pointer;width:16px;height:16px;margin:0;position:absolute}.login-checkbox__box{border:1px solid var(--checkbox-border);border-radius:var(--radius-xs);background:var(--bg-sunken);flex:0 0 16px;width:16px;height:16px;margin-top:1px}.login-checkbox input:checked+.login-checkbox__box{background:var(--accent);border-color:var(--accent)}.login-checkbox input:focus-visible+.login-checkbox__box{outline:2px solid var(--accent-hover);outline-offset:2px}.login-form__submit{width:100%;margin-top:10px}.login-footer{color:var(--text-dim);text-align:center;font-size:11px}.login-footer a{color:var(--accent-soft-text)}
+/*$vite$:1*/</style>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
 </html>

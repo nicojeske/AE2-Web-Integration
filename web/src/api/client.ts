@@ -27,6 +27,14 @@ export class ApiError extends Error {
 
 async function apiGet<T>(path: string): Promise<T> {
     const res = await fetch(path, { credentials: "same-origin" });
+    if (res.status === 401) {
+        // The session token expired or was revoked elsewhere (preHTTPHandler answers a bare 401 with
+        // no body - AE2Controller.java). A page navigation would land back on login.html for the same
+        // condition; do the same here instead of leaving the SPA stuck on a generic error toast. Never
+        // loops: login.html issues no API calls of its own.
+        window.location.href = ".";
+        return new Promise<T>(() => {}); // navigation is about to tear this page down
+    }
     if (!res.ok) {
         throw new ApiError(`HTTP_${res.status}`, await res.text().catch(() => null));
     }

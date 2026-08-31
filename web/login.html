@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+    <title>AE2 Terminal - Sign in</title>
+    <script>
+      // Substituted server-side by AE2Controller.WebHandler (string replace, not templating) - keep
+      // this token byte-for-byte, it is matched literally. This page is only ever served logged out,
+      // so it must never reference _REPLACE_ME_USERNAME/_REPLACE_ME_IS_ADMIN - those are only
+      // substituted for an authenticated request (AE2Controller.java) and would ship as literal,
+      // invalid JS here.
+      window.__AE2_LOGIN__ = {
+        isPublicMode: _REPLACE_ME_IS_PUBLIC_MODE,
+      };
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/login/main.tsx"></script>
+  </body>
+</html>

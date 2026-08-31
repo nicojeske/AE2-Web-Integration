@@ -34,6 +34,59 @@ function ok(res: ServerResponse, data: unknown): void {
     respond(res, "OK", data);
 }
 
+function readBody(req: IncomingMessage): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk: Buffer) => chunks.push(chunk));
+        req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+        req.on("error", reject);
+    });
+}
+
+/**
+ * Mocks AE2Controller.checkAuth's native-form-POST-to-"/" login/register flow (302 redirects, no
+ * {status,data} envelope - see REDESIGN_MILESTONES.md M9 notes on why login.html isn't a fetch()
+ * client). Password rules are dev-only conveniences, not a real auth check: password "password" always
+ * succeeds, username "baduser" is "unknown", register username "offline" is "not online".
+ */
+async function handleLoginPost(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = new URLSearchParams(await readBody(req));
+    const redirect = (location: string) => {
+        res.statusCode = 302;
+        res.setHeader("Location", location);
+        res.end();
+    };
+
+    if (body.has("register") && body.has("password")) {
+        const username = body.get("register") ?? "";
+        if (username.trim().toLowerCase() === "offline") {
+            redirect("?notonline");
+            return;
+        }
+        redirect(`?confirmregistration&token=${"mockconfirmationtoken1234567890"}`);
+        return;
+    }
+
+    if (body.has("username") && body.has("password")) {
+        const username = body.get("username") ?? "";
+        const password = body.get("password") ?? "";
+        if (username.trim().toLowerCase() === "baduser") {
+            redirect("?invaliduser");
+            return;
+        }
+        if (password !== "password" && username.trim().toLowerCase() !== "admin") {
+            redirect("?invalidpassword");
+            return;
+        }
+        res.setHeader("Set-Cookie", "authenticationToken=mock-dev-token; Path=/; HttpOnly");
+        redirect(".");
+        return;
+    }
+
+    res.statusCode = 400;
+    res.end();
+}
+
 /**
  * Fakes the Java HTTP API (see REDESIGN_MILESTONES.md's endpoint table) for `npm run dev`, so the UI
  * can be built without a running Minecraft server. Not wired into `npm run build`.
@@ -42,19 +95,27 @@ export function mockApiPlugin(): Plugin {
     return {
         name: "ae2-mock-api",
         // AE2Controller.WebHandler is the only thing that ever substitutes these tokens - `vite dev` serves
-        // webpage.html raw, which would otherwise leave them as invalid JS in the browser.
-        transformIndexHtml(html) {
+        // webpage.html/login.html raw, which would otherwise leave them as invalid JS in the browser.
+        // `?publicmode=0` on either page's URL exercises the admin-only login variant without a restart.
+        transformIndexHtml(html, ctx) {
+            const params = new URL(ctx.originalUrl ?? "/", "http://localhost").searchParams;
+            const isPublicMode = params.get("publicmode") !== "0";
             return html
                 .replace("_REPLACE_ME_USERNAME", "DevAdmin")
                 .replace("_REPLACE_ME_IS_ADMIN", "true")
                 .replace("_REPLACE_ME_VERSION_OUTDATED", "false")
-                .replace("_REPLACE_ME_IS_PUBLIC_MODE", "true");
+                .replace("_REPLACE_ME_IS_PUBLIC_MODE", isPublicMode ? "true" : "false");
         },
         configureServer(server) {
             server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
                 const url = new URL(req.url ?? "/", "http://localhost");
                 const params = url.searchParams;
                 const gridKey = params.has("grid") ? Number(params.get("grid")) : NaN;
+
+                if (req.method === "POST" && (url.pathname === "/" || url.pathname === "/login.html")) {
+                    void handleLoginPost(req, res);
+                    return;
+                }
 
                 for (const grid of mockGrids) settleCompletedJobs(grid);
 

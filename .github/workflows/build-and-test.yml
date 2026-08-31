@@ -39,9 +39,9 @@ jobs:
 
       - name: Fail if the committed bundle is stale
         run: |
-          if ! git diff --quiet -- src/main/resources/assets; then
-            echo "::error::src/main/resources/assets is out of date - run 'npm run build' in core/web and commit the result."
-            git diff -- src/main/resources/assets
+          if ! git diff --quiet -- src/main/resources/assets example_website/login.html; then
+            echo "::error::src/main/resources/assets or example_website/login.html is out of date - run 'npm run build' in core/web and commit the result."
+            git diff -- src/main/resources/assets example_website/login.html
             exit 1
           fi
 

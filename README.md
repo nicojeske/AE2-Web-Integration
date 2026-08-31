@@ -75,19 +75,22 @@ password accordingly!
 
 ## Current features
 
-- Browse, sort, and filter the contents of AE2 networks
+- Browse, search, sort, and filter the contents of AE2 networks, including a combined "All Grids" view
 - Monitor as many networks as you want
 - Public mode for servers with multiple independent players
-- Submit new crafting requests, with automatic or manual CPU selection
-- View the status of every crafting CPU
+- Submit new crafting requests, with automatic or manual CPU selection, and preview a plan before starting it
+- View the live status and progress of every crafting CPU, with a detailed per-craft breakdown
 - Cancel crafting jobs
-- Track active and completed crafting jobs
+- Track active and completed crafting jobs, including a per-item and per-interface crafting-time timeline
+- Favorite items with low-stock alerts and automatic re-crafting to a target stock level
+- Chart per-item stored-count history over time, with a compare view across several items
+- Desktop notifications on job completion
 - Send crafting updates through a Discord webhook
 
 ## Gallery
 
 <details>
-<summary>Gallery</summary>
+<summary>Gallery (predates the web terminal redesign)</summary>
 
 <img width="2560" height="1440" alt="AE2 Web Integration terminal" src="https://github.com/user-attachments/assets/9363c6c4-26dd-46fe-a6c2-84111338e6b0" />
 <img width="737" height="70" alt="AE2 Web Integration status display" src="https://github.com/user-attachments/assets/2d95024e-25ca-415f-a63d-945f2c906302" />

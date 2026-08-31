@@ -256,8 +256,8 @@ series for a running server.
 **Done when** a grid with tracked items graphs real sampled history, compare normalises correctly, and
 saved views survive a reload.
 
-### - [ ] M9 — Login page, docs, final pass
-**Status:** Not started
+### - [x] M9 — Login page, docs, final pass
+**Status:** Done — (pending commit)
 
 - Rebuild `login.html` on the new tokens (the handoff has no login design — derive from the design
   system), preserving the public-mode registration flow, the `/auth` POST contract, the
@@ -927,3 +927,75 @@ _(newest last)_
   against a real Forge server** (`./gradlew runServer`) - a real 5-minute sampler's cadence, a real
   restart-induced gap, and a real ~24-item grid's payload size need in-game verification before relying on
   this milestone. This milestone made no Java changes, so `./gradlew build` was not re-run.
+- **M9 correction to this file's own wording**: the milestone bullet said to preserve "the `/auth` POST
+  contract", but `login.html` never called `/auth` at all - both its forms are native
+  `method="POST" action=""` submissions to `/`, handled entirely by `AE2Controller.checkAuth` (302
+  redirects, an `HttpOnly` session cookie set server-side). `/auth` (the JSON API) has no `Set-Cookie` and
+  is used only by `example_website/index.php` - a `fetch()`-based login is therefore impossible without a
+  Java change, which is out of scope. The new page keeps the native form-POST flow unchanged; decided with
+  the user during planning.
+- **M9**: Second Vite entry via `mode`, not a second config file - `vite.config.ts`'s `input` now branches
+  on `mode === "login"`, and `package.json`'s `build` runs `vite build` then `vite build --mode login`. A
+  login-mode-only `closeBundle` plugin copies the built `login.html` into `example_website/login.html`
+  (`node:fs/promises.copyFile`, not a shell `cp`, for portability) so the two stay byte-identical without a
+  second implementation - a scope change from M5's note that `example_website` was out of scope; that note
+  was about not reimplementing its *terminal* (a genuinely separate jQuery app with its own wire needs),
+  not its login page, which is a near-identical copy of the same one. `example_website/login.css` (used
+  only by the page being replaced) was deleted. The CI drift check
+  (`.github/workflows/build-and-test.yml`) now also covers `example_website/login.html`.
+- **M9**: Dropped the old page's client-side "Cookie Notice 🍪" overlay - decided with the user during
+  planning. It gated nothing server-side (the only real cookie is the strictly functional `HttpOnly`
+  session token) and has no equivalent anywhere else in the new design language.
+- **M9**: New `web/src/login/` (`main.tsx`, `Login.tsx`, `context.ts`, `login.css`) rather than reusing
+  `src/main.tsx`/`src/App.tsx` - the terminal's entry imports every view's CSS and mounts the whole
+  provider stack, none of which the login page needs. `login/context.ts` reads a narrower
+  `window.__AE2_LOGIN__` (`{isPublicMode}`) instead of widening `context.ts`'s `Ae2Context`, which
+  promises a `username`/`isAdmin` that never exist on this page - `login.html` must never contain
+  `_REPLACE_ME_USERNAME`/`_REPLACE_ME_IS_ADMIN` since those are only substituted for an authenticated
+  request (`AE2Controller.java`), and would otherwise ship as literal, invalid JS.
+- **M9**: The "Remember me" and registration-acknowledgement checkboxes are real
+  `<input type="checkbox">` elements styled to the 16px design token look (`login.css`'s
+  `.login-checkbox`), not the `ui/Checkbox` primitive - `Checkbox` is a div-based ARIA widget with no
+  underlying form field, so it can't participate in a native form POST. `ui/SegmentedControl` (already
+  generic over a string union) is reused as-is for the public-mode Sign in/Register switch.
+  `_REPLACE_ME_VERSION_OUTDATED` was left unused on this page (nothing to show an outdated banner about
+  before a session exists) rather than substituted for no reader.
+- **M9**: The four redirect banners (`?notonline`, `?invalidpassword`, `?invaliduser`,
+  `?confirmregistration&token=`) are rendered as JSX text/child nodes, never `innerHTML` - the old page
+  interpolated the confirmation `token` into `innerHTML` unescaped. The confirmation banner also gained a
+  copy-to-clipboard button next to the `/ae2webintegration auth <token>` command (`navigator.clipboard`,
+  silently falling back to "still fully visible and selectable" on denial - no MutationObserver/timer
+  needed either way).
+- **M9**: Session expiry now sends the SPA back to login instead of stalling on a generic toast -
+  `api/client.ts`'s `apiGet` treats HTTP 401 (the bare, bodyless denial `preHTTPHandler` answers once a
+  token is invalid/expired) as `window.location.href = "."` and never resolves its promise, rather than
+  throwing `ApiError("HTTP_401")` into whatever polling loop hit it. Cannot loop: `login.html` issues no
+  API calls of its own.
+- **M9**: `src/dev/mock-server.ts` gained a login/register POST mock (`handleLoginPost`, native
+  `application/x-www-form-urlencoded` body read via `readBody`, no `{status,data}` envelope - matching the
+  real redirect-based contract, not the other mocked endpoints' shape) and a `?publicmode=0` query-param
+  override in `transformIndexHtml` so both login variants are reachable under `npm run dev` without a
+  restart. The mock's login/password rules are dev-only conventions (`username=admin` or
+  `password=password` succeeds, `username=baduser` is "unknown", `register=offline` is "not online"), not
+  a real auth check. Logout (`?logout`) and the real session cookie's actual validation are not mocked -
+  only reachable against a real server.
+- **M9 verified**: `npm run typecheck`, `npm run format:check`, and `npm run build` all clean; the build
+  writes `src/main/resources/assets/webpage.html` (133 KB), `src/main/resources/assets/login.html`
+  (29 KB), and an identical copy at `example_website/login.html` (confirmed byte-for-byte via `cmp`), and
+  `src/main/resources/assets/` holds exactly `favicon.ico`/`webpage.html`/`login.html` with no leftover
+  files. `npm run dev` confirmed via `curl`: `login.html` renders with the placeholder substituted for
+  both `isPublicMode` values, and all five login/register POST outcomes (wrong password, correct password,
+  unknown user, offline registration, online registration) redirect to the exact expected
+  `Location` (`?invalidpassword` / `.` / `?invaliduser` / `?notonline` /
+  `?confirmregistration&token=...`). Focus-trap/Escape coverage was confirmed by inspection rather than
+  re-verified live - `Modal`/`Drawer` centralize `useDialogA11y` (M2/M3/M8), so every consumer
+  (`OrderModal`, `ManageTrackedModal`, `CompareModal`, both cancel confirms) already inherits it, and
+  nothing in this milestone bypasses either primitive. **No headless browser was available in this
+  environment** (unlike M1-M6/M8's Playwright-based passes) - the login page's rendered layout, keyboard
+  traversal, copy-button behavior, and the SegmentedControl mode switch were not visually exercised, only
+  logically reviewed and confirmed to typecheck/build/serve correctly. **Not yet exercised against a real
+  Forge server** (`./gradlew runServer`) - the real cookie/redirect round trip (including "Remember me"'s
+  7-day `Max-Age`), the real public-mode registration flow end to end (`/ae2webintegration auth <token>`
+  in game), a real session-expiry redirect from a live SPA, and the `example_website` PHP proxy spot-check
+  all still need in-game verification before relying on this milestone. This milestone made no Java
+  changes, so `./gradlew build` was not re-run.
