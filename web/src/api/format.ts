@@ -92,3 +92,18 @@ export function formatPercent(fraction: number): string {
 export function formatNumber(n: number): string {
     return n.toLocaleString("en-US");
 }
+
+/** `"Today, 14:02"` / `"Yesterday, 22:15"` / `"12 Mar, 14:02"` / a full locale string across years. */
+export function formatTimestamp(ms: number): string {
+    const date = new Date(ms);
+    const now = new Date();
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dayDiff = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
+    const time = date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    if (dayDiff === 0) return `Today, ${time}`;
+    if (dayDiff === 1) return `Yesterday, ${time}`;
+    if (date.getFullYear() === now.getFullYear()) {
+        return `${date.toLocaleDateString("en-US", { day: "numeric", month: "short" })}, ${time}`;
+    }
+    return date.toLocaleString("en-US");
+}

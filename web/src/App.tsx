@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { logout } from "./api/client";
 import { getContext } from "./context";
 import { CpusProvider, useCpus } from "./state/cpus";
+import { HistoryProvider, useHistory } from "./state/history";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
 import { OrderProvider, useOrder } from "./state/order";
@@ -20,32 +21,37 @@ import { Jobs } from "./views/Jobs";
 import { OrderModal } from "./views/OrderModal";
 import { PlanDetail } from "./views/PlanDetail";
 import { Statistics } from "./views/Statistics";
+import { TrackingDetail } from "./views/TrackingDetail";
 
 function Shell() {
     const context = getContext();
     const { selected, refresh: refreshGrids } = useNetwork();
     const { items, refresh: refreshItems } = useItems();
     const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
+    const { refresh: refreshHistory } = useHistory();
     const { favorites, thresholds, notifyEnabled, setNotifyEnabled } = usePrefs();
     const order = useOrder();
     const toast = useToast();
     const [section, setSection] = useState<Section>("browser");
     const [search, setSearch] = useState("");
     const [craftDetail, setCraftDetail] = useState<{ gridId: number; cpuName: string } | null>(null);
+    const [historyDetail, setHistoryDetail] = useState<{ gridId: number; id: number } | null>(null);
 
     const changeSection = useCallback((next: Section) => {
         setCraftDetail(null);
+        setHistoryDetail(null);
         setSection(next);
     }, []);
 
-    // A grid switch can leave `craftDetail` pointing at a CPU that no longer means anything in the
-    // new selection (a different grid entirely, in single-grid mode) - close it rather than showing a
-    // stale/mismatched page. Sidebar drives grid selection directly via `useNetwork` (not through
-    // Shell), so this has to watch `selected` rather than wrap a handler the way `changeSection` does.
-    // An in-progress order is discarded for the same reason - its job is tied to the grid it was
+    // A grid switch can leave `craftDetail`/`historyDetail` pointing at something that no longer means
+    // anything in the new selection (a different grid entirely, in single-grid mode) - close it rather
+    // than showing a stale/mismatched page. Sidebar drives grid selection directly via `useNetwork` (not
+    // through Shell), so this has to watch `selected` rather than wrap a handler the way `changeSection`
+    // does. An in-progress order is discarded for the same reason - its job is tied to the grid it was
     // computed against, and would otherwise validate CPUs on the wrong network.
     useEffect(() => {
         setCraftDetail(null);
+        setHistoryDetail(null);
         order.discard();
         // Deliberately just `selected` - `order.discard` changing identity (e.g. once the order it just
         // discarded clears `flow`) must not re-run this effect a second time.
@@ -75,9 +81,9 @@ function Shell() {
     }, [notifyEnabled, setNotifyEnabled]);
 
     const onRefresh = useCallback(async () => {
-        await Promise.all([refreshGrids(), refreshItems(), refreshCpus()]);
+        await Promise.all([refreshGrids(), refreshItems(), refreshCpus(), refreshHistory()]);
         toast("Refreshed");
-    }, [refreshGrids, refreshItems, refreshCpus, toast]);
+    }, [refreshGrids, refreshItems, refreshCpus, refreshHistory, toast]);
 
     // Scoped to whatever's currently loaded (the selected grid, or every grid in All-Grids mode) -
     // not every grid regardless of selection, which would mean fetching every grid's items just to
@@ -121,6 +127,12 @@ function Shell() {
                             cpuName={craftDetail.cpuName}
                             onClose={() => setCraftDetail(null)}
                         />
+                    ) : historyDetail ? (
+                        <TrackingDetail
+                            gridId={historyDetail.gridId}
+                            id={historyDetail.id}
+                            onClose={() => setHistoryDetail(null)}
+                        />
                     ) : order.flow?.previewing ? (
                         <PlanDetail onSubmitted={onOrderSubmitted} />
                     ) : (
@@ -133,7 +145,7 @@ function Shell() {
                                     }
                                 />
                             )}
-                            {section === "history" && <History />}
+                            {section === "history" && <History onOpen={setHistoryDetail} />}
                             {section === "favorites" && <Favorites />}
                             {section === "stats" && <Statistics />}
                         </>
@@ -152,9 +164,11 @@ export function App() {
                 <NetworkProvider>
                     <ItemsProvider>
                         <CpusProvider>
-                            <OrderProvider>
-                                <Shell />
-                            </OrderProvider>
+                            <HistoryProvider>
+                                <OrderProvider>
+                                    <Shell />
+                                </OrderProvider>
+                            </HistoryProvider>
                         </CpusProvider>
                     </ItemsProvider>
                 </NetworkProvider>

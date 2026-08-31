@@ -267,6 +267,33 @@ export const mockGrids: MockGrid[] = [
                     quantity: 512,
                 },
             },
+            {
+                id: 3,
+                timeStarted: serverStart - 1_800_000,
+                timeDone: serverStart - 1_200_000,
+                wasCancelled: false,
+                finalOutput: {
+                    itemid: "appliedenergistics2:processor_calc",
+                    itemname: "Calculation Processor",
+                    hashcode: 1010,
+                    quantity: 256,
+                },
+            },
+            // No matching `trackingDetails` entry - a job whose tracking record is gone (e.g. server
+            // restart between when it finished and now, since history is `@GSONUtils.SkipGSON` and never
+            // persisted) still shows up in `trackinghistory`; opening it must hit `TRACKING_NOT_FOUND`.
+            {
+                id: 4,
+                timeStarted: serverStart - 10_800_000,
+                timeDone: serverStart - 10_740_000,
+                wasCancelled: false,
+                finalOutput: {
+                    itemid: "minecraft:redstone",
+                    itemname: "Redstone",
+                    hashcode: 1099,
+                    quantity: 64,
+                },
+            },
         ],
         trackingDetails: new Map([
             [
@@ -309,6 +336,93 @@ export const mockGrids: MockGrid[] = [
                             timings: [{ started: serverStart - 3_600_000, ended: serverStart - 3_348_000 }],
                             timingsCombined: 252_000,
                             location: [{ dimid: "0", x: 120, y: 70, z: -340 } satisfies DimensionalCoords],
+                        },
+                    ],
+                } satisfies TrackingDetail,
+            ],
+            [
+                // Richer than the mechanically-generated entries above/below: several items, one of them
+                // with two disjoint (co-processor-style) timing windows, and three interfaces including a
+                // nameless one (`AE2JobTracker`'s literal `"[NULL]"`) with several locations each, plus a
+                // cross-dimension coord - exercises the timeline's multi-segment rows and multi-location
+                // tooltips under `npm run dev` without needing a real multi-processor AE2 network.
+                3,
+                {
+                    finalOutput: {
+                        itemid: "appliedenergistics2:processor_calc",
+                        itemname: "Calculation Processor",
+                        hashcode: 1010,
+                        quantity: 256,
+                    },
+                    timeStarted: serverStart - 1_800_000,
+                    timeDone: serverStart - 1_200_000,
+                    wasCancelled: false,
+                    items: [
+                        {
+                            itemid: "appliedenergistics2:crystal_fluix",
+                            itemname: "Fluix Crystal",
+                            timeSpentOn: 260_000,
+                            craftedTotal: 768,
+                            shareInCraftingTime: 0.45,
+                            shareInCraftingTimeCombined: 0.43,
+                            craftsPerSec: 768 / 260,
+                            timings: [
+                                { started: serverStart - 1_800_000, ended: serverStart - 1_650_000 },
+                                { started: serverStart - 1_500_000, ended: serverStart - 1_390_000 },
+                            ],
+                        },
+                        {
+                            itemid: "appliedenergistics2:crystal_certus",
+                            itemname: "Certus Quartz Crystal",
+                            timeSpentOn: 210_000,
+                            craftedTotal: 1024,
+                            shareInCraftingTime: 0.35,
+                            shareInCraftingTimeCombined: 0.35,
+                            craftsPerSec: 1024 / 210,
+                            timings: [{ started: serverStart - 1_760_000, ended: serverStart - 1_550_000 }],
+                        },
+                        {
+                            itemid: "appliedenergistics2:material_silicon",
+                            itemname: "Silicon",
+                            timeSpentOn: 120_000,
+                            craftedTotal: 384,
+                            shareInCraftingTime: 0.2,
+                            shareInCraftingTimeCombined: 0.2,
+                            craftsPerSec: 384 / 120,
+                            timings: [{ started: serverStart - 1_390_000, ended: serverStart - 1_270_000 }],
+                        },
+                    ],
+                    interfaceShare: [
+                        {
+                            name: "ME Interface (Fluix Crystal)",
+                            timings: [
+                                { started: serverStart - 1_800_000, ended: serverStart - 1_650_000 },
+                                { started: serverStart - 1_500_000, ended: serverStart - 1_390_000 },
+                            ],
+                            timingsCombined: 260_000,
+                            location: [
+                                { dimid: "0", x: 120, y: 70, z: -340 } satisfies DimensionalCoords,
+                                { dimid: "0", x: 121, y: 70, z: -340 } satisfies DimensionalCoords,
+                            ],
+                        },
+                        {
+                            name: "ME Interface (Certus Quartz Crystal)",
+                            timings: [{ started: serverStart - 1_760_000, ended: serverStart - 1_550_000 }],
+                            timingsCombined: 210_000,
+                            location: [{ dimid: "0", x: 118, y: 70, z: -338 } satisfies DimensionalCoords],
+                        },
+                        {
+                            // AE2JobTracker.java:190-192 - the literal name a null-named interface arrives
+                            // as, and interfaces are deduplicated by name only, so this one row stands in
+                            // for several physical (and here, cross-dimensional) machines.
+                            name: "[NULL]",
+                            timings: [{ started: serverStart - 1_390_000, ended: serverStart - 1_270_000 }],
+                            timingsCombined: 120_000,
+                            location: [
+                                { dimid: "-1", x: 40, y: 60, z: 200 } satisfies DimensionalCoords,
+                                { dimid: "-1", x: 41, y: 60, z: 200 } satisfies DimensionalCoords,
+                                { dimid: "1", x: 5, y: 80, z: 5 } satisfies DimensionalCoords,
+                            ],
                         },
                     ],
                 } satisfies TrackingDetail,
@@ -414,6 +528,7 @@ export function settleCompletedJobs(grid: MockGrid): void {
     for (let i = grid.busyCpus.length - 1; i >= 0; i--) {
         const cpu = grid.busyCpus[i]!;
         if (craftProgress(cpu) >= 1) {
+            recordTracking(grid, cpu, false);
             grid.busyCpus.splice(i, 1);
             grid.idleCpus.push({
                 name: cpu.name,
@@ -422,6 +537,61 @@ export function settleCompletedJobs(grid: MockGrid): void {
             });
         }
     }
+}
+
+/**
+ * Pushes a `trackinghistory` entry (and matching `gettracking` detail) for a job leaving a CPU, so
+ * completion and cancellation are both exercisable live under `npm run dev` - mirrors M2's
+ * `settleCompletedJobs`, which made completion itself observable. Only tracked jobs are recorded
+ * (`AE2JobTracker` never records at all when a grid's tracking was off when the job started). Simpler
+ * than the hand-authored fixtures above/below: one timing segment per item, one synthetic interface -
+ * good enough to prove the live wiring works, not meant to replace the richer static scenarios.
+ */
+export function recordTracking(grid: MockGrid, cpu: MockBusyCpu, wasCancelled: boolean): void {
+    if (!cpu.hasTrackingInfo) return;
+    const timeDone = Date.now();
+    const elapsed = Math.max(1, timeDone - cpu.startedAt);
+    const totalWeight = cpu.recipe.reduce((a, r) => a + r.requested, 0) || 1;
+
+    let cursor = cpu.startedAt;
+    const items: TrackingDetail["items"] = cpu.recipe.map((row) => {
+        const started = cursor;
+        const rowSpan = Math.round((row.requested / totalWeight) * elapsed);
+        const ended = Math.min(timeDone, started + rowSpan);
+        cursor = ended;
+        const timeSpentOn = Math.max(0, ended - started);
+        const craftedTotal = wasCancelled
+            ? Math.round(row.requested * (timeSpentOn / Math.max(1, rowSpan)))
+            : row.requested;
+        return {
+            itemid: row.itemid,
+            itemname: row.itemname,
+            timeSpentOn,
+            craftedTotal,
+            shareInCraftingTime: timeSpentOn / elapsed,
+            shareInCraftingTimeCombined: Math.min(1, timeSpentOn / elapsed),
+            craftsPerSec: timeSpentOn > 0 ? craftedTotal / (timeSpentOn / 1000) : 0,
+            timings: [{ started, ended }],
+        };
+    });
+
+    const id = grid.history.reduce((max, h) => Math.max(max, h.id), 0) + 1;
+    grid.history.push({ id, timeStarted: cpu.startedAt, timeDone, wasCancelled, finalOutput: cpu.output });
+    grid.trackingDetails.set(id, {
+        finalOutput: cpu.output,
+        timeStarted: cpu.startedAt,
+        timeDone,
+        wasCancelled,
+        items,
+        interfaceShare: [
+            {
+                name: `ME Interface (${cpu.output.itemname})`,
+                timings: [{ started: cpu.startedAt, ended: timeDone }],
+                timingsCombined: elapsed,
+                location: [{ dimid: "0", x: 0, y: 64, z: 0 }],
+            },
+        ],
+    });
 }
 
 export function toCpuList(grid: MockGrid): CpuList {

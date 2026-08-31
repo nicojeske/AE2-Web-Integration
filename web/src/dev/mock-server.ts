@@ -8,6 +8,7 @@ import {
     findItemByHashcode,
     mockGrids,
     mockJobs,
+    recordTracking,
     settleCompletedJobs,
     toCompactedItems,
     toCpuList,
@@ -110,6 +111,7 @@ export function mockApiPlugin(): Plugin {
                         const idx = grid.busyCpus.findIndex((c) => c.name === cpuName);
                         if (idx === -1) return respond(res, "CPU_NOT_BUSY", null);
                         const cancelled = grid.busyCpus.splice(idx, 1)[0]!;
+                        recordTracking(grid, cancelled, true);
                         grid.idleCpus.push({
                             name: cancelled.name,
                             coProcessors: cancelled.coProcessors,

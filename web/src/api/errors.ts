@@ -30,6 +30,8 @@ export function describeApiError(e: unknown, fallback: string): string {
             return "The plan isn't ready yet - try again in a moment";
         case "GRID_NOT_FOUND":
             return "This network is no longer available";
+        case "TRACKING_NOT_FOUND":
+            return "This job's tracking data is gone - the server may have restarted since it finished";
         case "SERVER_BUSY":
             return "The server is busy right now - try again in a moment";
         case "TIMEOUT":

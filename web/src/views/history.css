@@ -1,0 +1,167 @@
+/* Crafting History list + tracking detail (M5) */
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.history-row {
+    border-radius: var(--radius-card-sm);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.history-row__main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
+}
+
+.history-row__item {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-row__grid-label {
+    font-weight: 400;
+    color: var(--text-dim);
+}
+
+.history-row__timestamp {
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+.history-row__duration {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Tracking detail - item cards reuse .craft-detail__item-card/__item-stats/__share from
+   craft-detail.css (a flat grid rather than CraftDetailColumns' fixed three-column layout, since a
+   tracking record has no crafting/waiting/done split). */
+.tracking-detail__items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+/* Timelines */
+.tracking-detail__timeline-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card-sm);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tracking-detail__timeline-title {
+    font-family: var(--font-display);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.tracking-detail__timeline-more {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.timeline__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.timeline__label {
+    width: 190px;
+    flex: 0 0 190px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.timeline__plot {
+    flex: 1;
+    position: relative;
+    height: 18px;
+}
+
+.timeline__plot svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.timeline__segment {
+    cursor: pointer;
+}
+.timeline__segment:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.timeline__value {
+    width: 80px;
+    flex: 0 0 80px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+/* Axis row mirrors `.timeline__row`'s flex layout (label / plot / optional value columns) instead of a
+   fixed margin-left, so its ticks line up under the plot whether or not this timeline's rows carry a
+   trailing `.timeline__value` column (the interface timeline does, the item timeline doesn't). */
+.timeline__row--axis {
+    margin-top: 2px;
+}
+.timeline__plot--axis {
+    display: flex;
+    justify-content: space-between;
+    height: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+}
+
+.timeline__tooltip {
+    position: absolute;
+    transform: translate(-50%, -130%);
+    background: var(--bg-card);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: var(--shadow-float);
+    z-index: 1;
+}
+
+.timeline__tooltip-line {
+    display: block;
+}

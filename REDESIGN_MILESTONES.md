@@ -189,8 +189,8 @@ specified, and cancel returns to Jobs.
 **Done when** a craft can be ordered, previewed and submitted on a real server, and an unsubmittable
 simulated plan is clearly explained instead of offering a dead button.
 
-### - [ ] M5 — Crafting History and tracking detail
-**Status:** Not started
+### - [x] M5 — Crafting History and tracking detail
+**Status:** Done — commit sha pending (recorded in a follow-up commit, matching M2/M3/M4)
 
 - History rows from `trackinghistory` (`{name} x{qty}` over timestamp, mono duration,
   Completed/Cancelled pill), clicking opens the detail.
@@ -613,3 +613,79 @@ _(newest last)_
   `craftDetailParts.tsx` extraction. **Not yet exercised against a real Forge server**
   (`./gradlew runServer`) - a real `bytesTotal`/bucketed plan, a real merge into a busy CPU, and a real
   `isSimulating` plan from AE2 itself need in-game verification before relying on this milestone.
+- **M5**: Tracking detail is a **full page**, not the design's 420px drawer - decided with the user during
+  planning. The handoff's own detail surface has no room for a timeline at all; a full page reuses
+  `craftDetailParts.tsx`'s `CraftDetailHeader`/`StatCard` (M3/M4) the same way `PlanDetail.tsx` does, with
+  a flat `auto-fill minmax(240px,1fr)` item grid (`.craft-detail__item-card` etc., reused rather than
+  `CraftDetailColumns`, which is a fixed three-column layout that doesn't fit one flat list) instead of a
+  drawer's scrolling card list.
+- **M5**: History is **in-memory and per-server-session** - `GridData.trackingInfo` is
+  `@GSONUtils.SkipGSON` and `GridData.clearRuntimeState()` wipes it (and resets the id counter to 1) on
+  server stop. `GetTrackingHistory`'s `id` is therefore a small per-grid int, not a stable global one, so
+  `state/history.tsx` keys All-Grids rows `"{gridId}:{id}"` to avoid cross-grid collisions, the same
+  pattern `state/items.tsx`/`state/cpus.tsx` use for their own per-grid identities.
+- **M5**: `gettracking` has the same NaN-serialization hazard already logged for `/get`
+  (`JSON_CompactedJobTrackingInfo.java`'s `craftsPerSec`/`shareInCraftingTimeCombined` divide by
+  `timeSpentOn`/elapsed with no zero guard, and `GSONUtils.GSON_BUILDER` isn't lenient, so a hit throws
+  server-side and drops the whole response). `trackingDetailModel.ts` never reads either field - both are
+  derived client-side from `craftedTotal`/`timeSpentOn`, `null` (bar/stat hidden) when the denominator is
+  0. This also sidesteps `getShareInCraftingTime`'s own quirk of answering `1.0` for every item when the
+  job total is 0. Still a Java-side risk, not fixed here, same as M0/M2/M3.
+- **M5**: The two timelines ("Item share"/"Interface share") replace the old `webpage.html`'s two Chart.js
+  floating-bar charts (`showItemShare`/`showInterfaceShare`, present through commit `50bd3a1`, the last
+  commit before the rewrite) with a hand-rolled `<Timeline>` (`ui/Timeline.tsx`): only the plot is SVG
+  (fixed `viewBox`, `preserveAspectRatio="none"`, same technique as the Statistics sparkline spec), labels
+  and the optional right-hand value column stay in HTML. The axis keeps the old chart's **absolute epoch
+  ms** semantics (three `toLocaleTimeString` ticks: start/mid/end of the job) rather than switching to a
+  relative-duration axis. The old *item* chart's bug - building each dataset with `push`, so items with
+  differing timing counts rendered against the wrong labels - is not reproduced; this version renders one
+  row per item/interface directly, so no index misalignment is possible.
+- **M5**: Interfaces are deduplicated **by name only** server-side (`AEInterface.equals`/`hashCode`), and
+  a nameless one arrives as the literal `"[NULL]"` - so one "Interface share" row can represent several
+  physical (even cross-dimensional) machines, which is exactly why its tooltip lists every sorted
+  `location` line rather than just one. `location` is a server-side `HashSet` (unstable order), so
+  `trackingDetailModel.ts` sorts it (`dimid`, `x`, `y`, `z`) before rendering, so re-renders don't reshuffle
+  the tooltip.
+- **M5**: `finalOutput.quantity` on both endpoints is the amount **requested when the job started**
+  (`AE2JobTracker.addJob`), not what actually completed - for a cancelled job these can disagree. The
+  header shows the requested `x{qty}` (matching the design's `{item} x{qty}` history-row copy) while a
+  separate "Crafted" stat card shows `Σ craftedTotal`, so the two disagreeing reads as informative rather
+  than as a bug.
+- **M5**: History refetches whenever `useCpus().busyCount` drops (a completion or cancel is exactly when
+  a new row can appear), not on a poll of its own - `trackinghistory` is an `IAsyncRequest` that never
+  touches the server thread, so this costs nothing against `CoreEngine`'s drain budget. Simplification
+  from the plan discussed during design: unscoped to whether History is the active section (always
+  refetches on a drop) rather than threading a "mounted" flag through another provider - one extra cheap
+  async request when the user isn't even looking at History was judged not worth the added plumbing.
+- **M5**: `state/history.tsx`'s `HistoryProvider` sits inside `CpusProvider` in `App.tsx` (needs
+  `useCpus().busyCount`) and outside `OrderProvider` (no dependency either way) - the same nesting
+  reasoning as the rest of the provider stack.
+- **M5**: Dev fixtures (`fixtures.ts`) gained two hand-authored scenarios beyond the original single
+  entry: a rich multi-item completed job (one item with two disjoint, co-processor-style timing windows;
+  three interfaces including a `"[NULL]"` one with three locations across two dimensions) to exercise the
+  timeline's multi-segment rows and multi-location tooltips, and a history entry with **no** matching
+  `trackingDetails` map entry, so the `TRACKING_NOT_FOUND` path is reachable under `npm run dev`. A new
+  `recordTracking()` helper (also called from `mock-server.ts`'s `/cancelcpu` handler) synthesizes a
+  simpler one-segment-per-item, one-interface tracking record whenever a **tracked** busy CPU actually
+  goes idle (naturally via `settleCompletedJobs` or via cancel), so completion/cancel → new History row is
+  exercisable live, the way M2 made CPU completion itself observable.
+- **M5 scope note**: `example_website/index.php` (the customer-hosted PHP reverse-proxy example) still
+  loads jQuery and Chart.js and genuinely uses both for its own independent terminal implementation - this
+  is not dead code like the two `login.html`s were, and rewriting it is out of scope for these milestones
+  (`example_website`'s wire contract must stay intact, not its implementation). Only
+  `src/main/resources/assets/login.html` and `example_website/login.html` had the two CDN tags dead
+  (loaded, never used) - both removed. The "no Chart.js/jQuery CDN tags anywhere in the built page" done
+  criterion is about the terminal (`webpage.html`/`login.html`), not this separate example.
+- **M5 verified**: `npm run dev` against the mock server with headless Chromium (Playwright, same setup as
+  M1-M4) confirmed: history rows render with the right item/qty/timestamp/duration/pill in both single-grid
+  and All-Grids mode (grid labels appear only in the latter); the empty state shows on grid 2 (no history);
+  opening the rich entry renders all 4 stat cards, 3 item cards with derived crafted/time-spent/rate/share,
+  and both timelines with the expected per-row segment counts (`[2,1,1]` matching the fixture's multi-window
+  item and its mirrored interface); hovering a segment shows the From/To/duration tooltip; opening the
+  entry with no tracking record shows the readable `TRACKING_NOT_FOUND` message with a working "Back to
+  history" path; and letting a tracked mock job (`Assembly Cluster A`) finish naturally during the session
+  added a new "Completed" row with no manual refresh, confirming the `busyCount`-drop refetch - all with
+  zero console/page errors. **Not yet exercised against a real Forge server** (`./gradlew runServer`) - real
+  `timings[]`/interface names/locations, and the `gettracking` NaN/dropped-response hazard on a very short
+  real craft, need in-game verification before relying on this milestone. This milestone made no Java
+  changes, so `./gradlew build` was not re-run.
