@@ -12,6 +12,39 @@ permissions:
   contents: read
 
 jobs:
+  web-terminal:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout core
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Check formatting
+        working-directory: web
+        run: npm run format:check
+
+      - name: Build (includes typecheck)
+        working-directory: web
+        run: npm run build
+
+      - name: Fail if the committed bundle is stale
+        run: |
+          if ! git diff --quiet -- src/main/resources/assets; then
+            echo "::error::src/main/resources/assets is out of date - run 'npm run build' in core/web and commit the result."
+            git diff -- src/main/resources/assets
+            exit 1
+          fi
+
   build-and-test:
     runs-on: ubuntu-24.04
     steps:

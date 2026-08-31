@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+    <title>AE2 Terminal</title>
+    <script>
+      // Substituted server-side by AE2Controller.WebHandler (string replace, not templating) - keep
+      // these tokens byte-for-byte, they are matched literally. isAdmin/isOutdated are raw boolean
+      // literals (unquoted) exactly as the server writes them; username is a quoted string.
+      window.__AE2_CONTEXT__ = {
+        username: "_REPLACE_ME_USERNAME",
+        isAdmin: _REPLACE_ME_IS_ADMIN,
+        isOutdated: _REPLACE_ME_VERSION_OUTDATED,
+        isPublicMode: _REPLACE_ME_IS_PUBLIC_MODE,
+      };
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

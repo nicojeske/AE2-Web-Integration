@@ -81,8 +81,8 @@ Consequences to honour everywhere:
 
 ## Milestones
 
-### - [ ] M0 — Tracker, build pipeline, design system, app shell
-**Status:** In progress
+### - [x] M0 — Tracker, build pipeline, design system, app shell
+**Status:** Done — see Notes below for the commit sha once pushed.
 
 - This file, committed before any code.
 - `core/web/`: `package.json`, `tsconfig.json`, `vite.config.ts` (two entries → `webpage.html`,
@@ -300,3 +300,32 @@ describe the new build.
 ## Notes / deviations
 
 _(newest last)_
+
+- **M0**: Node.js/npm were not installed on the dev machine; installed via `sudo pacman -S nodejs npm`
+  (Node v26.7.0, npm 12.0.2) before scaffolding `core/web/`.
+- **M0**: TypeScript pinned to `^7.0.2` (the current stable release, the native/"tsgo" compiler), not the
+  5.x line - it was the `latest` dist-tag at the time and Vite 8 / `@preact/preset-vite` both declare
+  support for it.
+- **M0**: `login.html` is intentionally **not** wired into the Vite build yet.
+  `vite-plugin-singlefile` only supports one HTML entry per build (multiple entries are a documented
+  `wontfix`), so `webpage.html` alone is built for now and the old `login.html` keeps being served
+  untouched. M9 gives it its own single-entry build when it rebuilds the page.
+- **M0**: The server has no human-readable grid name - `GetGridList.java`'s `JSON_GridData` only carries
+  `key` (numeric), `owner`, and `cpuCount`, unlike the design's mocked `label` field. The network
+  `<select>` labels grids by owner, falling back to `"{owner} - #{key}"` only when one owner has more
+  than one grid (see `src/shell/gridLabel.ts`).
+- **M0**: The old UI's "select this grid by default" checkbox was **not** reintroduced (it wasn't in the
+  approved parity list). Instead, whichever grid is currently selected is transparently persisted to
+  `localStorage` and restored on next load - same practical effect (the terminal reopens where you left
+  it), no extra UI.
+- **M0**: `formatTime`, the old webpage.html's single-unit duration formatter, was not ported - the new
+  design's copy (`"4m 12s"`, `"1h 03m"`) needs combined units, so `src/api/format.ts` exports
+  `formatDuration` instead, matching the prototype's own `fmtDur` helper.
+- **Risk discovered, not fixed (frontend milestone, Java out of scope)**: `GetCPU.java` computes
+  `craftsPerSec = craftedTotal / (timeSpentCrafting / 1000d)` unconditionally once `hasTrackingInfo` is
+  true. Immediately after a job starts tracking, both operands can be `0`, giving Java's `0.0/0.0 = NaN`.
+  Gson's default (non-lenient) `Gson` instance throws `IllegalArgumentException` writing `NaN`/`Infinity`
+  doubles, which would make `/get` fail entirely for a CPU in that state. `GSONUtils.GSON_BUILDER` does
+  not call `.serializeSpecialFloatingPointValues()`. Whichever milestone first renders `craftsPerSec`
+  (M3) should watch for this in real testing; the real fix is a small Java change (guard the division, or
+  make the builder lenient) that belongs on its own, separately reviewed.
