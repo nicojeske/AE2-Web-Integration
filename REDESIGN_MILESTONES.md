@@ -134,7 +134,7 @@ grid" behaviour), and core CI is green.
 All-Grids mode, and low-stock badges reflect stored thresholds.
 
 ### - [x] M2 — Active Jobs, detail drawer, live polling, completion notifications
-**Status:** Done — pending commit (this file will be updated with the sha in an immediate follow-up commit)
+**Status:** Done — dd5082ff3ea4bb67679a3cbc1b7ca9b5689ed4e4
 
 - `src/state/poller.ts`: single polling loop (`list` per selected grid, then sequential `get` for busy
   CPUs), pause when `document.hidden`, cancel on unmount.
