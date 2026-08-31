@@ -133,8 +133,8 @@ grid" behaviour), and core CI is green.
 **Done when** browsing, searching, filtering, sorting and favouriting work on a real grid and in
 All-Grids mode, and low-stock badges reflect stored thresholds.
 
-### - [ ] M2 — Active Jobs, detail drawer, live polling, completion notifications
-**Status:** Not started
+### - [x] M2 — Active Jobs, detail drawer, live polling, completion notifications
+**Status:** Done — pending commit (this file will be updated with the sha in an immediate follow-up commit)
 
 - `src/state/poller.ts`: single polling loop (`list` per selected grid, then sequential `get` for busy
   CPUs), pause when `document.hidden`, cancel on unmount.
@@ -380,3 +380,77 @@ _(newest last)_
   fixture data), the tracking checkbox's full round trip against the mock `gridsettings` endpoint, and
   the Craft stub toast - with zero console/page errors. Not yet exercised against a real Forge server
   (`./gradlew runServer`) - do that before relying on this milestone in-game.
+- **M2**: `CpuDetail.items` retyped `CompactedItem[] | null` - `GetCPU.java` skips its whole busy block
+  for an idle CPU, so real responses come back `null` (`GSON_BUILDER` serializes nulls), never `[]`. The
+  mock server's idle `/get` branch was also corrected from `[]` to `null` to match.
+- **M2**: New `src/state/cpus.tsx` (`CpusProvider`/`useCpus`, not the tracker's originally sketched
+  `poller.ts` - it renders a provider, so needs JSX, mirroring `items.tsx`). Polling is **tiered**:
+  `/list` runs on every section (drives the sidebar busy pill and completion toasts/notifications
+  everywhere), while the per-busy-CPU `/get` fan-in (needed for progress bars and drawer item lists)
+  only runs while the Jobs view is mounted, via a `detailPolling` flag Jobs flips on/off. Neither the
+  tiering nor the cadence (2.5s single grid, 5s All-Grids, both paused on `document.hidden`) is in the
+  design - both follow directly from `/list`/`/get` being server-thread tasks under `CoreEngine`'s
+  5ms/tick drain budget and the 32-slot `AE2Controller.requests` queue.
+- **M2**: Completion detection does **not** treat a CPU name that disappeared from `/list` as finished.
+  `GetCPUList.java`'s `internalID` (and therefore a CPU's default `"CPU #n"` name) is reassigned on
+  every enumeration of the crafting-CPU set, so adding/removing a cluster can silently renumber the
+  others - a vanished key is a renumber, not a completion. A completion only fires for a key still
+  present in the new list but now idle.
+- **M2**: A failed `/get` (thrown `ApiError` or a dropped connection) is swallowed and retried next
+  cycle rather than surfacing as a view error - `GetCPU.java`'s unguarded `craftedTotal /
+  timeSpentCrafting` division can produce a `NaN`/`Infinity` right after a job starts, and
+  `GSONUtils.GSON_BUILDER` isn't lenient, so the whole HTTP response is dropped server-side (no error
+  envelope at all) rather than answering a clean denial. This is the risk logged in the Notes below
+  under M0; M2 is the first milestone that can actually hit it.
+- **M2**: No progress bar for a busy CPU with `hasTrackingInfo: false`. The design's prototype always
+  shows one, but its `progressPct` there is a pure client-side mock with no server-side source; the
+  real approximation (`Σcraftedtotal / Σ(craftedTotal+active+pending)`, clamped to `[0, 99]` so it can
+  never read 100% before the CPU actually goes idle) needs the tracking fields `/get` only populates
+  when tracking was on when the job started.
+- **M2**: `usedStorage === -1` (the normal "not reported" value on modern AE2's `web$getUsedStorage()`
+  mixin, and 1.7.10 when the accessor is absent) renders as `— / {total}` in both the CPU card footer
+  and the drawer's Storage stat, instead of the design's literal `-1 B`.
+- **M2**: Co-processor counts are pluralised (`1 co-proc` / `6 co-procs`); the prototype always prints
+  "co-procs" even for one.
+- **M2**: Both busy and idle CPU cards open the detail drawer (the milestone bullet reads "busy card →
+  craft detail (M3, stub for now); idle card → detail drawer", but M3's craft-detail page doesn't exist
+  yet, and the milestone's own "cancelling from the drawer works" acceptance criterion is otherwise
+  unreachable, since idle CPUs have nothing to cancel). The busy-CPU drawer carries a "View craft
+  detail →" link that shows the M3 stub toast (matching M1's Craft-button stub convention), plus the
+  red "Cancel Job" footer the design specifies for a busy CPU's drawer.
+- **M2**: Cancelling asks for confirmation via a `Modal` stacked on the drawer (the milestone spec asks
+  for a confirm; the design prototype cancels immediately with no confirmation at all).
+  `useDialogA11y`/`Drawer` gained an `enabled`/`trapFocus` flag so the drawer's own focus trap suspends
+  while the modal is open - defensive, since both dialogs portal to `document.body` as siblings and
+  don't actually contend for focus, but cheap and reusable by M4's order modal.
+- **M2**: The idle-CPU drawer gained a stats block (Status, Co-processors, Storage) plus a dashed
+  "No items on this CPU" empty state, instead of the design's bare (and, for a real idle CPU, always
+  empty) item list.
+- **M2**: In All-Grids mode a CPU card shows the source grid's label under the CPU name (reusing
+  `gridOptionLabel`); the design shows only the raw CPU name, which collides across grids since
+  `GetCPUList.java` reassigns `"CPU #n"` names independently per grid.
+- **M2**: `Button`'s prop type was widened from `JSX.HTMLAttributes<HTMLButtonElement>` to
+  `JSX.ButtonHTMLAttributes<HTMLButtonElement>` - preact's generic `HTMLAttributes` doesn't carry
+  `disabled` (it lives on the element-specific interface), so the cancel-in-flight disabled state
+  needed here didn't type-check against the existing primitive.
+- **M2**: Dev fixtures gained a second busy CPU on grid 1 (`Fluix Cluster`, untracked, `usedStorage:
+  -1`) and a busy CPU on grid 2 (`Foundry CPU`, short `craftDurationMs` so completion is observable in
+  seconds). The mock server had no mechanism at all to transition a busy CPU to idle when its mocked
+  `craftDurationMs` elapsed (only `/cancelcpu` moved a CPU between the two lists) - added
+  `settleCompletedJobs()`, called at the top of every mock request, so completion detection is actually
+  exercisable under `npm run dev`.
+- **M2 verified**: `npm run dev` against the mock server with headless Chromium (Playwright, same setup
+  as M1) confirmed: CPU cards render correctly for busy/idle/untracked-busy/`usedStorage:-1` states; the
+  sidebar busy pill is live and scoped to the current selection; the idle drawer shows the stats block
+  and empty state with no Cancel footer; the busy drawer shows real per-item crafting/scheduled/stored
+  numbers immediately on open; cancelling asks for confirmation, Escape on the confirm modal closes only
+  the modal (the drawer stays open), and confirming actually cancels, toasts, and updates the card on
+  the next poll; a short-duration mock job completing produces exactly one "finished crafting" toast and
+  flips its card to Idle; All-Grids mode fans across both grids with grid-label sub-lines; and polling
+  measurably stops while `document.hidden` and resumes immediately on becoming visible again - all with
+  zero console/page errors (one benign browser-chrome `favicon.ico` 404, confirmed unrelated to any
+  application request). **Not yet exercised against a real Forge server** (`./gradlew runServer`) - in
+  particular the `craftsPerSec` NaN/dropped-response path (only reachable with real AE2 tracking
+  timing) and real `cancelcpu`/CPU-renumbering behavior need in-game verification before relying on this
+  milestone. Desktop `Notification` permission/gating was code-reviewed against the four-gate rule but
+  not exercised live (headless Chromium has no interactive permission prompt to grant).

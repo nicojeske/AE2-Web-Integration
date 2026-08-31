@@ -5,11 +5,16 @@ const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [ta
 /**
  * Focus trap + Escape-to-close for modals and drawers. The design prototype has neither (see
  * claude-design/README.md's Interactions note that both should be added in production).
+ *
+ * `enabled` (default true) lets a caller suspend the trap - e.g. a Drawer hosting a confirm Modal on
+ * top of it passes `false` while that Modal owns focus, so nothing here fights over the initial focus
+ * or the Tab cycle.
  */
-export function useDialogA11y<T extends HTMLElement>(onClose: () => void) {
+export function useDialogA11y<T extends HTMLElement>(onClose: () => void, enabled = true) {
     const ref = useRef<T>(null);
 
     useEffect(() => {
+        if (!enabled) return;
         const container = ref.current;
         if (!container) return;
         const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -42,7 +47,7 @@ export function useDialogA11y<T extends HTMLElement>(onClose: () => void) {
             container.removeEventListener("keydown", onKeyDown);
             previouslyFocused?.focus();
         };
-    }, [onClose]);
+    }, [onClose, enabled]);
 
     return ref;
 }

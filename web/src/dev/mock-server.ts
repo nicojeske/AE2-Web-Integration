@@ -6,7 +6,9 @@ import {
     createJob,
     findGrid,
     findItemByHashcode,
+    mockGrids,
     mockJobs,
+    settleCompletedJobs,
     toCompactedItems,
     toCpuList,
     toGridSummaries,
@@ -43,6 +45,8 @@ export function mockApiPlugin(): Plugin {
                 const url = new URL(req.url ?? "/", "http://localhost");
                 const params = url.searchParams;
                 const gridKey = params.has("grid") ? Number(params.get("grid")) : NaN;
+
+                for (const grid of mockGrids) settleCompletedJobs(grid);
 
                 switch (url.pathname) {
                     case "/grids": {
@@ -81,11 +85,13 @@ export function mockApiPlugin(): Plugin {
                         }
                         const idle = grid.idleCpus.find((c) => c.name === cpuName);
                         if (idle) {
+                            // GetCPU.java skips its whole busy block for an idle CPU, so `items` comes
+                            // back `null` (GSON_BUILDER serializes nulls) - not `[]`.
                             ok(res, {
                                 size: idle.availableStorage,
                                 isBusy: false,
                                 finalOutput: null,
-                                items: [],
+                                items: null,
                                 hasTrackingInfo: false,
                                 timeStarted: 0,
                                 timeElapsed: 0,

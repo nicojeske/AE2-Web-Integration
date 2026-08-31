@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "preact/hooks";
 
 import { logout } from "./api/client";
 import { getContext } from "./context";
+import { CpusProvider, useCpus } from "./state/cpus";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
 import { DEFAULT_THRESHOLDS, prefsKey, PrefsProvider, usePrefs } from "./state/prefs";
@@ -20,6 +21,7 @@ function Shell() {
     const context = getContext();
     const { refresh: refreshGrids } = useNetwork();
     const { items, refresh: refreshItems } = useItems();
+    const { busyCount, refresh: refreshCpus } = useCpus();
     const { favorites, thresholds, notifyEnabled, setNotifyEnabled } = usePrefs();
     const toast = useToast();
     const [section, setSection] = useState<Section>("browser");
@@ -34,9 +36,9 @@ function Shell() {
     }, [notifyEnabled, setNotifyEnabled]);
 
     const onRefresh = useCallback(async () => {
-        await Promise.all([refreshGrids(), refreshItems()]);
+        await Promise.all([refreshGrids(), refreshItems(), refreshCpus()]);
         toast("Refreshed");
-    }, [refreshGrids, refreshItems, toast]);
+    }, [refreshGrids, refreshItems, refreshCpus, toast]);
 
     // Scoped to whatever's currently loaded (the selected grid, or every grid in All-Grids mode) -
     // not every grid regardless of selection, which would mean fetching every grid's items just to
@@ -57,7 +59,7 @@ function Shell() {
             <Sidebar
                 section={section}
                 onSectionChange={setSection}
-                busyCount={0}
+                busyCount={busyCount}
                 lowStockFavCount={lowStockFavCount}
                 notifyEnabled={notifyEnabled}
                 onToggleNotify={onToggleNotify}
@@ -91,7 +93,9 @@ export function App() {
             <PrefsProvider>
                 <NetworkProvider>
                     <ItemsProvider>
-                        <Shell />
+                        <CpusProvider>
+                            <Shell />
+                        </CpusProvider>
                     </ItemsProvider>
                 </NetworkProvider>
             </PrefsProvider>

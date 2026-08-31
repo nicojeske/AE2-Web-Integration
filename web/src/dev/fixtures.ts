@@ -200,6 +200,32 @@ export const mockGrids: MockGrid[] = [
                     { itemid: "minecraft:redstone", itemname: "Redstone", requested: 48, stored: 3400 },
                 ],
             },
+            {
+                // Busy + untracked (grid tracking was off when this job started): exercises the M2
+                // "no progress bar for an untracked busy CPU" degradation, and `usedStorage === -1`,
+                // which real modern-AE2 mixins hardcode (see REDESIGN_MILESTONES.md notes for M2).
+                name: "Fluix Cluster",
+                coProcessors: 2,
+                availableStorage: 2 * 1024 * 1024,
+                usedStorage: -1,
+                output: {
+                    itemid: "appliedenergistics2:crystal_fluix",
+                    itemname: "Fluix Crystal",
+                    hashcode: 1003,
+                    quantity: 256,
+                },
+                startedAt: serverStart - 40_000,
+                craftDurationMs: 5 * 60_000,
+                hasTrackingInfo: false,
+                recipe: [
+                    {
+                        itemid: "appliedenergistics2:crystal_fluix",
+                        itemname: "Fluix Crystal",
+                        requested: 256,
+                        stored: 860,
+                    },
+                ],
+            },
         ],
         history: [
             {
@@ -294,7 +320,27 @@ export const mockGrids: MockGrid[] = [
             { hashcode: 2004, itemid: "minecraft:granite", itemname: "Granite", quantity: 8000, craftable: false },
         ],
         idleCpus: [{ name: "Outpost CPU", coProcessors: 1, availableStorage: 1024 * 1024 }],
-        busyCpus: [],
+        busyCpus: [
+            {
+                // Short craftDurationMs so completion (toast + notification + sidebar pill decrement)
+                // fires within seconds of the dev server starting, instead of requiring a long wait -
+                // also the only busy CPU on a second grid, so the All-Grids fan-in touches both grids.
+                name: "Foundry CPU",
+                coProcessors: 3,
+                availableStorage: 3 * 1024 * 1024,
+                usedStorage: Math.round(0.5 * 1024 * 1024),
+                output: {
+                    itemid: "minecraft:coal",
+                    itemname: "Coal",
+                    hashcode: 2002,
+                    quantity: 64,
+                },
+                startedAt: serverStart,
+                craftDurationMs: 8_000,
+                hasTrackingInfo: false,
+                recipe: [{ itemid: "minecraft:coal", itemname: "Coal", requested: 64, stored: 5200 }],
+            },
+        ],
         history: [],
         trackingDetails: new Map(),
     },
@@ -336,6 +382,25 @@ export function toGridSummaries(): GridSummary[] {
 
 function craftProgress(cpu: MockBusyCpu): number {
     return Math.min(1, (Date.now() - cpu.startedAt) / cpu.craftDurationMs);
+}
+
+/**
+ * The mock has no server tick of its own, so a busy CPU never transitions to idle on its own - call
+ * this before answering any request that reads CPU state, so a job whose `craftDurationMs` has
+ * elapsed actually completes (lets M2's polling/completion-detection be exercised in `npm run dev`).
+ */
+export function settleCompletedJobs(grid: MockGrid): void {
+    for (let i = grid.busyCpus.length - 1; i >= 0; i--) {
+        const cpu = grid.busyCpus[i]!;
+        if (craftProgress(cpu) >= 1) {
+            grid.busyCpus.splice(i, 1);
+            grid.idleCpus.push({
+                name: cpu.name,
+                coProcessors: cpu.coProcessors,
+                availableStorage: cpu.availableStorage,
+            });
+        }
+    }
 }
 
 export function toCpuList(grid: MockGrid): CpuList {

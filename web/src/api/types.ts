@@ -60,12 +60,15 @@ export interface CompactedItem {
     craftsPerSec: number;
 }
 
-/** `/get?grid=&cpu=` response. */
+/**
+ * `/get?grid=&cpu=` response. `items` is `null` for an idle CPU (`GetCPU.java` skips the whole busy
+ * block entirely) - not `[]`, and not absent, since `GSON_BUILDER` serializes nulls.
+ */
 export interface CpuDetail {
     size: number;
     isBusy: boolean;
     finalOutput: ItemStack | null;
-    items: CompactedItem[];
+    items: CompactedItem[] | null;
     hasTrackingInfo: boolean;
     timeStarted: number;
     timeElapsed: number;

@@ -4,7 +4,7 @@ import { cx } from "./cx";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "pill" | "icon" | "text";
 
-export interface ButtonProps extends Omit<JSX.HTMLAttributes<HTMLButtonElement>, "size" | "className"> {
+export interface ButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "size" | "className"> {
     variant?: ButtonVariant;
     size?: "sm" | "md";
     className?: string;

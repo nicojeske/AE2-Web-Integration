@@ -9,10 +9,13 @@ export interface DrawerProps {
     onClose: () => void;
     children?: ComponentChildren;
     footer?: ComponentChildren;
+    /** Suspends the focus trap/Escape handling - set false while a dialog nested on top (e.g. a
+     * confirm Modal) should own focus instead. Defaults to true. */
+    trapFocus?: boolean;
 }
 
-export function Drawer({ title, subtitle, onClose, children, footer }: DrawerProps) {
-    const ref = useDialogA11y<HTMLDivElement>(onClose);
+export function Drawer({ title, subtitle, onClose, children, footer, trapFocus = true }: DrawerProps) {
+    const ref = useDialogA11y<HTMLDivElement>(onClose, trapFocus);
     const onBackdropClick: JSX.MouseEventHandler<HTMLDivElement> = (e) => {
         if (e.target === e.currentTarget) onClose();
     };
