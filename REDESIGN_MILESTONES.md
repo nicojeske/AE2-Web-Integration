@@ -203,7 +203,7 @@ simulated plan is clearly explained instead of offering a dead button.
 longer exist anywhere in the built page.
 
 ### - [x] M6 — Favorites and auto-craft
-**Status:** Done — commit pending
+**Status:** Done — 2871381
 
 - One wrapping row per favourite: name + `{grid} - {n} stored`, three 80px number inputs (Alert below,
   Keep stock at, Batch size), Auto-craft checkbox, Low stock/OK pill, Craft button, 28px remove.
