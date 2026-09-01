@@ -1,7 +1,15 @@
 .app-shell {
     display: flex;
     width: 100%;
-    min-height: 100vh;
+    /* Not `min-height` - `.content`'s `overflow:auto`/`min-height:0` further down only actually clips
+       and scrolls internally (rather than growing the whole page) if this ancestor has a definite
+       height for the flex chain to shrink against. A `min-height` alone lets `.app-shell` grow past one
+       viewport to fit tall content instead, silently moving the scrollbar from `.content` to the page -
+       found via M12's virtualization, whose padding-based spacers were the first content ever tall
+       enough to expose it. `100dvh` (not `100vh`) so mobile browser chrome showing/hiding doesn't leave
+       a gap at the bottom. */
+    height: 100vh;
+    height: 100dvh;
     background: var(--bg-app);
     font-family: var(--font-body);
 }
@@ -314,18 +322,16 @@
     font-size: 13px;
 }
 
-/* Density setting (M11's Settings modal) - a light touch today (tighter gaps/padding on the card grids
-   already in place); the fuller table-density mode this switch is meant for is out of scope here, left
-   for the Browser-scale follow-on work. */
+/* Density setting (M11's Settings modal). Browser switches to `.item-table` entirely in compact mode
+   (M12, browser.css) rather than a tighter card grid - the rules below cover every *other* card surface,
+   which just get tighter gaps/padding instead. */
 .app-shell--density-compact .content {
     gap: 12px;
 }
-.app-shell--density-compact .item-grid,
 .app-shell--density-compact .cpu-grid,
 .app-shell--density-compact .stats__grid {
     gap: 8px;
 }
-.app-shell--density-compact .item-card,
 .app-shell--density-compact .cpu-card,
 .app-shell--density-compact .stat-card {
     padding: 10px;

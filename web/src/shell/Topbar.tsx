@@ -43,6 +43,7 @@ export function Topbar({
                     type="text"
                     className="topbar__search"
                     placeholder="Search items and fluids..."
+                    title="@mod filters by mod, -word excludes, >100 filters by minimum quantity"
                     value={search ?? ""}
                     onInput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
                 />

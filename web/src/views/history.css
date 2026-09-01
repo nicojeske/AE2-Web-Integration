@@ -4,6 +4,10 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    /* See `.item-table`'s comment in browser.css - `.content` must never shrink this below its natural
+       (virtualization-padded) height, or `useVirtualWindow`'s row-height math and the real layout
+       disagree. */
+    flex-shrink: 0;
 }
 
 .history-row {

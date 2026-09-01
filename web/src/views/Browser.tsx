@@ -1,4 +1,4 @@
-import { useMemo } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 
 import { formatNumber } from "../api/format";
 import { useItems } from "../state/items";
@@ -11,12 +11,26 @@ import { Card } from "../ui/Card";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
 import { StarIcon } from "../ui/icons";
+import { useMeasuredColumns } from "../ui/useMeasuredColumns";
+import { useVirtualWindow } from "../ui/useVirtualWindow";
 import { filterItems, isLowStock, ITEMS_TYPE, SORT_BY, sortItems, STORED_CRAFTABLE } from "./browserModel";
 import type { BrowserItem } from "../state/items";
 
 export interface BrowserProps {
     search: string;
 }
+
+/** Matches `.item-grid`'s own `gap` (`browser.css`) - column-count math has to use the same number the
+ *  CSS actually lays out with, or windowing groups items into rows the grid doesn't agree with. */
+const GRID_GAP_PX = 12;
+/** A card's rendered height (`.item-card` in `browser.css`) plus one `.item-grid` row gap - measured
+ *  against the real layout rather than derived on paper, so a future design tweak that changes card
+ *  height is the only thing that should ever need this constant touched. */
+const GRID_ROW_HEIGHT_PX = 150;
+/** `.item-table-row`'s fixed `height` (`browser.css`) - unlike the card grid, this one is exact by
+ *  construction: the CSS sets the row to this height rather than the constant chasing the CSS. */
+const TABLE_ROW_HEIGHT_PX = 44;
+const OVERSCAN_ROWS = 4;
 
 export function Browser({ search }: BrowserProps) {
     const { items, loading, error, failedGrids, refresh } = useItems();
@@ -28,6 +42,7 @@ export function Browser({ search }: BrowserProps) {
     const isAllGrids = selected === "all";
     const hasFluids = useMemo(() => items.some((it) => it.isFluid), [items]);
     const { storedCraftable, itemsType, sortBy, sortOrder } = browserFilters;
+    const isTable = settings.density === "compact";
 
     const filtered = useMemo(() => {
         // When the fluids pill is hidden (this grid has none), don't let a persisted "Fluids only"
@@ -36,6 +51,26 @@ export function Browser({ search }: BrowserProps) {
         const rows = filterItems(items, { storedCraftable, itemsType: effectiveItemsType, search });
         return sortItems(rows, sortBy, sortOrder, isFavorite);
     }, [items, storedCraftable, itemsType, hasFluids, search, sortBy, sortOrder, isFavorite]);
+
+    // One state/hook pair shared by both render modes - only ever one of `.item-grid`/`.item-table` is
+    // mounted at a time, so `container` always points at whichever the current render produced (M12).
+    // State (via a callback ref), not `useRef` - see `useMeasuredColumns`'s own comment for why a plain
+    // ref would silently stop working here (the container mounts behind a loading placeholder on the
+    // very first render, and a plain ref's non-reactivity means an effect can miss it forever).
+    const [container, setContainer] = useState<HTMLElement | null>(null);
+    const measuredColumns = useMeasuredColumns(container, settings.tileMin, GRID_GAP_PX);
+    const columns = isTable ? 1 : measuredColumns;
+    const rowHeightPx = isTable ? TABLE_ROW_HEIGHT_PX : GRID_ROW_HEIGHT_PX;
+    const rowCount = Math.ceil(filtered.length / Math.max(1, columns));
+    const { startRow, endRow, topSpacerPx, bottomSpacerPx } = useVirtualWindow(
+        container,
+        rowCount,
+        rowHeightPx,
+        OVERSCAN_ROWS,
+    );
+    const startIndex = startRow * columns;
+    const endIndex = Math.min(filtered.length, endRow * columns);
+    const visible = filtered.slice(startIndex, endIndex);
 
     const cycleStoredCraftable = () =>
         setBrowserFilters((s) => ({ ...s, storedCraftable: ((s.storedCraftable + 1) % 3) as 0 | 1 | 2 }));
@@ -99,9 +134,70 @@ export function Browser({ search }: BrowserProps) {
 
             {filtered.length === 0 ? (
                 <div className="placeholder-panel">No items match the current filters.</div>
+            ) : isTable ? (
+                <section
+                    className="item-table"
+                    ref={setContainer}
+                    style={{ paddingTop: topSpacerPx, paddingBottom: bottomSpacerPx }}
+                >
+                    {visible.map((item) => {
+                        const key = prefsKey(item.sourceGridId, item.itemid);
+                        const favorited = isFavorite(key);
+                        const lowStock = isLowStock(item, favorites, thresholds);
+                        return (
+                            <div key={`${item.sourceGridId}:${item.itemid}`} className="item-table-row">
+                                <button
+                                    type="button"
+                                    className="item-table-star"
+                                    title="Favorite"
+                                    aria-pressed={favorited}
+                                    style={{ color: favorited ? "var(--amber)" : "var(--star-inactive)" }}
+                                    onClick={() => toggleFavorite(item.sourceGridId, item.itemid)}
+                                >
+                                    <StarIcon size={14} />
+                                </button>
+                                <div className="item-table-identity">
+                                    <ItemIcon itemid={item.itemid} name={item.itemname} size={24} />
+                                    <div className="item-table-text">
+                                        <FormattedText text={item.itemname} className="item-table-name" />
+                                        <span className="item-table-mod">
+                                            {item.mod}
+                                            {isAllGrids ? ` - ${item.gridLabel}` : ""}
+                                        </span>
+                                    </div>
+                                    {lowStock && (
+                                        <Badge variant="red" size="sm">
+                                            Low
+                                        </Badge>
+                                    )}
+                                </div>
+                                <span className="item-table-qty">
+                                    {formatNumber(item.quantity, settings.numberFormat)}
+                                </span>
+                                <div className="item-table-actions">
+                                    {item.craftable ? (
+                                        <Button variant="primary" size="sm" onClick={() => onCraft(item)}>
+                                            Craft
+                                        </Button>
+                                    ) : (
+                                        <span className="item-table-notcraft">—</span>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </section>
             ) : (
-                <section className="item-grid" style={{ "--tile-min": `${settings.tileMin}px` }}>
-                    {filtered.map((item) => {
+                <section
+                    className="item-grid"
+                    ref={setContainer}
+                    style={{
+                        "--tile-min": `${settings.tileMin}px`,
+                        paddingTop: topSpacerPx,
+                        paddingBottom: bottomSpacerPx,
+                    }}
+                >
+                    {visible.map((item) => {
                         const key = prefsKey(item.sourceGridId, item.itemid);
                         const favorited = isFavorite(key);
                         const lowStock = isLowStock(item, favorites, thresholds);

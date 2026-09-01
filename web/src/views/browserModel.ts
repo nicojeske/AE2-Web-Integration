@@ -36,16 +36,65 @@ export interface ItemFilters {
     search: string;
 }
 
+/**
+ * A parsed search query (M12) - `filterItems` never re-tokenizes the raw string itself, so every caller
+ * (the live Browser filter, a future saved-search feature) sees the exact same rules.
+ */
+export interface SearchQuery {
+    /** Plain (non-prefixed) words, re-joined with single spaces - matches the pre-M12 behaviour exactly
+     *  when the query has no special tokens at all, so a plain search never changes meaning. */
+    text: string;
+    /** `@mod` tokens - every one must be a substring of the item's mod namespace. */
+    mods: string[];
+    /** `-word` tokens - an item is dropped if ANY of these is a substring of its name or itemid. */
+    excludes: string[];
+    /** `>100` tokens - the item's quantity must exceed every one given (multiple only makes sense as the
+     *  strictest one winning, which "every token must pass" already gives for free). */
+    minQuantities: number[];
+}
+
+/**
+ * Tokenizes on whitespace and classifies each token by its prefix - `@mod`, `-exclude`, `>qty` - leaving
+ * everything else as plain search text. Malformed special tokens (e.g. `>abc`, a bare `@`/`-`/`>`) fall
+ * back to plain text rather than being silently dropped, so a stray `@`/`-`/`>` in an item name search
+ * still does something sensible.
+ */
+export function parseSearchQuery(raw: string): SearchQuery {
+    const mods: string[] = [];
+    const excludes: string[] = [];
+    const minQuantities: number[] = [];
+    const plainWords: string[] = [];
+
+    for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
+        if (token.startsWith("@") && token.length > 1) {
+            mods.push(token.slice(1).toLowerCase());
+        } else if (token.startsWith("-") && token.length > 1) {
+            excludes.push(token.slice(1).toLowerCase());
+        } else if (token.startsWith(">") && token.length > 1 && Number.isFinite(Number(token.slice(1)))) {
+            minQuantities.push(Number(token.slice(1)));
+        } else {
+            plainWords.push(token);
+        }
+    }
+
+    return { text: plainWords.join(" ").toLowerCase(), mods, excludes, minQuantities };
+}
+
 /** `0` = quantity > 0 ("Stored only"), `1` = craftable ("Craftable only"), `2` = no filter. */
 export function filterItems(rows: BrowserItem[], filters: ItemFilters): BrowserItem[] {
-    const search = filters.search.trim().toLowerCase();
+    const query = parseSearchQuery(filters.search);
     return rows.filter((it) => {
         if (filters.storedCraftable === 0 && !(it.quantity > 0)) return false;
         if (filters.storedCraftable === 1 && !it.craftable) return false;
         if (filters.itemsType !== 2 && it.isFluid !== (filters.itemsType === 1)) return false;
-        if (search && !it.plainName.toLowerCase().includes(search) && !it.itemid.toLowerCase().includes(search)) {
-            return false;
-        }
+
+        const plainName = it.plainName.toLowerCase();
+        const itemid = it.itemid.toLowerCase();
+        if (query.text && !plainName.includes(query.text) && !itemid.includes(query.text)) return false;
+        if (query.mods.length > 0 && !query.mods.every((m) => it.mod.toLowerCase().includes(m))) return false;
+        if (query.excludes.some((x) => plainName.includes(x) || itemid.includes(x))) return false;
+        if (query.minQuantities.length > 0 && !query.minQuantities.every((min) => it.quantity > min)) return false;
+
         return true;
     });
 }

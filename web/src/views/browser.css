@@ -28,6 +28,11 @@
 
 .item-grid {
     display: grid;
+    /* `.content` (the flex column this lives in - app-shell.css) would otherwise shrink this below its
+       natural content height to avoid overflowing, rather than growing past the viewport and letting
+       `.content`'s own `overflow:auto` scroll it - the exact bug M12's virtualization work found on
+       `.item-table` below, fixed here defensively even though this one measured correctly in practice. */
+    flex-shrink: 0;
     /* `--tile-min` is the Settings modal's "items per row" knob (Browser.tsx) - falls back to the
        design's original 220px when unset (e.g. a screenshot/test harness that skips PrefsProvider). */
     grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 220px), 1fr));
@@ -111,6 +116,99 @@
 }
 
 .item-card__not-craftable {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+/* Compact table mode (M12, Settings' `density: compact`) - a dense one-row-per-item alternative to the
+   card grid above, for GTNH-scale item counts. `.item-table-row`'s `height` is exact by construction -
+   `views/Browser.tsx`'s `TABLE_ROW_HEIGHT_PX` windowing constant matches it precisely rather than the
+   other way around. */
+.item-table {
+    display: flex;
+    flex-direction: column;
+    /* `flex-shrink:0` is the actual fix, not decoration: `overflow:hidden` below (for the rounded
+       corners) makes this element's flexbox "automatic minimum size" zero instead of content-based
+       (per spec, for any element whose overflow isn't `visible`), so without this `.content` (the flex
+       column this lives in) would happily shrink it - and every `.item-table-row` inside along with it -
+       below its natural height instead of scrolling around it. Found via M12's virtualization: rows
+       measured 30px tall instead of the CSS's own specified 44px. */
+    flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card-sm);
+    overflow: hidden;
+}
+
+.item-table-row {
+    height: 44px;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: 24px 1fr 90px 72px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.item-table-row:last-child {
+    border-bottom: 0;
+}
+.item-table-row:hover {
+    background: var(--bg-hover);
+}
+
+.item-table-star {
+    background: none;
+    border: 0;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 0;
+    justify-self: start;
+}
+
+.item-table-identity {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.item-table-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.15;
+}
+
+.item-table-name {
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.item-table-mod {
+    font-size: 10px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.item-table-qty {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-primary);
+    text-align: right;
+    white-space: nowrap;
+}
+
+.item-table-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.item-table-notcraft {
     font-size: 11px;
     color: var(--text-dim);
 }
