@@ -12,6 +12,8 @@ const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [ta
  */
 export function useDialogA11y<T extends HTMLElement>(onClose: () => void, enabled = true) {
     const ref = useRef<T>(null);
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
 
     useEffect(() => {
         if (!enabled) return;
@@ -25,7 +27,7 @@ export function useDialogA11y<T extends HTMLElement>(onClose: () => void, enable
         function onKeyDown(e: KeyboardEvent) {
             if (e.key === "Escape") {
                 e.stopPropagation();
-                onClose();
+                onCloseRef.current();
                 return;
             }
             if (e.key !== "Tab") return;
@@ -47,7 +49,7 @@ export function useDialogA11y<T extends HTMLElement>(onClose: () => void, enable
             container.removeEventListener("keydown", onKeyDown);
             previouslyFocused?.focus();
         };
-    }, [onClose, enabled]);
+    }, [enabled]);
 
     return ref;
 }
