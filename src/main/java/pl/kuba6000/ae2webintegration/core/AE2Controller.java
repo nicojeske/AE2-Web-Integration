@@ -1,6 +1,7 @@
 package pl.kuba6000.ae2webintegration.core;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -11,6 +12,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +55,7 @@ import pl.kuba6000.ae2webintegration.core.api.IServerPlatform;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.config.CoreData;
+import pl.kuba6000.ae2webintegration.core.icons.ItemIconIndex;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAE;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.utils.HTTPUtils;
@@ -170,6 +173,24 @@ public class AE2Controller {
     private static volatile RateLimiter rateLimiter = new RateLimiter(20, 60 * 1000);
     private static volatile ClientAddressResolver clientAddressResolver = ClientAddressResolver.fromConfig("");
 
+    // Rebuilt (off the calling thread - see rebuildItemIconIndexAsync) in startHTTPServer(), same as
+    // rateLimiter/clientAddressResolver above, so /reload picks up a changed item_icon_directory.
+    private static volatile ItemIconIndex itemIconIndex = ItemIconIndex.disabled();
+
+    /**
+     * Scanning a real icon export can be tens of thousands of files; doing that inline in
+     * startHTTPServer() would delay the HTTP port opening (or a /reload command) on a cold directory
+     * listing. The old index keeps serving lookups until the new one is ready.
+     */
+    private static void rebuildItemIconIndexAsync() {
+        File directory = Config.ITEM_ICON_DIRECTORY();
+        Thread scanThread = new Thread(
+            () -> itemIconIndex = ItemIconIndex.scan(directory),
+            "ae2webintegration-icon-scan");
+        scanThread.setDaemon(true);
+        scanThread.start();
+    }
+
     /**
      * The address to treat this request as coming from. Behind a reverse proxy the TCP peer is always the
      * proxy, so every decision about who the caller is - the localhost trust check and rate limiting
@@ -260,6 +281,7 @@ public class AE2Controller {
 
             rateLimiter = new RateLimiter(Config.AE_MAX_REQUESTS_BEFORE_LOGGED_IN_PER_MINUTE(), 60 * 1000);
             clientAddressResolver = ClientAddressResolver.fromConfig(Config.TRUSTED_PROXIES());
+            rebuildItemIconIndexAsync();
             ExecutorService newServerThread = createHTTPExecutor();
             HttpServer newServer = null;
             try {
@@ -276,6 +298,7 @@ public class AE2Controller {
                 newServer.createContext("/gridsettings", new ASyncRequestHandler(GridSettings.class));
                 newServer.createContext("/itemhistory", new ASyncRequestHandler(GetItemHistory.class));
                 newServer.createContext("/trackeditems", new ASyncRequestHandler(TrackedItems.class));
+                newServer.createContext("/icon", new IconHandler());
                 newServer.createContext("/auth", new AuthHandler());
                 newServer.createContext("/", new WebHandler());
                 newServer.setExecutor(newServerThread);
@@ -807,6 +830,58 @@ public class AE2Controller {
 
     }
 
+    /**
+     * Serves a real item/fluid icon PNG, matched by display name against {@link #itemIconIndex} (see
+     * {@link ItemIconIndex} for the matching rules). Not grid-scoped data, so any authenticated principal
+     * may fetch any icon - {@link #preHTTPHandler} alone is the auth gate, same as every other endpoint
+     * except {@link WebHandler} itself.
+     */
+    static class IconHandler implements HttpHandler {
+
+        @Override
+        public void handle(HttpExchange t) throws IOException {
+            if (preHTTPHandler(t)) return;
+
+            String name = requestContext.get()
+                .getGetParams()
+                .get("name");
+            File icon = name == null ? null : itemIconIndex.lookup(name);
+            if (icon == null) {
+                t.sendResponseHeaders(404, -1);
+                return;
+            }
+
+            String etag = "\"" + icon.length() + "-" + icon.lastModified() + "\"";
+            List<String> ifNoneMatch = t.getRequestHeaders()
+                .get("If-None-Match");
+            if (ifNoneMatch != null && ifNoneMatch.contains(etag)) {
+                t.sendResponseHeaders(304, -1);
+                return;
+            }
+
+            byte[] raw_response;
+            try {
+                raw_response = Files.readAllBytes(icon.toPath());
+            } catch (IOException e) {
+                // Deleted/unreadable between the index scan and this request - a 404 is the honest
+                // answer, not a 500, since from the client's perspective the icon simply isn't there.
+                t.sendResponseHeaders(404, -1);
+                return;
+            }
+            t.getResponseHeaders()
+                .set("Content-Type", "image/png");
+            t.getResponseHeaders()
+                .set("Cache-Control", "public, max-age=604800, immutable");
+            t.getResponseHeaders()
+                .set("ETag", etag);
+            t.sendResponseHeaders(200, raw_response.length);
+            OutputStream os = t.getResponseBody();
+            os.write(raw_response);
+            os.close();
+        }
+
+    }
+
     static class AuthHandler implements HttpHandler {
 
         @Override
@@ -1039,6 +1114,7 @@ public class AE2Controller {
             response = response.replace(
                 "_REPLACE_ME_VERSION_OUTDATED",
                 Config.CHECK_FOR_UPDATES() && VersionChecker.isOutdated() ? "true" : "false");
+            response = response.replace("_REPLACE_ME_HAS_ITEM_ICONS", itemIconIndex.isEnabled() ? "true" : "false");
             RequestContext context = requestContext.get();
             if (context != null) {
                 response = response.replace("_REPLACE_ME_USERNAME", context.principal.getUsername());

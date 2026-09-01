@@ -39,6 +39,24 @@ public class Config {
         return ConfigBootstrap.checkForUpdatesValue.get();
     }
 
+    /**
+     * Directory to look up item icon PNGs in, or {@code null} when unconfigured (icons disabled). An
+     * absolute path is used as-is; a relative one is resolved against the config directory, matching how
+     * {@link #getConfigFile(String)} anchors the other data files.
+     */
+    public static File ITEM_ICON_DIRECTORY() {
+        String path = ConfigBootstrap.itemIconDirectoryValue.get();
+        if (path == null || path.trim()
+            .isEmpty()) {
+            return null;
+        }
+        File file = new File(path.trim());
+        if (file.isAbsolute() || configDirectory == null) {
+            return file;
+        }
+        return new File(configDirectory, path.trim());
+    }
+
     // Discord
     public static String DISCORD_WEBHOOK() {
         return ConfigBootstrap.discordWebhookValue.get();

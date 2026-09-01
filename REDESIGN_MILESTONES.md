@@ -36,7 +36,7 @@ here. Every milestone leaves the terminal in a working, demonstrable state.
 | Stack | Preact + TypeScript + Vite in a new `core/web/` directory |
 | Output | Vite inlines JS+CSS into a single self-contained `webpage.html` / `login.html` (`vite-plugin-singlefile`) — **no `AE2Controller` change, `example_website/index.php` untouched** |
 | Build wiring | Built HTML is committed to `src/main/resources/assets/`; core CI rebuilds and fails on drift. Version-branch builds stay pure Java (no Node) |
-| Item icons | Generated placeholder tiles (deterministic colour + initials from `itemid`); no icon endpoint |
+| Item icons | Real icons when the admin configures `item_icon_directory` and a display-name match exists (M10); generated placeholder tile (deterministic colour + initials from `itemid`) otherwise |
 | Statistics data | New internal server-side sampler + fixed-resolution ring buffer + endpoint. No external TSDB |
 | Kept from old UI | Tracking-detail charts (re-drawn as SVG in the new language), outdated-version banner, login page restyled to the new tokens |
 | Dropped from old UI | Number-format / items-per-row / show-item-ID / auto-refresh settings (polling is always on; numbers use fixed mono formatting per the design) |
@@ -60,6 +60,7 @@ History section — dropping the toggle would make those unreachable.
 | `trackinghistory?grid=` / `gettracking?grid=&id=` / `gridsettings?grid=&track=` | async | Can answer `REFRESH_REQUIRED`; retry once after re-fetching `grids` (port the existing `getJSONWithGridRefresh` logic, old `webpage.html:1125`) |
 | `itemhistory?grid=&range=24h\|7d\|30d\|1y\|all&items=<csv>&points=` (M7) | async | `{from,to,stepMillis,resolution,limit,series:[{itemid,points[]}]}`; `points[]` entries are `-1` for "no sample in that bucket", never a stale repeat |
 | `trackeditems?grid=&set=<csv>` / `&add=<itemid>` / `&remove=<itemid>` (M7) | async | Read/write the per-grid tracked-item set that `itemhistory` samples for; `{tracked:[...],limit}`; write denies `TRACKED_LIMIT_REACHED` over the configured cap |
+| `icon?name=<display name>` (M10) | raw PNG (not the `{status,data}` envelope) | Not grid-scoped, no `grid=` param; `404` on a miss (feature disabled or no match) or `304` on a matching `If-None-Match` — client falls back to the placeholder tile on any non-200 |
 
 Consequences to honour everywhere:
 
@@ -269,6 +270,43 @@ saved views survive a reload.
 
 **Done when** login, session expiry, logout and registration all work on a real server and the docs
 describe the new build.
+
+---
+
+### - [x] M10 — Real item icons, matched by display name
+**Status:** Done — (pending commit)
+
+- An admin can export item-panel PNGs (JEI/NEI-style item panel exporter), named after item display
+  names, into a directory outside the repo (never committed - copyright) and point the new
+  `item_icon_directory` config option at it. Empty (default) keeps today's placeholder-only behaviour.
+- New `ItemIconIndex` (`core/icons/`) scans that directory once into a normalized-name → file map on
+  server start / `/reload`, off the calling thread so a cold multi-thousand-file directory can't delay
+  HTTP startup. New `/icon?name=` route (`AE2Controller.IconHandler`) serves a match as `image/png` with
+  a week-long immutable cache + ETag, `404` on a miss - not grid-scoped, so any authenticated principal
+  may fetch any icon.
+- `ItemIcon.tsx` tries `<img src="icon?name=...">` first when `_REPLACE_ME_HAS_ITEM_ICONS` is `true`;
+  `onError` falls back to the original generated tile (hue from `itemid` + initials) and remembers the
+  miss in a module-level `Set` so a scrolled/reopened card never re-requests a known-missing name.
+- `src/dev/mock-server.ts` mirrors the same matching rules against a local `itempanel_icons/` directory
+  (repo-root sibling of `web/`, gitignored) so `npm run dev` exercises the real fetch/fallback path.
+
+**Deviations / notes:**
+- **Matching is display-name-only, and lossy.** The export predates any connection to this mod, so the
+  only bridge is `itemname` (§-stripped, whitespace-collapsed, `/\:` folded to `_` to match how the
+  export itself substituted those characters, lowercased) - not `itemid` or the ephemeral `hashcode`.
+  Roughly 3k of ~25.7k exported filenames in the icon pack we tested against carry a `_<N>` collision
+  suffix (two distinct items sharing one display name); the numbered variant is simply unreachable by
+  the plain name and keeps the placeholder tile. Accepted as a known gap, not a bug.
+  Non-ASCII/punctuation characters (`³`, `#`, `'`, `,`) are matched byte-for-byte, not folded.
+- **No manifest endpoint.** Considered shipping the full matched-name list once per page load to avoid
+  ever hitting a 404; rejected as a large (hundreds of KB) one-time payload for a benefit `onError` +
+  the miss-cache already gets for free at effectively zero cost per repeat view.
+- Config comment text (`ConfigBootstrap.itemIconDirectoryValue`) is the only admin-facing documentation
+  for where to put the pack - there's no in-repo place to keep icon-sourcing instructions without
+  implying the pack ships with the mod.
+
+**Done when** `item_icon_directory` unset shows only placeholders; set and pointed at a real export,
+matching items show real icons and non-matching items still show placeholders, on a real server.
 
 ---
 

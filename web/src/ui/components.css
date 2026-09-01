@@ -284,6 +284,12 @@
     color: rgba(255, 255, 255, 0.92);
     text-transform: uppercase;
 }
+.item-icon--image {
+    /* Source art is 32x32; keep pixel edges crisp at the 38-44px display sizes instead of blurring. */
+    object-fit: contain;
+    image-rendering: pixelated;
+    background: var(--bg-sunken);
+}
 
 /* Toast */
 .toast-host {

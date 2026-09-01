@@ -24,6 +24,8 @@ public class ConfigBootstrap {
     public static IConfigValue<Integer> aeMaxRequestsBeforeLoggedInPerMinuteValue = () -> 20;
     public static IConfigValue<Boolean> checkForUpdatesValue = () -> true;
 
+    public static IConfigValue<String> itemIconDirectoryValue = () -> "";
+
     // --- Discord ---
 
     public static IConfigValue<String> discordWebhookValue = () -> "";
@@ -83,6 +85,14 @@ public class ConfigBootstrap {
             1000,
             "Max requests per minute before logging in (anti brute force)");
         checkForUpdatesValue = builder.defineBoolean("check_for_updates", true, "Check for updates");
+
+        itemIconDirectoryValue = builder.defineString(
+            "item_icon_directory",
+            "",
+            "Directory of item icon PNGs, named after item display names (e.g. an exported item-panel"
+                + " icon dump), used to render real icons in the web terminal instead of generated"
+                + " placeholder tiles. Absolute path, or relative to this config directory. Keep empty to"
+                + " disable - the icon files themselves are not distributed with the mod (copyright).");
 
         discordWebhookValue = builder
             .defineString("discord_webhook", "", "Webhook url for discord integration, keep empty to disable");

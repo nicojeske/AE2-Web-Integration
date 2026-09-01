@@ -24,6 +24,7 @@ class ConfigBootstrapTest {
         ConfigBootstrap.aePublicModeValue = () -> true;
         ConfigBootstrap.aeMaxRequestsBeforeLoggedInPerMinuteValue = () -> 20;
         ConfigBootstrap.checkForUpdatesValue = () -> true;
+        ConfigBootstrap.itemIconDirectoryValue = () -> "";
         ConfigBootstrap.discordWebhookValue = () -> "";
         ConfigBootstrap.discordRoleIdValue = () -> "";
         ConfigBootstrap.discordMinimumCraftingDurationSecondsValue = () -> 0;
@@ -40,8 +41,8 @@ class ConfigBootstrapTest {
         RecordingConfigBuilder builder = new RecordingConfigBuilder();
         ConfigBootstrap.init(builder);
 
-        // Should have exactly 16 config key definitions
-        assertEquals(16, builder.calls.size(), "expected exactly 16 config key definitions");
+        // Should have exactly 17 config key definitions
+        assertEquals(17, builder.calls.size(), "expected exactly 17 config key definitions");
 
         // Verify all expected keys with their types
         assertContainsCall("int", "port", builder.calls);
@@ -51,6 +52,7 @@ class ConfigBootstrapTest {
         assertContainsCall("boolean", "public_mode", builder.calls);
         assertContainsCall("int", "max_requests_before_logged_in_per_minute", builder.calls);
         assertContainsCall("boolean", "check_for_updates", builder.calls);
+        assertContainsCall("string", "item_icon_directory", builder.calls);
         assertContainsCall("string", "discord_webhook", builder.calls);
         assertContainsCall("string", "discord_role_id", builder.calls);
         assertContainsCall("int", "discord_minimum_crafting_duration_seconds", builder.calls);
@@ -91,6 +93,10 @@ class ConfigBootstrapTest {
                 case "trusted_proxies":
                     // Empty: a proxy on this machine is handled by a built-in rule, not by config.
                     assertEquals("", call.defValue, "trusted_proxies default");
+                    break;
+                case "item_icon_directory":
+                    // Empty: icons stay disabled until an admin points this at an icon export.
+                    assertEquals("", call.defValue, "item_icon_directory default");
                     break;
                 case "track_machine_crafting":
                     assertEquals(false, call.defValue, call.key + " default");
@@ -149,6 +155,7 @@ class ConfigBootstrapTest {
                 .intValue(),
             "MAX_REQUESTS");
         assertEquals(true, ConfigBootstrap.checkForUpdatesValue.get(), "CHECK_FOR_UPDATES");
+        assertEquals("", ConfigBootstrap.itemIconDirectoryValue.get(), "ITEM_ICON_DIRECTORY");
         assertEquals("", ConfigBootstrap.discordWebhookValue.get(), "DISCORD_WEBHOOK");
         assertEquals("", ConfigBootstrap.discordRoleIdValue.get(), "DISCORD_ROLE_ID");
         assertEquals(

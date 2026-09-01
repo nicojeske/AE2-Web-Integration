@@ -20,6 +20,14 @@ built milestone-by-milestone against `../REDESIGN_MILESTONES.md`.
 - `npm run typecheck` — `tsc --noEmit` only.
 - `npm run format` / `npm run format:check` — Prettier over `src/**/*.{ts,tsx,css}`.
 
+### Real item icons in dev
+
+`src/dev/mock-server.ts` also serves `/icon?name=...` and sets `_REPLACE_ME_HAS_ITEM_ICONS`, mirroring
+`ItemIconIndex.java`'s display-name matching, from an `itempanel_icons/` directory expected at the repo
+root (sibling of `web/`). That directory is never committed (icon copyright) - see the repo root
+`CLAUDE.md` and `.gitignore` - so it's simply absent for most contributors, and the mock server falls
+back to the usual generated placeholder tiles when it is.
+
 **After any change under `src/`, run `npm run build` and commit the three regenerated files
 (`src/main/resources/assets/webpage.html`, `src/main/resources/assets/login.html`,
 `example_website/login.html`) in the same commit.** CI (`build-and-test.yml`, job `web-terminal`)
@@ -40,7 +48,7 @@ Both built pages contain tokens the Java server substitutes by literal string re
 them:
 
 - `webpage.html`: `_REPLACE_ME_USERNAME`, `_REPLACE_ME_IS_ADMIN`, `_REPLACE_ME_VERSION_OUTDATED`,
-  `_REPLACE_ME_IS_PUBLIC_MODE`
+  `_REPLACE_ME_IS_PUBLIC_MODE`, `_REPLACE_ME_HAS_ITEM_ICONS`
 - `login.html`: `_REPLACE_ME_IS_PUBLIC_MODE` only - it is always served logged out, so
   `_REPLACE_ME_USERNAME`/`_REPLACE_ME_IS_ADMIN` (substituted only for an authenticated request) must
   never appear in it.

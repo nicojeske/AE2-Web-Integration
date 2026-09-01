@@ -164,3 +164,13 @@ export function removeTrackedItem(gridId: number, itemid: string): Promise<Track
 export function logout(): void {
     window.location.href = "?logout";
 }
+
+/**
+ * URL for an item/fluid's icon, matched server-side by (already §-stripped) display name against
+ * AE2Controller's ItemIconIndex - see ItemIcon.tsx for the fetch/fallback logic around this. A 404
+ * means no match; the caller is expected to fall back to the generated placeholder tile, not treat it
+ * as an error.
+ */
+export function iconUrl(plainName: string): string {
+    return `icon${query({ name: plainName })}`;
+}

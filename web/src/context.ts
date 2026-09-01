@@ -3,6 +3,8 @@ export interface Ae2Context {
     isAdmin: boolean;
     isOutdated: boolean;
     isPublicMode: boolean;
+    /** Whether AE2Controller has a non-empty ItemIconIndex - real item icons vs. placeholder tiles. */
+    hasItemIcons: boolean;
 }
 
 declare global {

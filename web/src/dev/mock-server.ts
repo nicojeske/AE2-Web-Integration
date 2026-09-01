@@ -1,7 +1,11 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { Plugin } from "vite";
 
+import { skipSpecialFormat } from "../api/format.ts";
 import type { StatsRange } from "../api/types.ts";
 
 import {
@@ -25,6 +29,36 @@ const STATS_RANGES = new Set<StatsRange>(["15m", "1h", "6h", "24h", "7d", "30d",
 const MAX_HISTORY_POINTS = 500;
 const DEFAULT_HISTORY_POINTS = 120;
 const MAX_TRACKED_ITEMID_LENGTH = 256;
+
+// Mirrors ItemIconIndex.java's matching rules (never committed to the repo - see .gitignore and
+// CLAUDE.md - so this directory is expected to be missing for most contributors, which is fine: the
+// feature just stays off, same as an unconfigured item_icon_directory server-side).
+const ICON_DIR = fileURLToPath(new URL("../../../itempanel_icons", import.meta.url));
+
+function normalizeIconName(raw: string): string {
+    return skipSpecialFormat(raw)
+        .replace(/[/\\:]/g, "_")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
+let iconIndex: Map<string, string> | undefined;
+
+/** Lazily scanned once per dev-server run - the directory doesn't change without a restart either. */
+function loadIconIndex(): Map<string, string> {
+    if (!iconIndex) {
+        iconIndex = new Map();
+        if (existsSync(ICON_DIR)) {
+            for (const file of readdirSync(ICON_DIR)) {
+                if (!file.toLowerCase().endsWith(".png")) continue;
+                const key = normalizeIconName(file.slice(0, -4));
+                if (!iconIndex.has(key)) iconIndex.set(key, file);
+            }
+        }
+    }
+    return iconIndex;
+}
 
 function respond(res: ServerResponse, status: string, data: unknown): void {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -105,7 +139,8 @@ export function mockApiPlugin(): Plugin {
                 .replace("_REPLACE_ME_USERNAME", "DevAdmin")
                 .replace("_REPLACE_ME_IS_ADMIN", "true")
                 .replace("_REPLACE_ME_VERSION_OUTDATED", "false")
-                .replace("_REPLACE_ME_IS_PUBLIC_MODE", isPublicMode ? "true" : "false");
+                .replace("_REPLACE_ME_IS_PUBLIC_MODE", isPublicMode ? "true" : "false")
+                .replace("_REPLACE_ME_HAS_ITEM_ICONS", loadIconIndex().size > 0 ? "true" : "false");
         },
         configureServer(server) {
             server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
@@ -360,6 +395,19 @@ export function mockApiPlugin(): Plugin {
                         }
                         grid.trackedItems = next2;
                         ok(res, { tracked: grid.trackedItems, limit: MOCK_TRACKED_LIMIT });
+                        return;
+                    }
+                    case "/icon": {
+                        const name = params.get("name");
+                        const file = name ? loadIconIndex().get(normalizeIconName(name)) : undefined;
+                        if (!file) {
+                            res.statusCode = 404;
+                            res.end();
+                            return;
+                        }
+                        res.setHeader("Content-Type", "image/png");
+                        res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+                        res.end(readFileSync(join(ICON_DIR, file)));
                         return;
                     }
                     default:
