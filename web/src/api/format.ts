@@ -91,8 +91,28 @@ export function formatPercent(fraction: number): string {
     return new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 2 }).format(fraction);
 }
 
-export function formatNumber(n: number): string {
+/**
+ * `mode` mirrors the Settings modal's `numberFormat` (`state/prefs.tsx`) - "compact" restores the
+ * legacy jQuery UI's large-quantity readability at GTNH scale (`1.2M` instead of `1,204,532`). Defaults
+ * to `"full"` so every existing call site (most of them never show GTNH-scale quantities) is unaffected
+ * until it opts in.
+ */
+export function formatNumber(n: number, mode: "full" | "compact" = "full"): string {
+    if (mode === "compact") {
+        return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+    }
     return n.toLocaleString("en-US");
+}
+
+/** `"just now"` / `"12s ago"` / `"3m ago"` / `"2h ago"` - the topbar's items-freshness label (M11). */
+export function formatRelativeAge(fetchedAtMs: number, nowMs: number = Date.now()): string {
+    const seconds = Math.max(0, Math.round((nowMs - fetchedAtMs) / 1000));
+    if (seconds < 10) return "just now";
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
 }
 
 /** `"Today, 14:02"` / `"Yesterday, 22:15"` / `"12 Mar, 14:02"` / a full locale string across years. */

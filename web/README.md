@@ -62,12 +62,27 @@ only by `example_website/index.php`. See `REDESIGN_MILESTONES.md`'s M9 entry for
 
 - `src/api/` - typed endpoint client, `{status,data}` envelope handling, formatting helpers
 - `src/state/` - Preact context stores (network selection, items, CPUs, prefs, toasts, stats, ...)
-- `src/shell/` - sidebar/topbar/app chrome for the terminal
+- `src/shell/` - sidebar/topbar/app chrome for the terminal, including the hash router (`route.ts`) and
+  the network picker (`NetworkPicker.tsx`) shared by the sidebar and the topbar's compact copy
 - `src/ui/` - design-system primitives shared by the terminal and the login page
 - `src/views/` - per-section panes (Browser, Jobs, History, Favorites, Statistics, ...)
 - `src/login/` - the login page's own entry, component, context reader, and styles - kept separate
   from `src/main.tsx`/`src/App.tsx` since it never mounts the terminal shell
 - `src/dev/` - Vite dev-only mock server + fixtures, so `npm run dev` needs no real server
 
-See `../REDESIGN_MILESTONES.md` for the full history of decisions and deviations from the original
-design handoff (`../claude-design/`, untracked, a local reference copy - re-request it if missing).
+The original design handoff lives in `../claude-design/` (untracked, a local reference copy - re-request
+it if missing); the milestone tracker that recorded decisions and deviations from it during the rewrite
+(`../REDESIGN_MILESTONES.md`) was removed once the rewrite finished - see `../CLAUDE.md` for what's still
+worth knowing about the frontend's shape.
+
+## Responsive shell and Settings
+
+The shell adapts down to phone width in three CSS tiers (`app-shell.css`'s "Responsive shell" section):
+the full sidebar at >=1024px, a 76px icon rail with the network picker moved into the topbar row at
+768-1023px, and an off-canvas Drawer-based nav (opened via the topbar's hamburger button) below that.
+`shell/Sidebar.tsx` renders the same nav/network/account content both inline and inside that Drawer so the
+two can never drift apart. Every section, plus at most one detail overlay (a busy CPU's Craft Detail, or a
+Crafting History record), is addressable via `shell/route.ts`'s hash router - the order/plan flow stays
+deliberately unaddressable, since it's server-side job state rather than a page. A gear icon in the topbar
+opens `views/SettingsModal.tsx` (number format, density, item-tile size, items auto-refresh, job-completion
+notifications), backed by the `settings` blob in `state/prefs.tsx`.

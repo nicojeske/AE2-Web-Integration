@@ -48,6 +48,15 @@ select {
     color: inherit;
 }
 
+/* A single global rule rather than one per component - most controls here are bare `<button>`s or
+   `role="checkbox"`/`role="tab"` divs with no focus styling of their own (the design handoff had none;
+   several components already carve out their own `:focus-visible` exception where a ring would clip -
+   e.g. Sparkline/Timeline/CompareModal's chart plots - and those take precedence via specificity). */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

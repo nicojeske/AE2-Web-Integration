@@ -3,6 +3,7 @@ import { useState } from "preact/hooks";
 import { formatBytes, formatNumber } from "../api/format";
 import { cpuKey, useCpus } from "../state/cpus";
 import { useNetwork } from "../state/network";
+import { usePrefs } from "../state/prefs";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -20,6 +21,7 @@ export interface JobsProps {
 export function Jobs({ onOpenCraftDetail }: JobsProps) {
     const { cpus, loading, error, failedGrids, refresh } = useCpus();
     const { selected, selectedGrid } = useNetwork();
+    const { settings } = usePrefs();
 
     const [drawerKey, setDrawerKey] = useState<string | null>(null);
 
@@ -95,7 +97,7 @@ export function Jobs({ onOpenCraftDetail }: JobsProps) {
                                 {cpu.isBusy && cpu.finalOutput ? (
                                     <>
                                         Crafting <FormattedText text={cpu.finalOutput.itemname} /> x
-                                        {formatNumber(cpu.finalOutput.quantity)}
+                                        {formatNumber(cpu.finalOutput.quantity, settings.numberFormat)}
                                     </>
                                 ) : (
                                     "No active job"

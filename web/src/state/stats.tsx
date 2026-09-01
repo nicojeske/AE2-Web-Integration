@@ -17,6 +17,7 @@ import { describeApiError } from "../api/errors";
 import type { ItemHistoryResult, StatsRange } from "../api/types";
 import { CARD_POINTS, COMPARE_POINTS, DEFAULT_CUSTOM_MINUTES, toValues } from "../views/statsModel";
 import { useNetwork } from "./network";
+import { usePrefs } from "./prefs";
 import { useToast } from "./toast";
 
 export interface HistoryBundle {
@@ -101,11 +102,16 @@ const POLL_MS = 60_000;
 
 export function StatsProvider({ children }: { children?: ComponentChildren }) {
     const { selected, selectedGrid } = useNetwork();
+    const { settings, setSettings } = usePrefs();
     const toast = useToast();
 
     const gridId = selected !== "all" && selectedGrid && selectedGrid.key !== -1 ? selectedGrid.key : null;
 
-    const [range, setRange] = useState<StatsRange>("7d");
+    // Seeded from the Settings modal's persisted default (state/prefs.tsx) - every other Statistics
+    // control resets on reload same as before; only the main range mirrors back into that setting below,
+    // since it's the one control users complained about resetting (unlike the Browser filters, which
+    // already persist on their own).
+    const [range, setRangeState] = useState<StatsRange>(() => settings.statsRange);
     const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
     const [compareRange, setCompareRange] = useState<StatsRange>("7d");
     const [compareCustomMinutes, setCompareCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
@@ -150,6 +156,13 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
 
     const setActive = useCallback((next: boolean) => setActiveState(next), []);
     const setCompareActive = useCallback((next: boolean) => setCompareActiveState(next), []);
+    const setRange = useCallback(
+        (r: StatsRange) => {
+            setRangeState(r);
+            setSettings((s) => (s.statsRange === r ? s : { ...s, statsRange: r }));
+        },
+        [setSettings],
+    );
 
     // Grid change: reload the tracked set fresh (it carries `limit`; `/gridsettings` doesn't) and
     // hard-reset everything else so a stale grid's cards never paint under the new selection - the

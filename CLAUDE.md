@@ -33,15 +33,18 @@ the web frontend in `web/`, whose *build output* is committed into the Java reso
 
 ### Web frontend (`web/`)
 
-- `npm run dev` — Vite dev server against `src/dev/mock-server.ts` (fixture data, no real server needed)
-- `npm run build` — `tsc --noEmit` + Vite build; **writes directly into `../src/main/resources/assets/`**
-  (`webpage.html` today; `login.html` joins in M9 — see Architecture below)
+- `npm run dev` — Vite dev server against `src/dev/mock-server.ts` (fixture data, no real server needed;
+  serves both the terminal at `/` and the login page at `/login.html`)
+- `npm run build` — `tsc --noEmit` + two Vite builds (terminal, then `--mode login`); **writes directly into
+  `../src/main/resources/assets/`** (`webpage.html` and `login.html`) and copies `login.html` on to
+  `../example_website/login.html` too — see Architecture below
 - `npm run typecheck` — `tsc --noEmit` only
 - `npm run format` / `npm run format:check` — Prettier over `src/**/*.{ts,tsx,css}`
 
-**After any change under `web/src`, run `npm run build` and commit the regenerated file(s) under
-`src/main/resources/assets/` in the same commit.** CI (`build-and-test.yml`, job `web-terminal`) rebuilds and
-runs `git diff --exit-code` on that directory — a stale committed bundle fails the build.
+**After any change under `web/src`, run `npm run build` and commit the three regenerated files
+(`src/main/resources/assets/webpage.html`, `src/main/resources/assets/login.html`,
+`example_website/login.html`) in the same commit.** CI (`build-and-test.yml`, job `web-terminal`) rebuilds
+and runs `git diff --exit-code` on those paths — a stale committed bundle fails the build.
 
 ### Full loop against a real server
 
@@ -82,37 +85,42 @@ limiting (`RateLimiter`) — never trust the raw TCP peer address alone for eith
 `GridData`/`CoreData` are the persisted stores (`griddata.json`, `webdata.json`, gitignored, written next to
 the running server). `AE2JobTracker` holds active-job tracking state.
 
-### Web frontend (`web/`) — mid-rewrite, read `REDESIGN_MILESTONES.md` first
+### Web frontend (`web/`)
 
-The frontend is being rewritten from a single ~1850-line jQuery `webpage.html` into a Preact + TypeScript +
-Vite SPA, milestone by milestone. **`REDESIGN_MILESTONES.md` is the source of truth for this effort**: it
-tracks which milestones are done, records real API quirks discovered along the way (e.g. no `requested`
-field for craft progress — approximated from crafted totals; `GetItems` clears a global
-`hashcodeToStack` map on every call; `list` carries no per-CPU progress, requiring a sequential `get` fan-in
-for busy CPUs), and logs every deviation from the original design handoff. Before working on the frontend:
+The frontend is a Preact + TypeScript + Vite SPA that replaced the old single-file jQuery `webpage.html` +
+`login.html`. That rewrite (once tracked milestone-by-milestone in `REDESIGN_MILESTONES.md`, since removed)
+is finished — `webpage.html` and `login.html` are both built from `web/`, and there is no active milestone
+backlog. Real API quirks the rewrite ran into are worth knowing before touching data code: no `requested`
+field for craft progress (approximated from crafted totals), `GetItems` clears a global `hashcodeToStack`
+map on every call, and `list` carries no per-CPU progress (a sequential `get` fan-in covers busy CPUs). Read
+`claude-design/README.md` and open `claude-design/AE2 Web Terminal.dc.html` (needs `support.js` and
+`image-slot.js` alongside it) for the original design handoff if it's ever needed again — `claude-design/`
+is an **untracked local reference copy**, not part of any branch, so it needs to be re-requested if missing.
 
-1. Read `REDESIGN_MILESTONES.md` in full and find the first unchecked milestone — that's the one to work.
-2. Read `claude-design/README.md` and open `claude-design/AE2 Web Terminal.dc.html` (needs `support.js` and
-   `image-slot.js` alongside it) for the exact target look/behavior. `claude-design/` is an **untracked
-   local reference copy**, not part of any branch — if missing, it needs to be re-requested, not recreated
-   from memory.
-3. Read the "What the existing API actually gives us" table in `REDESIGN_MILESTONES.md` before writing data
-   code — several handoff/prototype assumptions don't hold against the real Java endpoints.
-4. On finishing a milestone: tick its box, set its Status/commit line, and append anything worth knowing to
-   the Notes/deviations log, in the same commit as the work (or an immediate follow-up commit).
+Routing is a small hand-rolled hash router (`src/shell/route.ts`): `#/<section>[/<detail>]?grid=<selection>`.
+The order/plan flow (`state/order.tsx`) is deliberately **not** addressable — it's server-side job state (a
+computed-but-not-submitted plan), not a page to re-enter from a URL. The shell is responsive down to phone
+width in three CSS tiers (see `app-shell.css`'s "Responsive shell" section): full sidebar >=1024px, a
+76px icon rail with the network picker moved into the topbar 768–1023px, and an off-canvas Drawer-based nav
+below that — `shell/NetworkPicker.tsx` is the one network-select+tracking-checkbox component both the
+sidebar and the topbar render. A Settings modal (`views/SettingsModal.tsx`, gear icon in the topbar) holds
+number-format/density/tile-size/auto-refresh preferences, persisted via `state/prefs.tsx`'s `settings` blob.
 
 Key structural constraint: Vite's `vite-plugin-singlefile` inlines everything into one self-contained HTML
-file per entry, with **no support for multiple entries** — this is why `login.html` isn't wired into the
-build yet (M9) and why the build must never require `AE2Controller.WebHandler` to serve more than one static
-resource per request. The emitted HTML must preserve the `_REPLACE_ME_USERNAME` / `_REPLACE_ME_IS_ADMIN` /
-`_REPLACE_ME_VERSION_OUTDATED` / `_REPLACE_ME_IS_PUBLIC_MODE` placeholders verbatim — `AE2Controller.WebHandler`
+file per entry, with **no support for multiple entries** — this is why the build runs `vite build` twice
+(`vite.config.ts` branches on `mode`) instead of one multi-input build, and why it must never require
+`AE2Controller.WebHandler` to serve more than one static resource per request. The emitted `webpage.html`
+must preserve the `_REPLACE_ME_USERNAME` / `_REPLACE_ME_IS_ADMIN` / `_REPLACE_ME_VERSION_OUTDATED` /
+`_REPLACE_ME_IS_PUBLIC_MODE` / `_REPLACE_ME_HAS_ITEM_ICONS` placeholders verbatim (`login.html` only ever
+carries `_REPLACE_ME_IS_PUBLIC_MODE`, since it's always served logged out) — `AE2Controller.WebHandler`
 substitutes them with plain string replacement, not templating.
 
 Layout: `src/api/` (typed endpoint client, `{status,data}` envelope, `REFRESH_REQUIRED` single-retry
 wrapper, formatting helpers), `src/state/` (Preact context stores — network selection, items, prefs, toasts),
-`src/shell/` (sidebar/topbar/app chrome), `src/ui/` (design-system primitives), `src/views/` (per-section
-panes: Browser, Jobs, History, Favorites, Statistics), `src/dev/mock-server.ts` + `src/dev/fixtures.ts`
-(Vite dev-only middleware serving realistic fixture data so `npm run dev` needs no real server).
+`src/shell/` (sidebar/topbar/app chrome, the hash router), `src/ui/` (design-system primitives), `src/views/`
+(per-section panes: Browser, Jobs, History, Favorites, Statistics, Settings), `src/login/` (the separate
+login page entry), `src/dev/mock-server.ts` + `src/dev/fixtures.ts` (Vite dev-only middleware serving
+realistic fixture data so `npm run dev` needs no real server).
 
 `example_website/index.php` is a customer-hosted PHP reverse proxy for people who don't want to expose the
 mod's HTTP server directly. No milestone may add a new HTTP route or change the wire contract in a way that

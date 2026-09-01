@@ -1,16 +1,10 @@
-import type { ComponentType } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import type { ComponentChildren, ComponentType } from "preact";
 
-import { ApiError, setGridTracking } from "../api/client";
-import type { GridSummary } from "../api/types";
-import { useNetwork } from "../state/network";
-import type { GridSelection } from "../state/network";
-import { useToast } from "../state/toast";
-import { Checkbox } from "../ui/Checkbox";
 import { cx } from "../ui/cx";
+import { Drawer } from "../ui/Drawer";
 import type { IconProps } from "../ui/icons";
 import { ChartIcon, ClockIcon, CpuIcon, GridIcon, StarIcon } from "../ui/icons";
-import { gridMetaLine, gridOptionLabel } from "./gridLabel";
+import { NetworkPicker } from "./NetworkPicker";
 import type { Section } from "./section";
 
 export interface SidebarProps {
@@ -18,11 +12,12 @@ export interface SidebarProps {
     onSectionChange: (section: Section) => void;
     busyCount: number;
     lowStockFavCount: number;
-    notifyEnabled: boolean;
-    onToggleNotify: () => void;
     username: string;
     isAdmin: boolean;
     onLogout: () => void;
+    /** <768px only: the off-canvas drawer replacing the (CSS-hidden) inline sidebar - see app-shell.css. */
+    mobileOpen: boolean;
+    onCloseMobile: () => void;
 }
 
 const NAV_ITEMS: { section: Section; label: string; icon: ComponentType<IconProps> }[] = [
@@ -33,96 +28,37 @@ const NAV_ITEMS: { section: Section; label: string; icon: ComponentType<IconProp
     { section: "stats", label: "Statistics", icon: ChartIcon },
 ];
 
-/**
- * `gridsettings?track=` is the only way to switch tracking on anywhere in the mod, and tracking
- * gates the craft-detail progress UI, the bottleneck panel and the whole Crafting History section -
- * kept as a deliberate deviation from the design (see REDESIGN_MILESTONES.md).
- */
-function GridTrackingCheckbox({ grid, onTracked }: { grid: GridSummary; onTracked: () => Promise<void> }) {
-    const toast = useToast();
-    const [checked, setChecked] = useState(grid.isTrackingEnabled);
-
-    // Re-seed when the selected grid changes (including after selectGrid to a different network).
-    useEffect(() => {
-        setChecked(grid.isTrackingEnabled);
-    }, [grid.key, grid.isTrackingEnabled]);
-
-    const onChange = async (next: boolean) => {
-        setChecked(next);
-        try {
-            const result = await setGridTracking(grid.key, next);
-            setChecked(result.isTracked);
-            await onTracked();
-        } catch (e) {
-            setChecked(grid.isTrackingEnabled);
-            toast(e instanceof ApiError ? e.status : "Failed to update tracking");
-        }
-    };
-
-    return (
-        <Checkbox checked={checked} onChange={(next) => void onChange(next)}>
-            <span className="sidebar__network-tracking-label">Enable tracking for this grid</span>
-        </Checkbox>
-    );
-}
-
 export function Sidebar({
     section,
     onSectionChange,
     busyCount,
     lowStockFavCount,
-    notifyEnabled,
-    onToggleNotify,
     username,
     isAdmin,
     onLogout,
+    mobileOpen,
+    onCloseMobile,
 }: SidebarProps) {
-    const { grids, selected, selectedGrid, selectGrid, refresh } = useNetwork();
-
-    return (
-        <aside className="sidebar">
-            <div className="sidebar__brand">
-                <div className="sidebar__brand-mark" />
-                <span className="sidebar__brand-name">AE2 TERMINAL</span>
-            </div>
-
-            <div className="sidebar__network">
-                <label className="sidebar__network-label" htmlFor="network-select">
-                    Network
-                </label>
-                <select
-                    id="network-select"
-                    className="sidebar__network-select"
-                    value={String(selected)}
-                    onChange={(e) => {
-                        const value = (e.target as HTMLSelectElement).value;
-                        const next: GridSelection = value === "all" ? "all" : Number(value);
-                        selectGrid(next);
-                    }}
-                >
-                    <option value="all">All Grids</option>
-                    {grids.map((g) => (
-                        <option key={g.key} value={g.key} disabled={g.key === -1}>
-                            {gridOptionLabel(g, grids)}
-                        </option>
-                    ))}
-                </select>
-                <span className="sidebar__network-meta">{gridMetaLine(selected, grids, selectedGrid)}</span>
-                {selectedGrid && selectedGrid.key !== -1 && (
-                    <GridTrackingCheckbox grid={selectedGrid} onTracked={refresh} />
-                )}
-            </div>
+    // Shared between the persistent aside (>=768px, an icon rail below 1024px - see app-shell.css) and
+    // the <768px off-canvas Drawer, so the two never drift out of sync with each other.
+    const body: ComponentChildren = (
+        <>
+            <NetworkPicker className="sidebar__network" />
 
             <nav className="sidebar__nav">
                 {NAV_ITEMS.map(({ section: itemSection, label, icon: Icon }) => (
                     <button
                         key={itemSection}
                         type="button"
+                        title={label}
                         className={cx("nav-item", itemSection === section && "nav-item--active")}
-                        onClick={() => onSectionChange(itemSection)}
+                        onClick={() => {
+                            onSectionChange(itemSection);
+                            onCloseMobile();
+                        }}
                     >
                         <Icon className="nav-item__icon" />
-                        {label}
+                        <span className="nav-item__label">{label}</span>
                         {itemSection === "jobs" && busyCount > 0 && (
                             <span className="nav-item__pill nav-item__pill--busy">{busyCount}</span>
                         )}
@@ -134,11 +70,6 @@ export function Sidebar({
             </nav>
 
             <div className="sidebar__footer">
-                <div className="sidebar__notify">
-                    <Checkbox checked={notifyEnabled} onChange={onToggleNotify}>
-                        <span className="sidebar__notify-label">Notify on job completion</span>
-                    </Checkbox>
-                </div>
                 <div className="sidebar__account">
                     <div className="sidebar__avatar">{username.slice(0, 1).toUpperCase()}</div>
                     <div className="sidebar__account-info">
@@ -150,6 +81,23 @@ export function Sidebar({
                     </button>
                 </div>
             </div>
-        </aside>
+        </>
+    );
+
+    return (
+        <>
+            <aside className="sidebar">
+                <div className="sidebar__brand">
+                    <div className="sidebar__brand-mark" />
+                    <span className="sidebar__brand-name">AE2 TERMINAL</span>
+                </div>
+                {body}
+            </aside>
+            {mobileOpen && (
+                <Drawer side="left" title="AE2 Terminal" onClose={onCloseMobile}>
+                    {body}
+                </Drawer>
+            )}
+        </>
     );
 }

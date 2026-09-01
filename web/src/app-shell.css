@@ -41,13 +41,16 @@
     color: var(--text-primary);
 }
 
-.sidebar__network {
+/* Network picker - shared by the sidebar (full column layout) and the topbar's compact copy (M11, see
+   shell/NetworkPicker.tsx and its `variant` prop); `.sidebar__network`/`.topbar__network` only adjust
+   layout for their context, never restyle the controls themselves. */
+.network-picker {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-.sidebar__network-label {
+.network-picker__label {
     font-family: var(--font-display);
     font-size: 11px;
     letter-spacing: 1px;
@@ -56,7 +59,7 @@
     padding: 0 4px;
 }
 
-.sidebar__network-select {
+.network-picker__select {
     width: 100%;
     background: var(--bg-card);
     color: var(--text-primary);
@@ -67,19 +70,40 @@
     font-size: 13px;
 }
 
-.sidebar__network-meta {
+.network-picker__meta {
     font-size: 11px;
     color: var(--text-dim);
     padding: 0 4px;
 }
 
-.sidebar__network .checkbox-row {
+.network-picker .checkbox-row {
     padding: 0 4px;
 }
 
-.sidebar__network-tracking-label {
+.network-picker__tracking-label {
     font-size: 12px;
     color: var(--text-muted);
+}
+
+/* Topbar's compact copy: one row instead of a column, sized to share space with the title/actions. */
+.topbar__network.network-picker {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.topbar__network .network-picker__select {
+    width: auto;
+    min-width: 140px;
+    flex: 0 1 220px;
+}
+.topbar__network .network-picker__meta {
+    padding: 0;
+}
+.topbar__network .checkbox-row {
+    padding: 0;
 }
 
 .sidebar__nav {
@@ -143,15 +167,6 @@
     gap: 10px;
     border-top: 1px solid var(--border-subtle);
     padding-top: 16px;
-}
-
-.sidebar__notify {
-    padding: 0 4px;
-}
-
-.sidebar__notify-label {
-    font-size: 12px;
-    color: var(--text-muted);
 }
 
 .sidebar__account {
@@ -235,7 +250,26 @@
 .topbar__actions {
     margin-left: auto;
     display: flex;
+    align-items: center;
     gap: 10px;
+}
+
+.topbar__updated {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+/* <768px only (see the off-canvas breakpoint below) - toggles Sidebar's mobile Drawer. */
+.topbar__nav-toggle {
+    display: none;
+    flex: 0 0 32px;
+}
+
+/* <1024px only - the sidebar's own network picker is hidden at that width (icon rail / off-canvas has
+   no room for it), so this compact copy takes over; see NetworkPicker's `variant="topbar"`. */
+.topbar__network {
+    display: none;
 }
 
 .content {
@@ -278,4 +312,145 @@
     text-align: center;
     color: var(--text-dim);
     font-size: 13px;
+}
+
+/* Density setting (M11's Settings modal) - a light touch today (tighter gaps/padding on the card grids
+   already in place); the fuller table-density mode this switch is meant for is out of scope here, left
+   for the Browser-scale follow-on work. */
+.app-shell--density-compact .content {
+    gap: 12px;
+}
+.app-shell--density-compact .item-grid,
+.app-shell--density-compact .cpu-grid,
+.app-shell--density-compact .stats__grid {
+    gap: 8px;
+}
+.app-shell--density-compact .item-card,
+.app-shell--density-compact .cpu-card,
+.app-shell--density-compact .stat-card {
+    padding: 10px;
+    gap: 6px;
+}
+.app-shell--density-compact .history-row {
+    padding: 10px 12px;
+}
+
+/* ---- Responsive shell (M11) ----
+   Three tiers, CSS-only except the mobile nav Drawer toggle (Sidebar.tsx already renders both the
+   persistent aside and the off-canvas Drawer; this only ever decides which one is visible/reachable):
+     >=1024px  - unchanged desktop layout.
+     768-1023px - sidebar collapses to a 76px icon rail; the network picker moves into the topbar.
+     <768px    - sidebar is fully hidden; a hamburger in the topbar opens Sidebar's Drawer instead. */
+
+/* Below 1024px, the sidebar has no room for the network picker - the topbar's compact copy takes over. */
+@media (max-width: 1023.98px) {
+    .sidebar__network {
+        display: none;
+    }
+    .topbar__network {
+        display: flex;
+    }
+    .topbar {
+        /* Overrides the base rule's `flex: 0 0 68px` - fixed-basis + wrap would just overflow the box
+           instead of growing it, since `flex-shrink: 0` stops the extra wrapped rows from being
+           accounted for at all (found by screenshotting this breakpoint: the wrapped rows silently
+           overlapped `.content` below). */
+        height: auto;
+        flex: 0 1 auto;
+        min-height: 68px;
+        flex-wrap: wrap;
+        row-gap: 10px;
+        padding: 12px 16px;
+    }
+    .topbar__search {
+        margin-left: 0;
+        width: 100%;
+        order: 3;
+        flex: 1 1 100%;
+    }
+}
+
+/* Icon rail: labels/account text disappear, nav icons + badge pills remain. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+    .sidebar {
+        width: 76px;
+        flex: 0 0 76px;
+        padding: 16px 10px;
+        align-items: center;
+    }
+    .sidebar__brand {
+        padding: 0;
+    }
+    .sidebar__brand-name {
+        display: none;
+    }
+    .nav-item {
+        justify-content: center;
+        padding: 10px 6px;
+    }
+    .nav-item__label {
+        display: none;
+    }
+    .nav-item__pill {
+        margin-left: 0;
+        position: absolute;
+        transform: translate(40%, -60%);
+    }
+    .nav-item {
+        position: relative;
+    }
+    .sidebar__account {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .sidebar__account-info {
+        display: none;
+    }
+}
+
+/* Off-canvas: the inline sidebar disappears entirely; Sidebar.tsx's Drawer copy (opened via the
+   hamburger) is the only way to reach navigation, network selection and account controls. */
+@media (max-width: 767.98px) {
+    .sidebar {
+        display: none;
+    }
+    .topbar__nav-toggle {
+        display: inline-flex;
+    }
+    .content {
+        padding: 16px;
+    }
+    .favorites-list {
+        padding: 16px;
+    }
+    .item-grid,
+    .cpu-grid,
+    .stats__grid,
+    .tracking-detail__items {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .craft-detail__columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .timeline__label {
+        width: 110px;
+        flex-basis: 110px;
+    }
+    .craft-detail__bottleneck-name {
+        width: 110px;
+        flex-basis: 110px;
+    }
+    /* Touch targets: the design's icon-only controls (16-20px hit areas) are too small to tap reliably -
+       bump each closer to the ~44px minimum without changing the visible icon size. `.item-card__star`
+       is corner-pinned via `top`/`right`, so it only gets extra padding (a negative-margin compensation
+       would shift its pinned position); the two chip-remove buttons sit in normal flow, so they use the
+       padding+negative-margin trick to grow the hit area without disturbing their neighbours' layout. */
+    .item-card__star {
+        padding: 10px;
+    }
+    .stats__view-chip-remove,
+    .compare__chip-remove {
+        padding: 12px;
+        margin: -12px;
+    }
 }

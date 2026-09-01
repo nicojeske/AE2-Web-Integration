@@ -28,7 +28,9 @@
 
 .item-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    /* `--tile-min` is the Settings modal's "items per row" knob (Browser.tsx) - falls back to the
+       design's original 220px when unset (e.g. a screenshot/test harness that skips PrefsProvider). */
+    grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 220px), 1fr));
     gap: 12px;
 }
 

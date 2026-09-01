@@ -374,6 +374,9 @@
     display: flex;
     justify-content: flex-end;
 }
+.drawer-backdrop--left {
+    justify-content: flex-start;
+}
 .drawer {
     width: 420px;
     max-width: 100vw;
@@ -382,6 +385,11 @@
     border-left: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
+}
+.drawer--left {
+    width: 260px;
+    border-left: 0;
+    border-right: 1px solid var(--border-subtle);
 }
 .drawer__header {
     padding: 18px 20px;

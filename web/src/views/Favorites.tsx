@@ -32,7 +32,7 @@ function parseThresholdInput(raw: string, min: number, fallback: number): number
 
 export function Favorites() {
     const { items } = useItems();
-    const { favorites, thresholds, setThreshold, removeFavorite } = usePrefs();
+    const { favorites, thresholds, setThreshold, removeFavorite, settings } = usePrefs();
     const { startOrder } = useOrder();
 
     const rows = useMemo<FavoriteRow[]>(() => {
@@ -75,6 +75,7 @@ export function Favorites() {
                 <FavoriteRowCard
                     key={row.key}
                     row={row}
+                    numberFormat={settings.numberFormat}
                     onThresholdChange={(field, value) => setThreshold(row.key, field, value)}
                     onCraft={() =>
                         startOrder({
@@ -99,18 +100,19 @@ export function Favorites() {
 
 interface FavoriteRowCardProps {
     row: FavoriteRow;
+    numberFormat: "full" | "compact";
     onThresholdChange: (field: keyof Thresholds, value: number | boolean) => void;
     onCraft: () => void;
     onRemove: () => void;
 }
 
-function FavoriteRowCard({ row, onThresholdChange, onCraft, onRemove }: FavoriteRowCardProps) {
+function FavoriteRowCard({ row, numberFormat, onThresholdChange, onCraft, onRemove }: FavoriteRowCardProps) {
     return (
         <Card className="favorite-row">
             <div className="favorite-row__identity">
                 <FormattedText text={row.itemname} className="favorite-row__name" />
                 <span className="favorite-row__meta">
-                    {row.gridLabel} - {formatNumber(row.stored)} stored
+                    {row.gridLabel} - {formatNumber(row.stored, numberFormat)} stored
                 </span>
             </div>
 

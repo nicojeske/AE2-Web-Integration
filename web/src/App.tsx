@@ -1,20 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
+import { formatRelativeAge } from "./api/format";
 import { logout } from "./api/client";
 import { getContext } from "./context";
 import { CpusProvider, useCpus } from "./state/cpus";
 import { HistoryProvider, useHistory } from "./state/history";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
+import type { GridSelection } from "./state/network";
 import { AutoCraftProvider } from "./state/autoCraft";
 import { OrderProvider, useOrder } from "./state/order";
 import { PrefsProvider, usePrefs } from "./state/prefs";
 import { StatsProvider, useStats } from "./state/stats";
 import { ToastProvider, useToast } from "./state/toast";
 import { OutdatedBanner } from "./shell/OutdatedBanner";
+import { useRoute } from "./shell/route";
 import type { Section } from "./shell/section";
 import { Sidebar } from "./shell/Sidebar";
 import { Topbar } from "./shell/Topbar";
+import { cx } from "./ui/cx";
 import { Browser } from "./views/Browser";
 import { CraftDetail } from "./views/CraftDetail";
 import { Favorites } from "./views/Favorites";
@@ -22,43 +26,63 @@ import { History } from "./views/History";
 import { Jobs } from "./views/Jobs";
 import { OrderModal } from "./views/OrderModal";
 import { PlanDetail } from "./views/PlanDetail";
+import { SettingsModal } from "./views/SettingsModal";
 import { Statistics } from "./views/Statistics";
 import { TrackingDetail } from "./views/TrackingDetail";
 import { isLowStock } from "./views/browserModel";
 
 function Shell() {
     const context = getContext();
-    const { selected, refresh: refreshGrids } = useNetwork();
-    const { items, refresh: refreshItems } = useItems();
+    const route = useRoute();
+    const { selected, selectGrid, refresh: refreshGrids } = useNetwork();
+    const { items, fetchedAt, refresh: refreshItems } = useItems();
     const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
     const { refresh: refreshHistory } = useHistory();
     const { setActive: setStatsActive, refresh: refreshStats } = useStats();
-    const { favorites, thresholds, notifyEnabled, setNotifyEnabled } = usePrefs();
+    const { favorites, thresholds, notifyEnabled, setNotifyEnabled, settings } = usePrefs();
     const order = useOrder();
     const toast = useToast();
-    const [section, setSection] = useState<Section>("browser");
     const [search, setSearch] = useState("");
-    const [craftDetail, setCraftDetail] = useState<{ gridId: number; cpuName: string } | null>(null);
-    const [historyDetail, setHistoryDetail] = useState<{ gridId: number; id: number } | null>(null);
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
 
-    const changeSection = useCallback((next: Section) => {
-        setCraftDetail(null);
-        setHistoryDetail(null);
-        setSection(next);
-    }, []);
+    const section = route.section;
+    const craftDetail = route.detail?.type === "cpu" ? route.detail : null;
+    const historyDetail = route.detail?.type === "history" ? route.detail : null;
 
-    // A grid switch can leave `craftDetail`/`historyDetail` pointing at something that no longer means
-    // anything in the new selection (a different grid entirely, in single-grid mode) - close it rather
-    // than showing a stale/mismatched page. Sidebar drives grid selection directly via `useNetwork` (not
-    // through Shell), so this has to watch `selected` rather than wrap a handler the way `changeSection`
-    // does. An in-progress order is discarded for the same reason - its job is tied to the grid it was
-    // computed against, and would otherwise validate CPUs on the wrong network.
+    const changeSection = useCallback(
+        (next: Section) => {
+            setMobileNavOpen(false);
+            route.push({ section: next, detail: null });
+        },
+        [route],
+    );
+
+    // Two-way sync between the URL's `?grid=` and network selection - the URL wins on load and on
+    // Back/Forward (this effect, which only reacts to `route.grid`); a manual switch (Sidebar calls
+    // `selectGrid` directly via `useNetwork`, not through Shell - kept that way so it stays oblivious to
+    // routing) is mirrored into the URL by the second effect below instead.
     useEffect(() => {
-        setCraftDetail(null);
-        setHistoryDetail(null);
-        order.discard();
-        // Deliberately just `selected` - `order.discard` changing identity (e.g. once the order it just
-        // discarded clears `flow`) must not re-run this effect a second time.
+        if (route.grid !== null && route.grid !== selected) selectGrid(route.grid);
+        // Deliberately just `route.grid` - `selectGrid` settling into `selected` must not re-run this.
+    }, [route.grid, selectGrid]);
+
+    const prevSelectedRef = useRef<GridSelection | undefined>(undefined);
+    useEffect(() => {
+        const prev = prevSelectedRef.current;
+        prevSelectedRef.current = selected;
+        order.discard(); // harmless no-op when nothing is in flight; mirrors the pre-M11 effect's shape
+        if (prev === undefined) {
+            // First mount: mirror the persisted selection into the URL without discarding a deep-linked
+            // detail overlay - only a *real* switch (below) invalidates one of those.
+            route.replace({ grid: selected });
+            return;
+        }
+        if (prev === selected) return;
+        // A real network switch invalidates any detail overlay - it's tied to the grid it was opened
+        // against, and would otherwise show a stale/mismatched page under the new selection.
+        route.replace({ grid: selected, detail: null });
+        // Deliberately just `selected` - `route`/`order` changing identity themselves must not re-run this.
     }, [selected]);
 
     const onOrderSubmitted = useCallback(() => {
@@ -67,7 +91,7 @@ function Shell() {
 
     // Shell is the single writer of `detailScope` - the expensive per-CPU `/get` fan-in covers every
     // busy CPU while Jobs is the active section, narrows to just the one CPU Craft Detail is showing,
-    // and stops entirely everywhere else (server-thread drain budget, see REDESIGN_MILESTONES.md caveat 2).
+    // and stops entirely everywhere else (server-thread drain budget - see CoreEngine.DRAIN_BUDGET_NANOS).
     useEffect(() => {
         if (craftDetail) {
             setDetailScope({ gridId: craftDetail.gridId, cpuName: craftDetail.cpuName });
@@ -105,18 +129,20 @@ function Shell() {
         [items, favorites, thresholds],
     );
 
+    const updatedLabel = fetchedAt !== null ? `Updated ${formatRelativeAge(fetchedAt)}` : null;
+
     return (
-        <div className="app-shell">
+        <div className={cx("app-shell", settings.density === "compact" && "app-shell--density-compact")}>
             <Sidebar
                 section={section}
                 onSectionChange={changeSection}
                 busyCount={busyCount}
                 lowStockFavCount={lowStockFavCount}
-                notifyEnabled={notifyEnabled}
-                onToggleNotify={onToggleNotify}
                 username={context.username}
                 isAdmin={context.isAdmin}
                 onLogout={logout}
+                mobileOpen={mobileNavOpen}
+                onCloseMobile={() => setMobileNavOpen(false)}
             />
             <div className="main">
                 {context.isAdmin && context.isOutdated && <OutdatedBanner />}
@@ -125,19 +151,22 @@ function Shell() {
                     search={section === "browser" ? search : undefined}
                     onSearchChange={section === "browser" ? setSearch : undefined}
                     onRefresh={() => void onRefresh()}
+                    onToggleNav={() => setMobileNavOpen(true)}
+                    updatedLabel={updatedLabel}
+                    onOpenSettings={() => setSettingsOpen(true)}
                 />
                 <div className="content">
                     {craftDetail ? (
                         <CraftDetail
                             gridId={craftDetail.gridId}
                             cpuName={craftDetail.cpuName}
-                            onClose={() => setCraftDetail(null)}
+                            onClose={() => route.push({ detail: null })}
                         />
                     ) : historyDetail ? (
                         <TrackingDetail
                             gridId={historyDetail.gridId}
                             id={historyDetail.id}
-                            onClose={() => setHistoryDetail(null)}
+                            onClose={() => route.push({ detail: null })}
                         />
                     ) : order.flow?.previewing ? (
                         <PlanDetail onSubmitted={onOrderSubmitted} />
@@ -147,11 +176,20 @@ function Shell() {
                             {section === "jobs" && (
                                 <Jobs
                                     onOpenCraftDetail={(cpu) =>
-                                        setCraftDetail({ gridId: cpu.sourceGridId, cpuName: cpu.name })
+                                        route.push({
+                                            section: "jobs",
+                                            detail: { type: "cpu", gridId: cpu.sourceGridId, cpuName: cpu.name },
+                                        })
                                     }
                                 />
                             )}
-                            {section === "history" && <History onOpen={setHistoryDetail} />}
+                            {section === "history" && (
+                                <History
+                                    onOpen={({ gridId, id }) =>
+                                        route.push({ section: "history", detail: { type: "history", gridId, id } })
+                                    }
+                                />
+                            )}
                             {section === "favorites" && <Favorites />}
                             {section === "stats" && <Statistics />}
                         </>
@@ -159,6 +197,13 @@ function Shell() {
                 </div>
             </div>
             <OrderModal onSubmitted={onOrderSubmitted} />
+            {settingsOpen && (
+                <SettingsModal
+                    onClose={() => setSettingsOpen(false)}
+                    notifyEnabled={notifyEnabled}
+                    onToggleNotify={onToggleNotify}
+                />
+            )}
         </div>
     );
 }

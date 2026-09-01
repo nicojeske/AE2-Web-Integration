@@ -78,23 +78,24 @@ export function Statistics() {
                     <div className="stats__views">
                         <span className="stats__views-label">Saved views</span>
                         {views.map((v) => (
-                            <button
-                                key={v.id}
-                                type="button"
-                                className="stats__view-chip"
-                                onClick={() => setCompareIds(v.itemids)}
-                            >
-                                {v.name}
-                                <span
+                            <div key={v.id} className="stats__view-chip">
+                                <button
+                                    type="button"
+                                    className="stats__view-chip-open"
+                                    onClick={() => setCompareIds(v.itemids)}
+                                >
+                                    {v.name}
+                                </button>
+                                <button
+                                    type="button"
                                     className="stats__view-chip-remove"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeStatsView(v.id);
-                                    }}
+                                    title="Remove saved view"
+                                    aria-label={`Remove saved view ${v.name}`}
+                                    onClick={() => removeStatsView(v.id)}
                                 >
                                     ×
-                                </span>
-                            </button>
+                                </button>
+                            </div>
                         ))}
                     </div>
                 )}

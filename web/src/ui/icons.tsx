@@ -63,6 +63,35 @@ export function ChartIcon({ size = 18, style, className }: IconProps) {
     );
 }
 
+export function MenuIcon({ size = 18, style, className }: IconProps) {
+    return (
+        <svg {...base(size)} style={style} className={className}>
+            <path
+                d="M4 7h16M4 12h16M4 17h16"
+                stroke="currentColor"
+                stroke-width="1.8"
+                fill="none"
+                stroke-linecap="round"
+            />
+        </svg>
+    );
+}
+
+export function GearIcon({ size = 18, style, className }: IconProps) {
+    return (
+        <svg {...base(size)} style={style} className={className}>
+            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <path
+                d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M17.6 6.4l-1.6 1.6M8 16l-1.6 1.6M17.6 17.6L16 16M8 8 6.4 6.4"
+                stroke="currentColor"
+                stroke-width="1.8"
+                fill="none"
+                stroke-linecap="round"
+            />
+        </svg>
+    );
+}
+
 export function ExpandIcon({ size = 13, style, className }: IconProps) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" style={style} className={className}>

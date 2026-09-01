@@ -1,13 +1,15 @@
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
-import { useCallback, useContext, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { ApiError, getItems } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
 import type { DetailedItem } from "../api/types";
 import { gridOptionLabel } from "../shell/gridLabel";
-import { isFluidId, modOf } from "../views/browserModel";
+import { hasAutoCraftFavorite, isFluidId, modOf } from "../views/browserModel";
 import { useNetwork } from "./network";
+import { usePrefs } from "./prefs";
+import type { Settings } from "./prefs";
 
 /** A `DetailedItem` row tagged with derived/source fields the browser (and later M6) need. */
 export interface BrowserItem extends DetailedItem {
@@ -38,17 +40,41 @@ export interface ItemsContextValue {
     error: string | null;
     /** Grid labels that failed during an All-Grids fan-out, so one bad grid doesn't blank the page. */
     failedGrids: string[];
+    /** `Date.now()` of the last successful load (partial All-Grids failures still count), `null` before
+     *  the first one or after a fully-failed refresh - feeds the topbar's "updated Ns ago" label. */
+    fetchedAt: number | null;
     refresh: () => Promise<void>;
 }
 
 const ItemsContext = createContext<ItemsContextValue | null>(null);
 
+const AUTO_REFRESH_INTERVALS: Record<Exclude<Settings["autoRefreshItems"], "off">, number> = {
+    "15s": 15_000,
+    "30s": 30_000,
+    "60s": 60_000,
+};
+/** The fixed cadence auto-craft used before M11 - kept as the floor so turning the Settings toggle off
+ *  doesn't stop auto-craft favourites from ever seeing fresh stock. */
+const AUTOCRAFT_FALLBACK_MS = 30_000;
+
+/** `null` when nothing needs a poll at all; otherwise the faster of the user's setting and auto-craft's
+ *  own floor, so having both active doesn't leave stock staler than either alone would. */
+function pollIntervalMs(autoRefresh: Settings["autoRefreshItems"], autoCraftArmed: boolean): number | null {
+    const settingMs = autoRefresh === "off" ? null : AUTO_REFRESH_INTERVALS[autoRefresh];
+    const autoCraftMs = autoCraftArmed ? AUTOCRAFT_FALLBACK_MS : null;
+    if (settingMs === null) return autoCraftMs;
+    if (autoCraftMs === null) return settingMs;
+    return Math.min(settingMs, autoCraftMs);
+}
+
 export function ItemsProvider({ children }: { children?: ComponentChildren }) {
     const { grids, selected, selectedGrid } = useNetwork();
+    const { favorites, thresholds, settings } = usePrefs();
     const [items, setItems] = useState<BrowserItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [failedGrids, setFailedGrids] = useState<string[]>([]);
+    const [fetchedAt, setFetchedAt] = useState<number | null>(null);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -74,18 +100,22 @@ export function ItemsProvider({ children }: { children?: ComponentChildren }) {
                 }
                 setItems(collected);
                 setFailedGrids(failed);
+                setFetchedAt(Date.now());
             } else if (selectedGrid && selectedGrid.key !== -1) {
                 const rows = await getItems(selectedGrid.key);
                 setItems(toBrowserItems(rows, selectedGrid.key, gridOptionLabel(selectedGrid, grids)));
+                setFetchedAt(Date.now());
             } else {
                 // A persisted selection can name a grid key no longer in `grids` (stale
                 // localStorage), or the disabled `key === -1` admin-only entry - neither is
                 // fetchable, so surface an empty list rather than calling `items?grid=<bad key>`.
                 setItems([]);
+                setFetchedAt(null);
             }
         } catch (e) {
             setError(e instanceof ApiError ? e.status : e instanceof Error ? e.message : String(e));
             setItems([]);
+            setFetchedAt(null);
         } finally {
             setLoading(false);
         }
@@ -95,9 +125,27 @@ export function ItemsProvider({ children }: { children?: ComponentChildren }) {
         void refresh();
     }, [refresh]);
 
+    // `items` isn't polled by anything else - armed whenever the Settings auto-refresh toggle is on, or
+    // (regardless of that toggle) at least one auto-craft favourite is resolvable in the currently
+    // loaded items, so auto-craft keeps seeing fresh stock even with auto-refresh left off. Before M11
+    // this same test armed a fixed-cadence timer inside `state/autoCraft.tsx` directly.
+    const refreshRef = useRef(refresh);
+    refreshRef.current = refresh;
+    useEffect(() => {
+        const intervalMs = pollIntervalMs(
+            settings.autoRefreshItems,
+            hasAutoCraftFavorite(items, favorites, thresholds),
+        );
+        if (intervalMs === null) return;
+        const timer = setInterval(() => {
+            if (!document.hidden) void refreshRef.current();
+        }, intervalMs);
+        return () => clearInterval(timer);
+    }, [items, favorites, thresholds, settings.autoRefreshItems]);
+
     const value = useMemo<ItemsContextValue>(
-        () => ({ items, loading, error, failedGrids, refresh }),
-        [items, loading, error, failedGrids, refresh],
+        () => ({ items, loading, error, failedGrids, fetchedAt, refresh }),
+        [items, loading, error, failedGrids, fetchedAt, refresh],
     );
 
     return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;

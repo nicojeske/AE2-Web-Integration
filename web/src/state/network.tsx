@@ -4,10 +4,12 @@ import { useCallback, useContext, useEffect, useMemo, useState } from "preact/ho
 
 import { getGrids } from "../api/client";
 import type { GridSummary } from "../api/types";
+import { parseHash } from "../shell/route";
 
 const SELECTED_GRID_STORAGE_KEY = "ae2.selectedGrid";
 
-/** `"all"` fans requests out across every accessible grid (see caveat 6 in REDESIGN_MILESTONES.md). */
+/** `"all"` fans requests out across every accessible grid - the reason Statistics (state/stats.tsx) is
+ *  single-grid only: its tracked-item set and cap are per-grid server-side, with no sane "all" story. */
 export type GridSelection = "all" | number;
 
 export interface NetworkContextValue {
@@ -21,7 +23,16 @@ export interface NetworkContextValue {
     refresh: () => Promise<void>;
 }
 
-function readStoredSelection(): GridSelection {
+/**
+ * The URL's own `?grid=` wins over the persisted selection when both are present (M11) - a deep link
+ * should show what it names, not whatever was last selected in this browser. `shell/route.ts`'s own
+ * "URL wins on Back/Forward" effect (`App.tsx`) then only ever fires for a *later* hash change, since
+ * this already settles the very first render to match - see that effect's comment for why the ordering
+ * matters (skipping this would race the initial URL->state sync against the state->URL mirror).
+ */
+function readInitialSelection(): GridSelection {
+    const fromUrl = parseHash(window.location.hash).grid;
+    if (fromUrl !== null) return fromUrl;
     const raw = localStorage.getItem(SELECTED_GRID_STORAGE_KEY);
     if (raw === null || raw === "all") return "all";
     const n = Number(raw);
@@ -34,7 +45,7 @@ export function NetworkProvider({ children }: { children?: ComponentChildren }) 
     const [grids, setGrids] = useState<GridSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [selected, setSelectedState] = useState<GridSelection>(() => readStoredSelection());
+    const [selected, setSelectedState] = useState<GridSelection>(() => readInitialSelection());
 
     const refresh = useCallback(async () => {
         setLoading(true);

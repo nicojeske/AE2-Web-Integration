@@ -92,3 +92,19 @@ export function isLowStock(
     if (!favorites[key]) return false;
     return item.quantity < alertBelowFor(thresholds, key);
 }
+
+/**
+ * Any favourite with `autoCraft` on, resolvable in the currently loaded `items` - shared by
+ * `state/items.tsx` (whether its own poll is worth arming regardless of the Settings auto-refresh
+ * toggle) and `state/autoCraft.tsx` (whether there's anything for its own cycle to act on).
+ */
+export function hasAutoCraftFavorite(
+    items: BrowserItem[],
+    favorites: Record<string, true>,
+    thresholds: Record<string, Thresholds>,
+): boolean {
+    return items.some((item) => {
+        const key = prefsKey(item.sourceGridId, item.itemid);
+        return favorites[key] && thresholds[key]?.autoCraft;
+    });
+}

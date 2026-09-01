@@ -9,6 +9,29 @@ const THRESHOLDS_KEY = "ae2.thresholds";
 const NOTIFY_KEY = "ae2.notifyEnabled";
 const BROWSER_FILTERS_KEY = "ae2.browserFilters";
 const STATS_VIEWS_KEY = "ae2.statsViews";
+const SETTINGS_KEY = "ae2.settings";
+const SCHEMA_KEY = "ae2.schema";
+
+/**
+ * Bumped whenever a prefs key's shape changes in a way old data can't just fall back through
+ * `readJSON`'s default - nothing to migrate yet (M11 is this schema's first version), but the M13
+ * server-sync slice needs a versioned blob to upload instead of six loose keys, so the plumbing starts
+ * here rather than being invented under time pressure later.
+ */
+const CURRENT_SCHEMA_VERSION = 1;
+
+function migratePrefsSchema(): void {
+    const raw = localStorage.getItem(SCHEMA_KEY);
+    const from = raw === null ? 0 : Number(raw);
+    if (Number.isFinite(from) && from >= CURRENT_SCHEMA_VERSION) return;
+    // No migrations exist yet - this only stamps the version so a future one has something to compare
+    // against.
+    localStorage.setItem(SCHEMA_KEY, String(CURRENT_SCHEMA_VERSION));
+}
+// Runs once per page load (this module is only ever imported by the one PrefsProvider instance the
+// app mounts) - not worth re-running on every render inside the provider for a check this cheap either
+// way, but doing it at import time keeps the provider's own body free of one-time setup noise.
+migratePrefsSchema();
 
 /** Per-item auto-craft configuration, keyed by `prefsKey(gridId, itemid)`. Also used by M6. */
 export interface Thresholds {
@@ -59,6 +82,35 @@ export interface StatsView {
     range: StatsRange;
 }
 
+/** App-wide display/behavior knobs (M11's Settings modal) - one blob rather than one key each, since
+ *  none of these need independent migration and a single object is one read/write pair to reason about. */
+export interface Settings {
+    /** `formatNumber`'s mode (`api/format.ts`) - "compact" restores the legacy UI's large-quantity
+     *  readability at GTNH scale (`1.2M` instead of `1,204,532`). */
+    numberFormat: "full" | "compact";
+    /** Reserved for the Browser/History table-density work this milestone sets the switch up for. */
+    density: "comfortable" | "compact";
+    /** Minimum item-card width (px) feeding the Browser grid's `minmax(...)` - the legacy UI's
+     *  "items per row" knob, expressed as a size instead of a fixed column count so it still reflows. */
+    tileMin: number;
+    /** Arms `state/items.tsx`'s own poll independently of auto-craft's (which stays armed regardless of
+     *  this setting, at its own fixed cadence, whenever an auto-craft favourite exists). */
+    autoRefreshItems: "off" | "15s" | "30s" | "60s";
+    /** Statistics' range/compare-range reset every visit otherwise, unlike every other browser
+     *  preference - persisted here so a Settings default at least survives a reload. */
+    statsRange: StatsRange;
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+    numberFormat: "full",
+    density: "comfortable",
+    tileMin: 220,
+    autoRefreshItems: "off",
+    statsRange: "7d",
+};
+
+export const TILE_MIN_RANGE = { min: 140, max: 260 } as const;
+
 function readJSON<T>(key: string, fallback: T): T {
     try {
         const raw = localStorage.getItem(key);
@@ -86,6 +138,8 @@ export interface PrefsContextValue {
     statsViews: StatsView[];
     addStatsView: (view: Omit<StatsView, "id">) => void;
     removeStatsView: (id: string) => void;
+    settings: Settings;
+    setSettings: (update: (current: Settings) => Settings) => void;
 }
 
 const PrefsContext = createContext<PrefsContextValue | null>(null);
@@ -98,6 +152,12 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         readJSON(BROWSER_FILTERS_KEY, DEFAULT_BROWSER_FILTERS),
     );
     const [statsViews, setStatsViews] = useState<StatsView[]>(() => readJSON(STATS_VIEWS_KEY, []));
+    // Spread over the defaults (not a bare `readJSON` fallback) so a settings blob saved before a future
+    // field existed still picks up that field's default instead of `undefined`.
+    const [settings, setSettingsState] = useState<Settings>(() => ({
+        ...DEFAULT_SETTINGS,
+        ...readJSON(SETTINGS_KEY, {}),
+    }));
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
@@ -173,6 +233,14 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
+    const setSettings = useCallback((update: (current: Settings) => Settings) => {
+        setSettingsState((current) => {
+            const next = update(current);
+            writeJSON(SETTINGS_KEY, next);
+            return next;
+        });
+    }, []);
+
     const value = useMemo<PrefsContextValue>(
         () => ({
             favorites,
@@ -188,6 +256,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             statsViews,
             addStatsView,
             removeStatsView,
+            settings,
+            setSettings,
         }),
         [
             favorites,
@@ -203,6 +273,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             statsViews,
             addStatsView,
             removeStatsView,
+            settings,
+            setSettings,
         ],
     );
 

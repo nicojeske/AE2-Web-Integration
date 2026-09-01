@@ -21,7 +21,8 @@ export interface BrowserProps {
 export function Browser({ search }: BrowserProps) {
     const { items, loading, error, failedGrids, refresh } = useItems();
     const { selected, selectedGrid } = useNetwork();
-    const { favorites, thresholds, isFavorite, toggleFavorite, browserFilters, setBrowserFilters } = usePrefs();
+    const { favorites, thresholds, isFavorite, toggleFavorite, browserFilters, setBrowserFilters, settings } =
+        usePrefs();
     const { startOrder } = useOrder();
 
     const isAllGrids = selected === "all";
@@ -99,7 +100,7 @@ export function Browser({ search }: BrowserProps) {
             {filtered.length === 0 ? (
                 <div className="placeholder-panel">No items match the current filters.</div>
             ) : (
-                <section className="item-grid">
+                <section className="item-grid" style={{ "--tile-min": `${settings.tileMin}px` }}>
                     {filtered.map((item) => {
                         const key = prefsKey(item.sourceGridId, item.itemid);
                         const favorited = isFavorite(key);
@@ -127,7 +128,9 @@ export function Browser({ search }: BrowserProps) {
                                     </div>
                                 </div>
                                 <div className="item-card__stored">
-                                    <span className="item-card__stored-value">{formatNumber(item.quantity)}</span>
+                                    <span className="item-card__stored-value">
+                                        {formatNumber(item.quantity, settings.numberFormat)}
+                                    </span>
                                     <span className="item-card__stored-label">stored</span>
                                 </div>
                                 <div className="item-card__badges">

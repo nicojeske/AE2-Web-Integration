@@ -21,9 +21,6 @@ import { useToast } from "./toast";
 /** Don't retry a failed candidate (simulating plan, no valid CPU, ALL_CPU_BUSY, timeout, ...) for 5
  *  minutes - the milestone's required guard against a retry storm on a plan that keeps simulating. */
 const BACKOFF_MS = 5 * 60_000;
-/** `items` isn't polled anywhere else - armed only while there's something to watch (see the effect
- *  below), so a network with no auto-craft favourites costs nothing extra. */
-const STOCK_REFRESH_MS = 30_000;
 
 interface AutoCraftCandidate {
     key: string;
@@ -65,22 +62,9 @@ function findCandidates(
     return out;
 }
 
-/** Any favourite with `autoCraft` on, resolvable in the currently loaded `items` - used only to decide
- *  whether the stock-refresh timer is worth running, independent of whether it's below `keepStock` yet. */
-function hasAutoCraftFavorite(
-    items: BrowserItem[],
-    favorites: Record<string, true>,
-    thresholds: Record<string, Thresholds>,
-): boolean {
-    return items.some((item) => {
-        const key = prefsKey(item.sourceGridId, item.itemid);
-        return favorites[key] && thresholds[key]?.autoCraft;
-    });
-}
-
 export function AutoCraftProvider({ children }: { children?: ComponentChildren }) {
     const { selected } = useNetwork();
-    const { items, refresh: refreshItems } = useItems();
+    const { items } = useItems();
     const { cpus, refresh: refreshCpus } = useCpus();
     const { favorites, thresholds } = usePrefs();
     const toast = useToast();
@@ -200,22 +184,12 @@ export function AutoCraftProvider({ children }: { children?: ComponentChildren }
     }, [refreshCpus, cancelPending]);
 
     // Piggybacks on the two polls that already exist rather than running a timer of its own: the CPU
-    // poller's tick (which itself pauses while document.hidden) and any items refresh (manual or the
-    // timer below). No need for a fixed cadence beyond "shortly after either changes".
+    // poller's tick (which itself pauses while document.hidden) and items.tsx's own poll (M11) - which
+    // arms itself whenever `hasAutoCraftFavorite` holds, same test this used to run here directly, so
+    // this effect still fires shortly after either changes with no separate timer of its own to own.
     useEffect(() => {
         void runCycle();
     }, [items, cpus, runCycle]);
-
-    // items.tsx has no poll of its own - arm one here, but only while it's actually worth the server-thread
-    // cost (see REDESIGN_MILESTONES.md's "server-thread cost" risk), i.e. at least one auto-craft
-    // favourite is resolvable in the currently loaded items.
-    useEffect(() => {
-        if (!hasAutoCraftFavorite(items, favorites, thresholds)) return;
-        const timer = setInterval(() => {
-            if (!document.hidden) void refreshItems();
-        }, STOCK_REFRESH_MS);
-        return () => clearInterval(timer);
-    }, [items, favorites, thresholds, refreshItems]);
 
     return <>{children}</>;
 }

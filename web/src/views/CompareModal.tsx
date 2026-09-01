@@ -127,8 +127,9 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                     {addQuery && addOptions.length > 0 && (
                         <div className="compare__dropdown">
                             {addOptions.map((id) => (
-                                <div
+                                <button
                                     key={id}
+                                    type="button"
                                     className="compare__dropdown-row"
                                     onClick={() => {
                                         setIds((cur) => [...cur, id]);
@@ -136,7 +137,7 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                                     }}
                                 >
                                     {nameOf(id)}
-                                </div>
+                                </button>
                             ))}
                         </div>
                     )}
@@ -180,12 +181,14 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                             style={{ backgroundColor: `var(--series-${(i % 6) + 1})` }}
                         />
                         {nameOf(s.itemid)}
-                        <span
+                        <button
+                            type="button"
                             className="compare__chip-remove"
+                            aria-label={`Remove ${nameOf(s.itemid)} from comparison`}
                             onClick={() => setIds((cur) => cur.filter((x) => x !== s.itemid))}
                         >
                             ×
-                        </span>
+                        </button>
                     </div>
                 ))}
             </div>
