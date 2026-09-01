@@ -42,3 +42,5 @@ layout.json
 # Web terminal (core/web) - built output is committed to src/main/resources/assets/, sources are not.
 web/node_modules
 web/dist
+
+/itempanel_icons/
