@@ -112,16 +112,22 @@ export function formatTimestamp(ms: number): string {
 
 /**
  * Short axis label for a Statistics chart, scaled to what's distinguishable at the range's own
- * resolution - a clock time at 24h (5-min buckets), a day at 7d/30d, month+year at 1y/all (hourly
- * buckets, so individual days aren't meaningful).
+ * resolution - a clock time at 15m/1h/6h/24h (5-min buckets), a day at 7d/30d, month+year at 1y/all
+ * (hourly buckets, so individual days aren't meaningful). `"custom"` has no resolution of its own, so
+ * `spanMillis` (the request's own span, e.g. `history.to - history.from`) decides instead.
  */
-export function formatAxisTime(ms: number, range: StatsRange): string {
+export function formatAxisTime(ms: number, range: StatsRange, spanMillis?: number): string {
     const date = new Date(ms);
-    if (range === "24h") {
-        return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const clock = () => date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const day = () => date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+    const monthYear = () => date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+
+    if (range === "custom") {
+        if (spanMillis === undefined || spanMillis <= 86_400_000) return clock();
+        if (spanMillis <= 30 * 86_400_000) return day();
+        return monthYear();
     }
-    if (range === "7d" || range === "30d") {
-        return date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
-    }
-    return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    if (range === "15m" || range === "1h" || range === "6h" || range === "24h") return clock();
+    if (range === "7d" || range === "30d") return day();
+    return monthYear();
 }

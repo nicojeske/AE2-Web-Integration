@@ -24,10 +24,22 @@ public class GetItemHistory extends IAsyncRequest {
             return;
         }
 
-        Long spanMillis = rangeToMillis(getParams.getOrDefault("range", "7d"));
-        if (spanMillis == null) {
-            deny("BAD_PARAM");
-            return;
+        String rangeParam = getParams.getOrDefault("range", "7d");
+        Long spanMillis;
+        if (rangeParam.equals("custom")) {
+            Integer minutes = HTTPUtils.parseInt(getParams.get("minutes"));
+            if (minutes == null || minutes < 1) {
+                deny("BAD_PARAM");
+                return;
+            }
+            long maxMinutes = TimeUnit.DAYS.toMinutes(Config.STATISTICS_HOURLY_RETENTION_DAYS());
+            spanMillis = TimeUnit.MINUTES.toMillis(Math.min(minutes, maxMinutes));
+        } else {
+            spanMillis = rangeToMillis(rangeParam);
+            if (spanMillis == null) {
+                deny("BAD_PARAM");
+                return;
+            }
         }
 
         int points = DEFAULT_POINTS;
@@ -67,6 +79,12 @@ public class GetItemHistory extends IAsyncRequest {
     /** "all" is honestly labelled: it maps to the full configured retention, not an unbounded range. */
     private static Long rangeToMillis(String range) {
         switch (range) {
+            case "15m":
+                return TimeUnit.MINUTES.toMillis(15);
+            case "1h":
+                return TimeUnit.HOURS.toMillis(1);
+            case "6h":
+                return TimeUnit.HOURS.toMillis(6);
             case "24h":
                 return TimeUnit.HOURS.toMillis(24);
             case "7d":

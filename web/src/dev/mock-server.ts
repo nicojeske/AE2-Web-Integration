@@ -8,6 +8,7 @@ import {
     createJob,
     findGrid,
     findItemByHashcode,
+    MOCK_HOURLY_RETENTION_DAYS,
     MOCK_TRACKED_LIMIT,
     mockGrids,
     mockItemHistory,
@@ -20,7 +21,7 @@ import {
     toJobData,
 } from "./fixtures.ts";
 
-const STATS_RANGES = new Set<StatsRange>(["24h", "7d", "30d", "1y", "all"]);
+const STATS_RANGES = new Set<StatsRange>(["15m", "1h", "6h", "24h", "7d", "30d", "1y", "all", "custom"]);
 const MAX_HISTORY_POINTS = 500;
 const DEFAULT_HISTORY_POINTS = 120;
 const MAX_TRACKED_ITEMID_LENGTH = 256;
@@ -296,6 +297,13 @@ export function mockApiPlugin(): Plugin {
                         const rangeParam = params.get("range") ?? "7d";
                         if (!STATS_RANGES.has(rangeParam as StatsRange)) return respond(res, "BAD_PARAM", null);
                         const range = rangeParam as StatsRange;
+                        let customMinutes: number | undefined;
+                        if (range === "custom") {
+                            const minutesParam = params.get("minutes");
+                            const n = minutesParam === null ? NaN : Number(minutesParam);
+                            if (!Number.isInteger(n) || n < 1) return respond(res, "BAD_PARAM", null);
+                            customMinutes = Math.min(n, MOCK_HOURLY_RETENTION_DAYS * 1440);
+                        }
                         const pointsParam = params.get("points");
                         let points = DEFAULT_HISTORY_POINTS;
                         if (pointsParam !== null) {
@@ -314,7 +322,7 @@ export function mockApiPlugin(): Plugin {
                                   ),
                               ]
                             : [...grid.trackedItems];
-                        ok(res, mockItemHistory(grid, itemids, range, points));
+                        ok(res, mockItemHistory(grid, itemids, range, points, customMinutes));
                         return;
                     }
                     case "/trackeditems": {

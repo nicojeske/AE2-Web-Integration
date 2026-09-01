@@ -803,16 +803,20 @@ export function mockItemHistory(
     itemids: string[],
     range: StatsRange,
     pointsRequested: number,
+    customMinutes?: number,
 ): ItemHistoryResult {
     const now = Date.now();
-    const rangeMs: Record<StatsRange, number> = {
+    const rangeMs: Record<Exclude<StatsRange, "custom">, number> = {
+        "15m": 15 * 60_000,
+        "1h": 60 * 60_000,
+        "6h": 6 * 60 * 60_000,
         "24h": 86_400_000,
         "7d": 7 * 86_400_000,
         "30d": 30 * 86_400_000,
         "1y": MOCK_HOURLY_RETENTION_DAYS * 86_400_000,
         all: MOCK_HOURLY_RETENTION_DAYS * 86_400_000,
     };
-    const span = rangeMs[range];
+    const span = range === "custom" ? (customMinutes ?? 60) * 60_000 : rangeMs[range];
     const resolution: "fine" | "hourly" = span <= MOCK_FINE_RETENTION_MS ? "fine" : "hourly";
     const tierBucketMs = resolution === "fine" ? MOCK_SAMPLE_INTERVAL_MS : MOCK_HOURLY_BUCKET_MS;
 

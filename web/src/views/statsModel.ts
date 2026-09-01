@@ -20,15 +20,36 @@ export const COMPARE_POINTS = 500;
 export const MAX_COMPARE_SERIES = 6;
 
 /**
- * The design's four ranges (default 7d). `1y` stays in `StatsRange` for wire fidelity but isn't
- * offered here - at the server's default 365-day hourly retention it is identical to "all".
+ * The design's four ranges (default 7d) plus finer presets and a free-entry custom span. `1y` stays in
+ * `StatsRange` for wire fidelity but isn't offered here - at the server's default 365-day hourly
+ * retention it is identical to "all".
  */
 export const RANGE_OPTIONS: SegmentedOption<StatsRange>[] = [
+    { value: "15m", label: "15m" },
+    { value: "1h", label: "1h" },
+    { value: "6h", label: "6h" },
     { value: "24h", label: "Last 24h" },
     { value: "7d", label: "Last 7 days" },
     { value: "30d", label: "Last 30 days" },
     { value: "all", label: "All time" },
+    { value: "custom", label: "Custom" },
 ];
+
+/** Default span (in minutes) a range control switches to when first landing on "custom". */
+export const DEFAULT_CUSTOM_MINUTES = 60;
+
+export type CustomRangeUnit = "minutes" | "hours" | "days";
+
+const CUSTOM_UNIT_MINUTES: Record<CustomRangeUnit, number> = {
+    minutes: 1,
+    hours: 60,
+    days: 60 * 24,
+};
+
+/** Amount+unit -> minutes for the `custom` range's `minutes` wire param, floored to at least 1. */
+export function customRangeToMinutes(amount: number, unit: CustomRangeUnit): number {
+    return Math.max(1, Math.round(amount * CUSTOM_UNIT_MINUTES[unit]));
+}
 
 export interface Point {
     x: number;

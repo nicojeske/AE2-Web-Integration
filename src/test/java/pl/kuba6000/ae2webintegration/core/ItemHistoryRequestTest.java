@@ -77,6 +77,28 @@ class ItemHistoryRequestTest {
     }
 
     @Test
+    void itemHistoryAcceptsTheFinerPresetRanges() {
+        grantAccess(MY_GRID);
+        assertStatus("OK", run(new GetItemHistory(), "grid=" + MY_GRID + "&range=15m"));
+        assertStatus("OK", run(new GetItemHistory(), "grid=" + MY_GRID + "&range=1h"));
+        assertStatus("OK", run(new GetItemHistory(), "grid=" + MY_GRID + "&range=6h"));
+    }
+
+    @Test
+    void itemHistoryCustomRangeDeniesAMissingOrInvalidMinutesParam() {
+        grantAccess(MY_GRID);
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "grid=" + MY_GRID + "&range=custom"));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "grid=" + MY_GRID + "&range=custom&minutes=0"));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "grid=" + MY_GRID + "&range=custom&minutes=notanumber"));
+    }
+
+    @Test
+    void itemHistoryCustomRangeAcceptsAValidMinutesParam() {
+        grantAccess(MY_GRID);
+        assertStatus("OK", run(new GetItemHistory(), "grid=" + MY_GRID + "&range=custom&minutes=90"));
+    }
+
+    @Test
     void itemHistoryReturnsAnAllGapSeriesForAnUnknownItemid() {
         grantAccess(MY_GRID);
         GetItemHistory request = run(new GetItemHistory(), "grid=" + MY_GRID + "&items=minecraft:does_not_exist");

@@ -19,6 +19,7 @@ import { Sparkline } from "../ui/Sparkline";
 import { useItems } from "../state/items";
 import { deltaPercent, describeResolution, lastNonGap, RANGE_OPTIONS, retentionNote } from "./statsModel";
 import { CompareModal } from "./CompareModal";
+import { CustomRangeInput } from "./CustomRangeInput";
 import { ManageTrackedModal } from "./ManageTrackedModal";
 
 export function Statistics() {
@@ -42,7 +43,17 @@ export function Statistics() {
     }
 
     const gridId = selectedGrid.key;
-    const { range, setRange, tracked, trackedError, history, historyLoading, refresh } = stats;
+    const {
+        range,
+        setRange,
+        customMinutes,
+        setCustomMinutes,
+        tracked,
+        trackedError,
+        history,
+        historyLoading,
+        refresh,
+    } = stats;
     const views = statsViews.filter((v) => v.gridId === gridId);
 
     return (
@@ -50,6 +61,7 @@ export function Statistics() {
             <section className="stats">
                 <div className="stats__header">
                     <SegmentedControl<StatsRange> options={RANGE_OPTIONS} value={range} onChange={setRange} />
+                    {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
                     <Button variant="secondary" size="sm" className="stats__manage" onClick={() => setManageOpen(true)}>
                         Manage tracked items
                     </Button>
@@ -117,7 +129,14 @@ export function Statistics() {
                                       ? formatNumber(last.value)
                                       : "—";
                             const name = item?.itemname ?? itemid;
-                            const startLabel = timestamps.length > 0 ? formatAxisTime(timestamps[0]!, range) : "";
+                            const startLabel =
+                                timestamps.length > 0
+                                    ? formatAxisTime(
+                                          timestamps[0]!,
+                                          range,
+                                          history ? history.to - history.from : undefined,
+                                      )
+                                    : "";
                             const ariaLabel = `${name}, ${RANGE_OPTIONS.find((o) => o.value === range)?.label}`;
                             return (
                                 <Card key={itemid} className="stat-card">
@@ -153,6 +172,7 @@ export function Statistics() {
                                         values={values}
                                         timestamps={timestamps}
                                         range={range}
+                                        spanMillis={history ? history.to - history.from : undefined}
                                         ariaLabel={ariaLabel}
                                     />
                                     <div className="stat-card__footer">

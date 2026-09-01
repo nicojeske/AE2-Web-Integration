@@ -15,7 +15,7 @@ import {
 } from "../api/client";
 import { describeApiError } from "../api/errors";
 import type { ItemHistoryResult, StatsRange } from "../api/types";
-import { CARD_POINTS, COMPARE_POINTS, toValues } from "../views/statsModel";
+import { CARD_POINTS, COMPARE_POINTS, DEFAULT_CUSTOM_MINUTES, toValues } from "../views/statsModel";
 import { useNetwork } from "./network";
 import { useToast } from "./toast";
 
@@ -60,6 +60,9 @@ export interface StatsContextValue {
     gridId: number | null;
     range: StatsRange;
     setRange: (r: StatsRange) => void;
+    /** Only meaningful (and only sent to the server) while `range === "custom"`. */
+    customMinutes: number;
+    setCustomMinutes: (m: number) => void;
 
     tracked: string[];
     trackedLimit: number;
@@ -72,6 +75,8 @@ export interface StatsContextValue {
 
     compareRange: StatsRange;
     setCompareRange: (r: StatsRange) => void;
+    compareCustomMinutes: number;
+    setCompareCustomMinutes: (m: number) => void;
     compareHistory: HistoryBundle | null;
     compareLoading: boolean;
     /** The compare modal calls this on mount/unmount so its higher-resolution bundle only polls while open. */
@@ -101,7 +106,9 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     const gridId = selected !== "all" && selectedGrid && selectedGrid.key !== -1 ? selectedGrid.key : null;
 
     const [range, setRange] = useState<StatsRange>("7d");
+    const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
     const [compareRange, setCompareRange] = useState<StatsRange>("7d");
+    const [compareCustomMinutes, setCompareCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
 
     const [tracked, setTracked] = useState<string[]>([]);
     const [trackedLimit, setTrackedLimit] = useState(0);
@@ -122,8 +129,12 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     // restart the loop's timer - same shape as cpus.tsx.
     const rangeRef = useRef(range);
     rangeRef.current = range;
+    const customMinutesRef = useRef(customMinutes);
+    customMinutesRef.current = customMinutes;
     const compareRangeRef = useRef(compareRange);
     compareRangeRef.current = compareRange;
+    const compareCustomMinutesRef = useRef(compareCustomMinutes);
+    compareCustomMinutesRef.current = compareCustomMinutes;
     const activeRef = useRef(active);
     activeRef.current = active;
     const compareActiveRef = useRef(compareActive);
@@ -189,7 +200,13 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             }
             setHistoryLoading(true);
             try {
-                const result = await getItemHistory(gridId, rangeRef.current, CARD_POINTS);
+                const result = await getItemHistory(
+                    gridId,
+                    rangeRef.current,
+                    CARD_POINTS,
+                    undefined,
+                    customMinutesRef.current,
+                );
                 if (!stopped) {
                     setHistory(toBundle(result));
                     setHistoryError(null);
@@ -205,7 +222,13 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             if (!stopped && compareActiveRef.current) {
                 setCompareLoading(true);
                 try {
-                    const result = await getItemHistory(gridId, compareRangeRef.current, COMPARE_POINTS);
+                    const result = await getItemHistory(
+                        gridId,
+                        compareRangeRef.current,
+                        COMPARE_POINTS,
+                        undefined,
+                        compareCustomMinutesRef.current,
+                    );
                     if (!stopped) setCompareHistory(toBundle(result));
                 } catch {
                     // The compare modal has its own error surface; keep the last-good bundle rather
@@ -237,7 +260,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             clearTimeout(timerRef.current);
             document.removeEventListener("visibilitychange", onVisibilityChange);
         };
-    }, [gridId, range]);
+    }, [gridId, range, customMinutes]);
 
     // Becoming the active section (or the compare modal opening/changing its own range) should
     // refetch immediately rather than waiting out whatever's left of the 60s interval. Both fire on
@@ -248,7 +271,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     }, [active]);
     useEffect(() => {
         if (compareActive) void runNowRef.current();
-    }, [compareActive, compareRange]);
+    }, [compareActive, compareRange, compareCustomMinutes]);
 
     const refresh = useCallback(() => runNowRef.current(), []);
 
@@ -324,6 +347,8 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             gridId,
             range,
             setRange,
+            customMinutes,
+            setCustomMinutes,
             tracked,
             trackedLimit,
             trackedLoading,
@@ -333,6 +358,8 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             historyError,
             compareRange,
             setCompareRange,
+            compareCustomMinutes,
+            setCompareCustomMinutes,
             compareHistory,
             compareLoading,
             setCompareActive,
@@ -345,6 +372,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
         [
             gridId,
             range,
+            customMinutes,
             tracked,
             trackedLimit,
             trackedLoading,
@@ -353,6 +381,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             historyLoading,
             historyError,
             compareRange,
+            compareCustomMinutes,
             compareHistory,
             compareLoading,
             setCompareActive,

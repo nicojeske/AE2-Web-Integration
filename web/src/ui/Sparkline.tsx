@@ -10,11 +10,13 @@ export interface SparklineProps {
     values: (number | null)[];
     timestamps: number[];
     range: StatsRange;
+    /** Only meaningful for `range === "custom"` - see `formatAxisTime`. */
+    spanMillis?: number;
     /** Base description (`"Iron Ingot, last 7 days"`) - the live region appends the hovered point. */
     ariaLabel: string;
 }
 
-export function Sparkline({ values, timestamps, range, ariaLabel }: SparklineProps) {
+export function Sparkline({ values, timestamps, range, spanMillis, ariaLabel }: SparklineProps) {
     const { index, handlers } = useChartHover(values.length);
     const bounds = extent(values);
 
@@ -34,8 +36,8 @@ export function Sparkline({ values, timestamps, range, ariaLabel }: SparklinePro
         index === null || hoverTimestamp === null
             ? ""
             : value === null
-              ? `${formatAxisTime(hoverTimestamp, range)} · No data`
-              : `${formatAxisTime(hoverTimestamp, range)} · ${formatNumber(value)}`;
+              ? `${formatAxisTime(hoverTimestamp, range, spanMillis)} · No data`
+              : `${formatAxisTime(hoverTimestamp, range, spanMillis)} · ${formatNumber(value)}`;
 
     return (
         <div

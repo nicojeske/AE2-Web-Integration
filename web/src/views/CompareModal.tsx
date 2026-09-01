@@ -13,6 +13,7 @@ import { Button } from "../ui/Button";
 import { useChartHover } from "../ui/useChartHover";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Modal } from "../ui/Modal";
+import { CustomRangeInput } from "./CustomRangeInput";
 import {
     chartGeometry,
     COMPARE_H,
@@ -33,7 +34,15 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
     const { selectedGrid } = useNetwork();
     const { items } = useItems();
     const { addStatsView } = usePrefs();
-    const { compareRange, setCompareRange, compareHistory, setCompareActive, tracked } = useStats();
+    const {
+        compareRange,
+        setCompareRange,
+        compareCustomMinutes,
+        setCompareCustomMinutes,
+        compareHistory,
+        setCompareActive,
+        tracked,
+    } = useStats();
 
     const [ids, setIds] = useState<string[]>(itemids.slice(0, MAX_COMPARE_SERIES));
     const [addQuery, setAddQuery] = useState("");
@@ -97,6 +106,9 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                         onChange={setCompareRange}
                         className="compare__range"
                     />
+                    {compareRange === "custom" && (
+                        <CustomRangeInput minutes={compareCustomMinutes} onChange={setCompareCustomMinutes} />
+                    )}
                     <button type="button" className="modal__close" onClick={onClose} aria-label="Close">
                         ×
                     </button>
@@ -240,7 +252,11 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                             const raw = idx !== null ? values[idx] : lastRaw(values);
                             const label =
                                 idx !== null && timestamps[idx] !== undefined
-                                    ? formatAxisTime(timestamps[idx], compareRange)
+                                    ? formatAxisTime(
+                                          timestamps[idx],
+                                          compareRange,
+                                          compareHistory ? compareHistory.to - compareHistory.from : undefined,
+                                      )
                                     : "latest";
                             return (
                                 <div key={s.itemid} className="compare__readout-row">

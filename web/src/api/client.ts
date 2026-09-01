@@ -130,9 +130,18 @@ export function getItemHistory(
     range: StatsRange,
     points: number,
     items?: string[],
+    customMinutes?: number,
 ): Promise<ItemHistoryResult> {
     return withGridRefresh(() =>
-        apiGet(`itemhistory${query({ grid: gridId, range, points, items: items?.join(",") })}`),
+        apiGet(
+            `itemhistory${query({
+                grid: gridId,
+                range,
+                points,
+                items: items?.join(","),
+                minutes: range === "custom" ? customMinutes : undefined,
+            })}`,
+        ),
     );
 }
 

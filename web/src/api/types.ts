@@ -154,8 +154,11 @@ export interface GridSettingsResult {
     trackedItems: string[];
 }
 
-/** `range` param shared by `/itemhistory` and (client-side only) the compare modal. */
-export type StatsRange = "24h" | "7d" | "30d" | "1y" | "all";
+/**
+ * `range` param shared by `/itemhistory` and (client-side only) the compare modal. `"custom"` carries
+ * no span of its own - the span comes from a separate `minutes` param (see `getItemHistory`).
+ */
+export type StatsRange = "15m" | "1h" | "6h" | "24h" | "7d" | "30d" | "1y" | "all" | "custom";
 
 /** Sentinel used in `/itemhistory`'s `points[]` for "no sample in that bucket" - never a stale repeat. */
 export const HISTORY_NO_SAMPLE = -1;
