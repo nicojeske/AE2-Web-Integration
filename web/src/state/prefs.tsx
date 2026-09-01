@@ -1,7 +1,8 @@
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
-import { useCallback, useContext, useMemo, useState } from "preact/hooks";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
+import { getPrefs, setPrefs as apiSetPrefs } from "../api/client";
 import type { StatsRange } from "../api/types";
 
 const FAVORITES_KEY = "ae2.favorites";
@@ -124,6 +125,50 @@ function writeJSON(key: string, value: unknown): void {
     localStorage.setItem(key, JSON.stringify(value));
 }
 
+/**
+ * The subset of prefs that follows a player across devices (M13) - favourites, thresholds, the Browser
+ * toolbar filters, and saved Statistics views. Deliberately excludes `notifyEnabled` and `settings`
+ * (M11): those are this device's own display/notification preferences, not account data, and syncing
+ * e.g. `tileMin` across a phone and a desktop would fight whichever one saved last. The server never
+ * looks inside this shape at all - it stores whatever string this serializes to, verbatim, per
+ * principal - so `schemaVersion` here is purely this client's own concern, unrelated to `CURRENT_SCHEMA_VERSION`'s
+ * localStorage migration bookkeeping above.
+ */
+interface SyncedPrefs {
+    schemaVersion: number;
+    favorites: Record<string, true>;
+    thresholds: Record<string, Thresholds>;
+    browserFilters: BrowserFilters;
+    statsViews: StatsView[];
+}
+
+function serializeSyncedPrefs(p: Omit<SyncedPrefs, "schemaVersion">): string {
+    const blob: SyncedPrefs = { schemaVersion: CURRENT_SCHEMA_VERSION, ...p };
+    return JSON.stringify(blob);
+}
+
+/** `null` on anything unparsable - the caller keeps whatever's already local rather than adopting junk. */
+function parseSyncedPrefs(raw: string): SyncedPrefs | null {
+    try {
+        const parsed = JSON.parse(raw) as Partial<SyncedPrefs> | null;
+        if (parsed === null || typeof parsed !== "object") return null;
+        return {
+            schemaVersion: typeof parsed.schemaVersion === "number" ? parsed.schemaVersion : 0,
+            favorites: parsed.favorites ?? {},
+            thresholds: parsed.thresholds ?? {},
+            browserFilters: { ...DEFAULT_BROWSER_FILTERS, ...parsed.browserFilters },
+            statsViews: parsed.statsViews ?? [],
+        };
+    } catch {
+        return null;
+    }
+}
+
+/** Debounce for pushing a synced-prefs change to the server - long enough that a burst of edits (e.g.
+ *  ticking through several favourites) becomes one request, short enough that closing the tab shortly
+ *  after an edit rarely loses it. */
+const PREFS_PUSH_DEBOUNCE_MS = 800;
+
 export interface PrefsContextValue {
     favorites: Record<string, true>;
     thresholds: Record<string, Thresholds>;
@@ -158,6 +203,65 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         ...DEFAULT_SETTINGS,
         ...readJSON(SETTINGS_KEY, {}),
     }));
+
+    // Guards the push effect below against firing on the values this same reconciliation itself just
+    // adopted, before the initial fetch has even had a chance to run.
+    const hasHydratedRef = useRef(false);
+
+    // One-time reconciliation with the server on mount (M13) - adopts its blob if one exists (more
+    // authoritative than this browser's possibly-stale localStorage, since it represents the account
+    // rather than one device), otherwise seeds the server with whatever's already here (a fresh account,
+    // or an older client that predates this sync). Silently gives up on any failure - offline, or a
+    // core-branch server old enough to predate `/prefs` entirely - since every one of these prefs
+    // already works from localStorage alone regardless of sync.
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            try {
+                const { blob } = await getPrefs();
+                if (cancelled) return;
+                if (blob === null) {
+                    await apiSetPrefs(serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews }));
+                    return;
+                }
+                const parsed = parseSyncedPrefs(blob);
+                if (!parsed || cancelled) return;
+                setFavorites(parsed.favorites);
+                writeJSON(FAVORITES_KEY, parsed.favorites);
+                setThresholds(parsed.thresholds);
+                writeJSON(THRESHOLDS_KEY, parsed.thresholds);
+                setBrowserFiltersState(parsed.browserFilters);
+                writeJSON(BROWSER_FILTERS_KEY, parsed.browserFilters);
+                setStatsViews(parsed.statsViews);
+                writeJSON(STATS_VIEWS_KEY, parsed.statsViews);
+            } catch {
+                // Offline, or no /prefs on this server yet - stay on localStorage alone.
+            } finally {
+                if (!cancelled) hasHydratedRef.current = true;
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // Deliberately empty - runs exactly once per mount. `favorites`/`thresholds`/`browserFilters`/
+        // `statsViews` are read here only as their mount-time (localStorage-loaded) snapshot, for the
+        // "seed the server" branch - a real dependency array would re-run this reconciliation on every
+        // later edit, which the push effect below already handles.
+    }, []);
+
+    // Pushes favourites/thresholds/browserFilters/statsViews to the server whenever any of them change,
+    // debounced so a burst of edits becomes one request. A push that lands before the mount-time fetch
+    // above resolves would either race it or (worse) overwrite a blob it hasn't read yet - `hasHydratedRef`
+    // holds this off until that reconciliation has actually run once, in either direction.
+    useEffect(() => {
+        if (!hasHydratedRef.current) return;
+        const timer = setTimeout(() => {
+            void apiSetPrefs(serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews })).catch(
+                () => {},
+            );
+        }, PREFS_PUSH_DEBOUNCE_MS);
+        return () => clearTimeout(timer);
+    }, [favorites, thresholds, browserFilters, statsViews]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 

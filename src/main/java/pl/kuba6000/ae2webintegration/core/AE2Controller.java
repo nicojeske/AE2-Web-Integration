@@ -235,9 +235,19 @@ public class AE2Controller {
      * @return the decoded body, or {@code null} when it is larger than {@link #MAX_BODY_BYTES}.
      */
     private static String readBody(HttpExchange t) throws IOException {
+        return readBody(t, MAX_BODY_BYTES);
+    }
+
+    /**
+     * @see #readBody(HttpExchange) - same shape, but with a caller-supplied cap instead of
+     *      {@link #MAX_BODY_BYTES}. {@link PlayerPrefsHandler} needs a much larger one: unlike every
+     *      other POST body on this server (login/register form fields), a synced prefs blob can hold an
+     *      unbounded number of favourited items.
+     */
+    static String readBody(HttpExchange t, int maxBytes) throws IOException {
         try (InputStream in = t.getRequestBody()) {
             // One byte past the limit is enough to detect oversize without buffering the rest.
-            byte[] buffer = new byte[MAX_BODY_BYTES + 1];
+            byte[] buffer = new byte[maxBytes + 1];
             int read = 0;
             while (read < buffer.length) {
                 int count = in.read(buffer, read, buffer.length - read);
@@ -246,7 +256,7 @@ public class AE2Controller {
                 }
                 read += count;
             }
-            if (read > MAX_BODY_BYTES) {
+            if (read > maxBytes) {
                 return null;
             }
             return new String(buffer, 0, read, StandardCharsets.UTF_8);
@@ -299,6 +309,7 @@ public class AE2Controller {
                 newServer.createContext("/itemhistory", new ASyncRequestHandler(GetItemHistory.class));
                 newServer.createContext("/trackeditems", new ASyncRequestHandler(TrackedItems.class));
                 newServer.createContext("/icon", new IconHandler());
+                newServer.createContext("/prefs", new PlayerPrefsHandler());
                 newServer.createContext("/auth", new AuthHandler());
                 newServer.createContext("/", new WebHandler());
                 newServer.setExecutor(newServerThread);
@@ -657,7 +668,7 @@ public class AE2Controller {
         return AuthCheckResult.UNAUTHENTICATED;
     }
 
-    private static boolean preHTTPHandler(HttpExchange t) throws IOException {
+    static boolean preHTTPHandler(HttpExchange t) throws IOException {
         InetAddress client = resolveClientAddress(t);
         if (!isAlreadyIdentified(t, client) && !rateLimiter.isAllowed(client)) {
             byte[] raw_response = "Too Many Requests".getBytes(StandardCharsets.UTF_8);
@@ -674,7 +685,8 @@ public class AE2Controller {
         if (t.getRequestMethod()
             .equalsIgnoreCase("OPTIONS")) {
             t.getResponseHeaders()
-                .add("Access-Control-Allow-Methods", "GET, OPTIONS");
+                // POST is /prefs's - every other endpoint here still only ever needs GET.
+                .add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             t.getResponseHeaders()
                 .add("Access-Control-Allow-Headers", "Content-Type,Authorization");
             t.sendResponseHeaders(204, -1);

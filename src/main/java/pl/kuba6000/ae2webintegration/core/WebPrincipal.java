@@ -1,6 +1,8 @@
 package pl.kuba6000.ae2webintegration.core;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.UUID;
 
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 
@@ -21,6 +23,14 @@ public final class WebPrincipal {
 
     private static final WebPrincipal ADMIN = new WebPrincipal(Kind.ADMIN, null, "Admin");
     private static final WebPrincipal LOCALHOST = new WebPrincipal(Kind.LOCALHOST, null, "localhost");
+
+    /**
+     * Storage key for ADMIN/LOCALHOST in any map keyed by player UUID (currently just synced prefs -
+     * {@link PlayerPrefsHandler}) - both share this one key since they share the single admin account
+     * concept in single-admin-password mode, and neither has a player identity of its own to key by.
+     */
+    private static final UUID ADMIN_PREFS_UUID = UUID
+        .nameUUIDFromBytes("AE2-WEB-INTEGRATION-ADMIN-PREFS".getBytes(StandardCharsets.UTF_8));
 
     private final Kind kind;
     private final PlayerIdentity playerIdentity;
@@ -57,6 +67,11 @@ public final class WebPrincipal {
 
     public String getUsername() {
         return username;
+    }
+
+    /** @see #ADMIN_PREFS_UUID */
+    public UUID prefsKey() {
+        return kind == Kind.PLAYER ? playerIdentity.uuid : ADMIN_PREFS_UUID;
     }
 
     @Override

@@ -188,3 +188,9 @@ export interface TrackedItemsResult {
     tracked: string[];
     limit: number;
 }
+
+/** `/prefs` response (M13). `blob` is `null` until this principal has synced from any device; otherwise
+ *  it's whatever `state/prefs.tsx` last serialized, verbatim - the server never parses it. */
+export interface PrefsResult {
+    blob: string | null;
+}

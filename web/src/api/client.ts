@@ -8,6 +8,7 @@ import type {
     ItemHistoryResult,
     JobData,
     OrderResult,
+    PrefsResult,
     StatsRange,
     TrackedItemsResult,
     TrackingDetail,
@@ -25,8 +26,8 @@ export class ApiError extends Error {
     }
 }
 
-async function apiGet<T>(path: string): Promise<T> {
-    const res = await fetch(path, { credentials: "same-origin" });
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(path, { credentials: "same-origin", ...init });
     if (res.status === 401) {
         // The session token expired or was revoked elsewhere (preHTTPHandler answers a bare 401 with
         // no body - AE2Controller.java). A page navigation would land back on login.html for the same
@@ -43,6 +44,10 @@ async function apiGet<T>(path: string): Promise<T> {
         throw new ApiError(envelope.status, envelope.data);
     }
     return envelope.data;
+}
+
+function apiGet<T>(path: string): Promise<T> {
+    return apiRequest(path);
 }
 
 function query(params: Record<string, string | number | boolean | undefined>): string {
@@ -159,6 +164,22 @@ export function addTrackedItem(gridId: number, itemid: string): Promise<TrackedI
 
 export function removeTrackedItem(gridId: number, itemid: string): Promise<TrackedItemsResult> {
     return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId, remove: itemid })}`));
+}
+
+/**
+ * `/prefs` isn't grid-scoped (it follows the logged-in principal, not any one grid), so unlike every
+ * other endpoint here it takes no `withGridRefresh` wrapper and no `grid` param.
+ * <p>
+ * Both calls are POST - the server tells a read from a write by body presence, not HTTP method (see
+ * `PlayerPrefsHandler.java`), and the Fetch spec disallows a body on GET at all.
+ */
+export function getPrefs(): Promise<PrefsResult> {
+    return apiRequest("prefs", { method: "POST" });
+}
+
+/** `blob` is opaque to the server - whatever `state/prefs.tsx` last serialized. */
+export function setPrefs(blob: string): Promise<PrefsResult> {
+    return apiRequest("prefs", { method: "POST", body: blob });
 }
 
 export function logout(): void {

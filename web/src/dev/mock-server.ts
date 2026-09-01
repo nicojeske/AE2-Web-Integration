@@ -45,6 +45,10 @@ function normalizeIconName(raw: string): string {
 
 let iconIndex: Map<string, string> | undefined;
 
+/** Stands in for `CoreData`'s per-principal blob map - a single slot is fine since the mock server only
+ *  ever serves one (dev) principal. */
+let mockPrefsBlob: string | null = null;
+
 /** Lazily scanned once per dev-server run - the directory doesn't change without a restart either. */
 function loadIconIndex(): Map<string, string> {
     if (!iconIndex) {
@@ -395,6 +399,16 @@ export function mockApiPlugin(): Plugin {
                         }
                         grid.trackedItems = next2;
                         ok(res, { tracked: grid.trackedItems, limit: MOCK_TRACKED_LIMIT });
+                        return;
+                    }
+                    case "/prefs": {
+                        // Mirrors PlayerPrefsHandler.java: a non-empty body writes, presence-of-body
+                        // (not HTTP method) decides read vs write either way.
+                        void (async () => {
+                            const body = await readBody(req);
+                            if (body.length > 0) mockPrefsBlob = body;
+                            ok(res, { blob: mockPrefsBlob });
+                        })();
                         return;
                     }
                     case "/icon": {

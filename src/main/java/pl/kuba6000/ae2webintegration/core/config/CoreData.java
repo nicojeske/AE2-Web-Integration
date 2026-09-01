@@ -48,6 +48,15 @@ public class CoreData {
     private final ConcurrentHashMap<UUID, String> passwords = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, String> usernames = new ConcurrentHashMap<>();
 
+    /**
+     * One opaque JSON blob per principal (keyed by {@link pl.kuba6000.ae2webintegration.core.WebPrincipal#prefsKey()}),
+     * synced from the web terminal's favourites/thresholds/browser filters/saved stats views - see
+     * {@link pl.kuba6000.ae2webintegration.core.PlayerPrefsHandler}. Deliberately opaque: this class never
+     * parses the contents, so a frontend-only change to what it stores in prefs never needs a matching
+     * server change or a schema migration here.
+     */
+    private final ConcurrentHashMap<UUID, String> prefsBlobs = new ConcurrentHashMap<>();
+
     // Derived from usernames after load. Persisting both directions would create two sources of truth.
     private transient ConcurrentHashMap<String, UUID> usernameToUUID = new ConcurrentHashMap<>();
 
@@ -134,6 +143,21 @@ public class CoreData {
         instance.recordUsername(playerUuid, player.name);
         saveChanges();
         return true;
+    }
+
+    /** {@code null} if this principal has never synced prefs from any device. */
+    public static String getPrefsBlob(UUID prefsKey) {
+        return instance.prefsBlobs.get(prefsKey);
+    }
+
+    /**
+     * Size-capped by the caller ({@link pl.kuba6000.ae2webintegration.core.PlayerPrefsHandler}, via
+     * {@link pl.kuba6000.ae2webintegration.core.AE2Controller#readBody}) before this is ever reached -
+     * nothing here re-checks it.
+     */
+    public static void setPrefsBlob(UUID prefsKey, String blob) {
+        instance.prefsBlobs.put(prefsKey, blob);
+        saveChanges();
     }
 
     private static void saveChanges() {

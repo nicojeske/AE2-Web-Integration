@@ -85,6 +85,18 @@ limiting (`RateLimiter`) — never trust the raw TCP peer address alone for eith
 `GridData`/`CoreData` are the persisted stores (`griddata.json`, `webdata.json`, gitignored, written next to
 the running server). `AE2JobTracker` holds active-job tracking state.
 
+`/prefs` (`PlayerPrefsHandler`) syncs the web terminal's favourites/thresholds/browser filters/saved stats
+views across a player's devices — an opaque JSON blob per principal in `CoreData`, keyed by
+`WebPrincipal.prefsKey()` (a reserved UUID for ADMIN/LOCALHOST, which have no player identity of their
+own). It's neither `ISyncedRequest` nor `IAsyncRequest` (both are grid-scoped by contract; prefs are not) —
+a bespoke `HttpHandler`, same shape as `IconHandler`/`AuthHandler`. It's also this server's first POST
+endpoint outside `/auth`: every other state-changing operation is still a GET, and read vs. write here is
+decided by request body presence, not HTTP method, on purpose — the same convention `/gridsettings`'s
+`track` param already uses, and it means `example_website/index.php`'s generic reverse-proxy catch-all
+(which never forwards a POST body) degrades to a harmless read instead of silently corrupting the stored
+blob. `CoreData` never parses the blob's contents, so a frontend-only change to what it syncs never needs
+a matching server change.
+
 ### Web frontend (`web/`)
 
 The frontend is a Preact + TypeScript + Vite SPA that replaced the old single-file jQuery `webpage.html` +
@@ -123,8 +135,10 @@ login page entry), `src/dev/mock-server.ts` + `src/dev/fixtures.ts` (Vite dev-on
 realistic fixture data so `npm run dev` needs no real server).
 
 `example_website/index.php` is a customer-hosted PHP reverse proxy for people who don't want to expose the
-mod's HTTP server directly. No milestone may add a new HTTP route or change the wire contract in a way that
-breaks it — spot-check it still works after frontend changes that touch the API surface.
+mod's HTTP server directly. No change may break it for the routes it already supports — spot-check it still
+works after frontend changes that touch the API surface. Its generic `?API=` catch-all only ever forwards
+GET-style query params, never a POST body, so a *new* POST-based route (so far, only `/prefs`) simply
+doesn't work through it yet; that's a known, accepted gap, not a regression to fix reflexively.
 
 ### CI
 
