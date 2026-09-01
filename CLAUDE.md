@@ -36,15 +36,16 @@ the web frontend in `web/`, whose *build output* is committed into the Java reso
 - `npm run dev` — Vite dev server against `src/dev/mock-server.ts` (fixture data, no real server needed;
   serves both the terminal at `/` and the login page at `/login.html`)
 - `npm run build` — `tsc --noEmit` + two Vite builds (terminal, then `--mode login`); **writes directly into
-  `../src/main/resources/assets/`** (`webpage.html` and `login.html`) and copies `login.html` on to
-  `../example_website/login.html` too — see Architecture below
+  `../src/main/resources/assets/`** (`webpage.html` and `login.html`) and copies each on to
+  `../example_website/` too — see Architecture below
 - `npm run typecheck` — `tsc --noEmit` only
 - `npm run format` / `npm run format:check` — Prettier over `src/**/*.{ts,tsx,css}`
 
-**After any change under `web/src`, run `npm run build` and commit the three regenerated files
+**After any change under `web/src`, run `npm run build` and commit the four regenerated files
 (`src/main/resources/assets/webpage.html`, `src/main/resources/assets/login.html`,
-`example_website/login.html`) in the same commit.** CI (`build-and-test.yml`, job `web-terminal`) rebuilds
-and runs `git diff --exit-code` on those paths — a stale committed bundle fails the build.
+`example_website/webpage.html`, `example_website/login.html`) in the same commit.** CI
+(`build-and-test.yml`, job `web-terminal`) rebuilds and runs `git diff --exit-code` on those paths — a
+stale committed bundle fails the build.
 
 ### Full loop against a real server
 
@@ -135,8 +136,11 @@ login page entry), `src/dev/mock-server.ts` + `src/dev/fixtures.ts` (Vite dev-on
 realistic fixture data so `npm run dev` needs no real server).
 
 `example_website/index.php` is a customer-hosted PHP reverse proxy for people who don't want to expose the
-mod's HTTP server directly. No change may break it for the routes it already supports — spot-check it still
-works after frontend changes that touch the API surface. Its generic `?API=` catch-all only ever forwards
+mod's HTTP server directly. It serves the same `webpage.html`/`login.html` the mod itself does (copied there
+by `npm run build`, substituting the same placeholders from cookies set at login instead of a live
+`WebPrincipal`) — the legacy jQuery UI it used to ship inline was retired once the Preact rewrite covered
+everything it did. No change may break it for the routes it already supports — spot-check it still works
+after frontend changes that touch the API surface. Its generic `?API=` catch-all only ever forwards
 GET-style query params, never a POST body, so a *new* POST-based route (so far, only `/prefs`) simply
 doesn't work through it yet; that's a known, accepted gap, not a regression to fix reflexively.
 

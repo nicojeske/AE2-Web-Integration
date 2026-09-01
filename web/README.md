@@ -1,7 +1,7 @@
 # AE2 Web Terminal (frontend)
 
-A Preact + TypeScript + Vite single-page app that replaced the old jQuery `webpage.html`/`login.html`,
-built milestone-by-milestone against `../REDESIGN_MILESTONES.md`.
+A Preact + TypeScript + Vite single-page app that replaced the old jQuery `webpage.html`/`login.html`.
+See `../CLAUDE.md`'s "Web frontend" section for the shape of what's here today.
 
 ## Commands
 
@@ -14,9 +14,9 @@ built milestone-by-milestone against `../REDESIGN_MILESTONES.md`.
     `?confirmregistration&token=...` directly.
 - `npm run build` — `tsc --noEmit`, then two Vite builds (`vite build` for the terminal,
   `vite build --mode login` for the login page), writing directly into
-  `../src/main/resources/assets/`. The login build also copies its output to
-  `../example_website/login.html`, which serves an identical page through the PHP proxy's own
-  `_REPLACE_ME_IS_PUBLIC_MODE` substitution.
+  `../src/main/resources/assets/`. Each build also copies its own output to `../example_website/`
+  (`webpage.html`/`login.html`), which serves identical pages through the PHP proxy's own placeholder
+  substitution (from cookies set at login, instead of a live `WebPrincipal`).
 - `npm run typecheck` — `tsc --noEmit` only.
 - `npm run format` / `npm run format:check` — Prettier over `src/**/*.{ts,tsx,css}`.
 
@@ -28,10 +28,11 @@ root (sibling of `web/`). That directory is never committed (icon copyright) - s
 `CLAUDE.md` and `.gitignore` - so it's simply absent for most contributors, and the mock server falls
 back to the usual generated placeholder tiles when it is.
 
-**After any change under `src/`, run `npm run build` and commit the three regenerated files
+**After any change under `src/`, run `npm run build` and commit the four regenerated files
 (`src/main/resources/assets/webpage.html`, `src/main/resources/assets/login.html`,
-`example_website/login.html`) in the same commit.** CI (`build-and-test.yml`, job `web-terminal`)
-rebuilds and runs `git diff --exit-code` on those paths — a stale committed bundle fails the build.
+`example_website/webpage.html`, `example_website/login.html`) in the same commit.** CI
+(`build-and-test.yml`, job `web-terminal`) rebuilds and runs `git diff --exit-code` on those paths — a
+stale committed bundle fails the build.
 
 ## Why two builds
 
@@ -56,7 +57,8 @@ them:
 The login page's forms are plain `method="POST" action=""` submissions handled entirely by
 `AE2Controller.checkAuth` (302 redirects, an `HttpOnly` session cookie set server-side) - it is
 deliberately not a `fetch()` client against the JSON `/auth` API, which never sets a cookie and is used
-only by `example_website/index.php`. See `REDESIGN_MILESTONES.md`'s M9 entry for the full reasoning.
+only by `example_website/index.php` (itself a plain PHP form POST too, curled server-side to `/auth` and
+translated into its own cookies - see that file's own comments).
 
 ## Layout
 
