@@ -38,6 +38,14 @@ export const RANGE_OPTIONS: SegmentedOption<StatsRange>[] = [
 /** Default span (in minutes) a range control switches to when first landing on "custom". */
 export const DEFAULT_CUSTOM_MINUTES = 60;
 
+/** `Settings.statsChartSize` -> chart plot height in px. */
+export const CHART_SIZE_PX: Record<"s" | "m" | "l", number> = { s: 70, m: 110, l: 160 };
+
+export const CHART_SCALE_OPTIONS: SegmentedOption<ChartScale>[] = [
+    { value: "linear", label: "Linear" },
+    { value: "log", label: "Log" },
+];
+
 export type CustomRangeUnit = "minutes" | "hours" | "days";
 
 const CUSTOM_UNIT_MINUTES: Record<CustomRangeUnit, number> = {
@@ -268,4 +276,219 @@ export function buildTrackableRows(rows: TrackableSource[], tracked: string[], q
         .filter((r) => !q || r.name.toLowerCase().includes(q) || r.itemid.toLowerCase().includes(q))
         .map((r) => ({ ...r, tracked: trackedSet.has(r.itemid) }))
         .sort((a, b) => Number(b.tracked) - Number(a.tracked) || a.name.localeCompare(b.name));
+}
+
+// --- Dashboard metrics (chart-quality/derived-metrics improvement pass) ---
+
+export interface SeriesStats {
+    first: number | null;
+    last: number | null;
+    min: number | null;
+    max: number | null;
+    /** Index into the input `values` where `min`/`max` occurred - `null` iff `min`/`max` is `null`. */
+    minIndex: number | null;
+    maxIndex: number | null;
+    avg: number | null;
+    stdDev: number | null;
+    /** Non-gap sample count. */
+    samples: number;
+    gaps: number;
+    /** Least-squares slope over every non-gap point (not just first/last), in value units per hour.
+     *  `null` under 2 samples - matches `deltaPercent`'s own "not enough samples" threshold. */
+    slopePerHour: number | null;
+    /** `last - first` (non-gap); `null` under the same conditions as `deltaPercent`. */
+    changeAbs: number | null;
+    changePct: number | null;
+}
+
+/**
+ * Gap-aware summary stats for one series. `slopePerHour` is a least-squares fit, not
+ * `(last-first)/span` - the server's downsampling keeps the newest non-gap value per window
+ * (`ItemHistoryStore.readSeries`), so a single spiky endpoint shouldn't get to define "the rate".
+ */
+export function seriesStats(values: (number | null)[], stepMillis: number): SeriesStats {
+    const firstEntry = firstNonGap(values);
+    const lastEntry = lastNonGap(values);
+
+    let min = Infinity;
+    let max = -Infinity;
+    let minIndex: number | null = null;
+    let maxIndex: number | null = null;
+    let sum = 0;
+    let samples = 0;
+    let gaps = 0;
+    // Least-squares accumulators over (x = sample time in hours, y = value).
+    let sumX = 0;
+    let sumY = 0;
+    let sumXY = 0;
+    let sumXX = 0;
+
+    for (let i = 0; i < values.length; i++) {
+        const v = values[i];
+        if (v === null || v === undefined) {
+            gaps++;
+            continue;
+        }
+        samples++;
+        sum += v;
+        if (v < min) {
+            min = v;
+            minIndex = i;
+        }
+        if (v > max) {
+            max = v;
+            maxIndex = i;
+        }
+        const xHours = (i * stepMillis) / 3_600_000;
+        sumX += xHours;
+        sumY += v;
+        sumXY += xHours * v;
+        sumXX += xHours * xHours;
+    }
+
+    const avg = samples > 0 ? sum / samples : null;
+    let stdDev: number | null = null;
+    if (avg !== null) {
+        let variance = 0;
+        for (const v of values) {
+            if (v === null || v === undefined) continue;
+            variance += (v - avg) ** 2;
+        }
+        stdDev = Math.sqrt(variance / samples);
+    }
+
+    let slopePerHour: number | null = null;
+    if (samples >= 2) {
+        const denom = samples * sumXX - sumX * sumX;
+        if (denom !== 0) slopePerHour = (samples * sumXY - sumX * sumY) / denom;
+    }
+
+    const changeAbs =
+        firstEntry && lastEntry && firstEntry.index !== lastEntry.index ? lastEntry.value - firstEntry.value : null;
+
+    return {
+        first: firstEntry?.value ?? null,
+        last: lastEntry?.value ?? null,
+        min: min === Infinity ? null : min,
+        max: max === -Infinity ? null : max,
+        minIndex,
+        maxIndex,
+        avg,
+        stdDev,
+        samples,
+        gaps,
+        slopePerHour,
+        changeAbs,
+        changePct: deltaPercent(values),
+    };
+}
+
+/**
+ * Projected time until the series' last value hits zero at its current `slopePerHour`, presented as
+ * an estimate ("empty in ~4h 20m at current rate"), never as a fact. `null` whenever that projection
+ * isn't meaningful: flat/rising slope, no current value, or too few samples for a slope at all.
+ */
+export function timeToEmptyMillis(stats: SeriesStats): number | null {
+    if (stats.slopePerHour === null || stats.slopePerHour >= 0) return null;
+    if (stats.last === null || stats.last <= 0) return null;
+    const hours = stats.last / -stats.slopePerHour;
+    if (!Number.isFinite(hours) || hours <= 0) return null;
+    return hours * 3_600_000;
+}
+
+/**
+ * Up to `count` axis ticks spanning `[min, max]` exactly - the ends are always included verbatim
+ * (a y-axis should read the real min/max, never a rounded neighbour that implies a false floor or
+ * ceiling), with intermediate ticks snapped to a "nice" 1/2/5 x 10^n step.
+ */
+export function niceTicks(min: number, max: number, count: number): number[] {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
+    if (max <= min || count < 2) return [min];
+
+    const span = max - min;
+    const rawStep = span / (count - 1);
+    const exp = Math.floor(Math.log10(rawStep));
+    const base = rawStep / 10 ** exp;
+    const niceBase = base <= 1 ? 1 : base <= 2 ? 2 : base <= 5 ? 5 : 10;
+    const step = niceBase * 10 ** exp;
+
+    const ticks = [min];
+    for (let v = Math.ceil(min / step) * step; v < max; v += step) {
+        if (v - ticks[ticks.length - 1]! > span * 0.02) ticks.push(v);
+    }
+    if (max - ticks[ticks.length - 1]! > span * 0.02) ticks.push(max);
+    else ticks[ticks.length - 1] = max;
+
+    return ticks.length <= count ? ticks : [ticks[0]!, ...ticks.slice(1, count - 1), ticks[ticks.length - 1]!];
+}
+
+/** Evenly spaced sample indices for x-axis labels - snapped to real bucket indices, never interpolated
+ *  between them (the timestamp at a fractional index doesn't exist on the wire). */
+export function timeTickIndices(pointCount: number, tickCount: number): number[] {
+    if (pointCount <= 0) return [];
+    if (pointCount === 1 || tickCount <= 1) return [0];
+    const n = Math.min(tickCount, pointCount);
+    const indices = new Set<number>();
+    for (let i = 0; i < n; i++) {
+        indices.add(Math.round((i * (pointCount - 1)) / (n - 1)));
+    }
+    return Array.from(indices).sort((a, b) => a - b);
+}
+
+/** Points in the optional moving-average overlay - short enough to preserve real shape, long enough
+ *  to visibly damp per-sample noise at the default 5-minute fine sampling interval. */
+export const SMOOTHING_WINDOW = 5;
+
+/** Gap-aware centred moving average - a window with no real samples in it stays a gap rather than
+ *  fabricating a value. */
+export function movingAverage(values: (number | null)[], window: number): (number | null)[] {
+    if (window <= 1) return values.slice();
+    const half = Math.floor(window / 2);
+    return values.map((_, i) => {
+        let sum = 0;
+        let n = 0;
+        for (let j = Math.max(0, i - half); j <= Math.min(values.length - 1, i + half); j++) {
+            const v = values[j];
+            if (v !== null && v !== undefined) {
+                sum += v;
+                n++;
+            }
+        }
+        return n === 0 ? null : sum / n;
+    });
+}
+
+export type ChartScale = "linear" | "log";
+
+/** `log10(v+1)` so `0` and gaps survive - only for plotting; raw values are still shown in tooltips
+ *  and the metrics row via `unscaleValue`. */
+export function scaleValues(values: (number | null)[], mode: ChartScale): (number | null)[] {
+    if (mode === "linear") return values;
+    return values.map((v) => (v === null || v === undefined ? null : Math.log10(v + 1)));
+}
+
+/** Inverse of `scaleValues` - only meaningful for a tick label computed in scaled space. */
+export function unscaleValue(v: number, mode: ChartScale): number {
+    return mode === "linear" ? v : 10 ** v - 1;
+}
+
+/** Element-wise sum across series, index-aligned - a bucket is a gap only when every series is a gap
+ *  there, so one item with a brief outage doesn't blank the whole aggregate. */
+export function sumSeries(series: (number | null)[][]): (number | null)[] {
+    if (series.length === 0) return [];
+    const length = Math.max(...series.map((s) => s.length));
+    const result: (number | null)[] = [];
+    for (let i = 0; i < length; i++) {
+        let sum = 0;
+        let any = false;
+        for (const s of series) {
+            const v = s[i];
+            if (v !== null && v !== undefined) {
+                sum += v;
+                any = true;
+            }
+        }
+        result.push(any ? sum : null);
+    }
+    return result;
 }

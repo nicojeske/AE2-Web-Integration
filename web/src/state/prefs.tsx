@@ -4,6 +4,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "p
 
 import { getPrefs, setPrefs as apiSetPrefs } from "../api/client";
 import type { StatsRange } from "../api/types";
+import type { ChartScale } from "../views/statsModel";
 
 const FAVORITES_KEY = "ae2.favorites";
 const THRESHOLDS_KEY = "ae2.thresholds";
@@ -100,6 +101,13 @@ export interface Settings {
     /** Statistics' range/compare-range reset every visit otherwise, unlike every other browser
      *  preference - persisted here so a Settings default at least survives a reload. */
     statsRange: StatsRange;
+    /** Statistics chart card plot height (`statsModel.ts`'s `CHART_SIZE_PX`). */
+    statsChartSize: "s" | "m" | "l";
+    /** Linear or log y-axis for every Statistics chart - log treats non-positive samples as gaps. */
+    chartScale: ChartScale;
+    /** Overlays a moving-average line (`statsModel.ts`'s `movingAverage`/`SMOOTHING_WINDOW`) on every
+     *  Statistics chart, dimmed under the raw line. */
+    chartSmoothing: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -108,6 +116,9 @@ export const DEFAULT_SETTINGS: Settings = {
     tileMin: 220,
     autoRefreshItems: "off",
     statsRange: "7d",
+    statsChartSize: "m",
+    chartScale: "linear",
+    chartSmoothing: false,
 };
 
 export const TILE_MIN_RANGE = { min: 140, max: 260 } as const;

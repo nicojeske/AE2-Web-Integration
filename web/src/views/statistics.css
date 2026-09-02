@@ -166,29 +166,129 @@
     color: var(--text-primary);
 }
 
-.stat-card__footer {
+.stat-card__metrics {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 12px;
     font-size: 10.5px;
     color: var(--text-dim);
 }
-
-/* Sparkline */
-.sparkline {
-    position: relative;
-    height: 70px;
+.stat-card__metrics strong {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--text-secondary);
 }
-.sparkline:focus-visible {
+.stat-card__eta {
+    color: var(--amber);
+}
+
+/* Dashboard overview row */
+.stats-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.stats-overview__tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+}
+.stats-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+}
+.stats-tile__label {
+    font-size: 10.5px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.stats-tile__value {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.stats-tile__value--sm {
+    font-size: 13px;
+}
+.stats-tile__value--warn {
+    color: var(--amber);
+}
+.stats-tile__sub {
+    font-size: 10.5px;
+    color: var(--text-dim);
+}
+.stats-overview__chart-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 16px;
+}
+.stats-overview__chart-title {
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+/* Chart (M8's Sparkline, generalised with axes/gridlines/markers/threshold) */
+.chart {
+    display: flex;
+    gap: 6px;
+}
+.chart__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.chart__y-axis {
+    position: relative;
+    flex-shrink: 0;
+}
+.chart__y-tick {
+    position: absolute;
+    right: 4px;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--chart-axis-text);
+    white-space: nowrap;
+}
+.chart__x-axis {
+    position: relative;
+    height: 14px;
+}
+.chart__x-tick {
+    position: absolute;
+    top: 2px;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: var(--chart-axis-text);
+    white-space: nowrap;
+}
+.chart__x-tick--start {
+    transform: translateX(0);
+}
+.chart__x-tick--end {
+    transform: translateX(-100%);
+}
+.chart__plot {
+    position: relative;
+}
+.chart__plot:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
-.sparkline svg {
+.chart__plot svg {
     display: block;
     width: 100%;
     height: 100%;
     overflow: visible;
 }
-.sparkline--empty {
+.chart__empty {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -197,18 +297,42 @@
     font-size: 11px;
     color: var(--text-dim);
 }
-.sparkline__area {
-    fill: var(--sparkline-area);
+.chart__gridline {
+    stroke: var(--chart-grid);
+    stroke-width: 1;
+}
+.chart__threshold {
+    stroke: var(--chart-threshold);
+    stroke-width: 1;
+    stroke-dasharray: 4 4;
+}
+.chart__area {
+    fill: var(--chart-area);
     stroke: none;
 }
-.sparkline__line {
+.chart__line {
     fill: none;
     stroke: var(--accent);
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
-.sparkline__dot {
+.chart__line--smoothed {
+    stroke: var(--text-dim);
+    stroke-width: 1.5;
+    stroke-dasharray: 3 3;
+}
+.chart__marker {
+    fill: var(--bg-card);
+    stroke-width: 2;
+}
+.chart__marker--min {
+    stroke: var(--chart-marker-min);
+}
+.chart__marker--max {
+    stroke: var(--chart-marker-max);
+}
+.chart__dot {
     position: absolute;
     width: 7px;
     height: 7px;
@@ -218,7 +342,7 @@
     transform: translate(-50%, -50%);
     pointer-events: none;
 }
-.sparkline__tooltip {
+.chart__tooltip {
     position: absolute;
     transform: translate(-50%, -130%);
     background: var(--bg-sunken);

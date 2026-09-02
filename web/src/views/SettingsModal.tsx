@@ -34,6 +34,12 @@ const AUTO_REFRESH_OPTIONS: SegmentedOption<Settings["autoRefreshItems"]>[] = [
     { value: "60s", label: "60s" },
 ];
 
+const CHART_SIZE_OPTIONS: SegmentedOption<Settings["statsChartSize"]>[] = [
+    { value: "s", label: "Small" },
+    { value: "m", label: "Medium" },
+    { value: "l", label: "Large" },
+];
+
 export function SettingsModal({ onClose, notifyEnabled, onToggleNotify }: SettingsModalProps) {
     const { settings, setSettings } = usePrefs();
 
@@ -96,6 +102,15 @@ export function SettingsModal({ onClose, notifyEnabled, onToggleNotify }: Settin
                         options={AUTO_REFRESH_OPTIONS}
                         value={settings.autoRefreshItems}
                         onChange={(autoRefreshItems) => setSettings((s) => ({ ...s, autoRefreshItems }))}
+                    />
+                </div>
+
+                <div className="settings__row">
+                    <span className="settings__label">Statistics chart size</span>
+                    <SegmentedControl
+                        options={CHART_SIZE_OPTIONS}
+                        value={settings.statsChartSize}
+                        onChange={(statsChartSize) => setSettings((s) => ({ ...s, statsChartSize }))}
                     />
                 </div>
 

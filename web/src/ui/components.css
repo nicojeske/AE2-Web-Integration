@@ -433,8 +433,8 @@
     border-top: 1px solid var(--border-subtle);
 }
 
-/* Visually hidden but still announced by screen readers - used by Sparkline's live-region readout,
-   since a sparkline has no per-point elements for focus/aria to land on individually. */
+/* Visually hidden but still announced by screen readers - used by Chart's live-region readout, since
+   a chart plot has no per-point elements for focus/aria to land on individually. */
 .sr-only {
     position: absolute;
     width: 1px;

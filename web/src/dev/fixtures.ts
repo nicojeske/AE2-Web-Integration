@@ -55,7 +55,7 @@ export interface MockGrid {
 const serverStart = Date.now();
 
 // M8 Statistics fixture tuning - deliberately small so the cap is reachable by clicking in dev.
-export const MOCK_TRACKED_LIMIT = 6;
+export const MOCK_TRACKED_LIMIT = 8;
 export const MOCK_SAMPLE_INTERVAL_MS = 5 * 60_000;
 export const MOCK_FINE_RETENTION_MS = 30 * 86_400_000;
 export const MOCK_HOURLY_RETENTION_DAYS = 365;
@@ -183,6 +183,19 @@ export const mockGrids: MockGrid[] = [
                 itemid: "minecraft:charcoal",
                 itemname: "Charcoal",
                 quantity: 40,
+                craftable: true,
+            },
+            // M8 chart-quality/derived-metrics pass: a monotonically declining tracked item, so
+            // `seriesStats`' negative `slopePerHour` and `timeToEmptyMillis`'s projection have
+            // something to show in dev - see mockBucketValue's "sand" branch.
+            { hashcode: 1020, itemid: "minecraft:sand", itemname: "Sand", quantity: 1500, craftable: false },
+            // Large-magnitude tracked item (~2.4M) alongside everything else's 3-4 digit quantities -
+            // exercises log scale and compact number formatting on the overview's aggregate chart.
+            {
+                hashcode: 1021,
+                itemid: "appliedenergistics2:matter_ball",
+                itemname: "Matter Ball",
+                quantity: 2_400_000,
                 craftable: true,
             },
         ],
@@ -452,15 +465,18 @@ export const mockGrids: MockGrid[] = [
                 } satisfies TrackingDetail,
             ],
         ]),
-        // M8: five tracked items (one below the 6-item mock cap, so a sixth click reaches
+        // M8: seven tracked items (one below the 8-item mock cap, so an eighth click reaches
         // TRACKED_LIMIT_REACHED) covering a normal trend, a gap, a zero-baseline ramp, a
-        // just-started item, and a flat §-formatted one - see mockItemHistory's scenario table.
+        // just-started item, a flat §-formatted one, a decline, and a large-magnitude item - see
+        // mockItemHistory's scenario table.
         trackedItems: [
             "minecraft:iron_ingot",
             "minecraft:redstone",
             "appliedenergistics2:material_silicon",
             "appliedenergistics2:crystal_certus",
             "appliedenergistics2:processor_calc",
+            "minecraft:sand",
+            "appliedenergistics2:matter_ball",
         ],
         historyStart: new Map([
             ["minecraft:iron_ingot", serverStart - 40 * 86_400_000],
@@ -472,6 +488,10 @@ export const mockGrids: MockGrid[] = [
             // Tracking "just started" - only the last ~12 minutes have any real samples.
             ["appliedenergistics2:crystal_certus", serverStart - 12 * 60_000],
             ["appliedenergistics2:processor_calc", serverStart - 40 * 86_400_000],
+            // Anchored 10 days back (not the full 365-day retention), like silicon's ramp, so the
+            // decline is visible within the default 7d card/compare range.
+            ["minecraft:sand", serverStart - 10 * 86_400_000],
+            ["appliedenergistics2:matter_ball", serverStart - 40 * 86_400_000],
         ]),
     },
     {
@@ -781,9 +801,19 @@ function mockBucketValue(grid: MockGrid, itemid: string, bucketStartMs: number, 
         const tLocal = Math.min(1, Math.max(0, (bucketStartMs - start) / localSpan));
         target = tLocal < 0.3 ? 0 : live * ((tLocal - 0.3) / 0.7);
         noiseAmplitude = target === 0 ? 0 : Math.max(1, live * 0.03);
+    } else if (itemid === "minecraft:sand") {
+        // Monotonic decline (modulo noise) over this item's own 10-day tracked span, from the live
+        // quantity down to 20% of it - never quite reaching zero, so `timeToEmptyMillis` has a real
+        // projection to make instead of reporting "already empty". Exercises the falling-rate path
+        // and the overview's "at risk"/low-stock surfaces.
+        const localSpan = Math.max(1, now - start);
+        const tLocal = Math.min(1, Math.max(0, (bucketStartMs - start) / localSpan));
+        target = live * (1 - 0.8 * tLocal);
+        noiseAmplitude = Math.max(1, live * 0.02);
     } else {
-        // Normal upward trend - also what "just started" (certus, historyStart far into this range)
-        // and "has a gap" (redstone, gap applied above) both use for their real samples.
+        // Normal upward trend - also what "just started" (certus, historyStart far into this range),
+        // "has a gap" (redstone, gap applied above), and the large-magnitude matter_ball (scales with
+        // `live` regardless of its own magnitude) all use for their real samples.
         target = live * (0.55 + 0.45 * t);
         noiseAmplitude = Math.max(1, live * 0.03);
     }

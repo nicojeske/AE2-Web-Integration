@@ -20,9 +20,11 @@ import {
     COMPARE_PAD,
     COMPARE_W,
     MAX_COMPARE_SERIES,
+    niceTicks,
     normalizeSeries,
     RANGE_OPTIONS,
     sharedDomain,
+    timeTickIndices,
 } from "./statsModel";
 
 export interface CompareModalProps {
@@ -197,46 +199,104 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                 <p className="compare__empty">No items selected - add one above.</p>
             ) : (
                 <>
-                    <div className="compare__plot" {...handlers} tabIndex={0} role="img" aria-label="Compare chart">
-                        <svg
-                            viewBox={`0 0 ${COMPARE_W} ${COMPARE_H}`}
-                            width="100%"
-                            height={COMPARE_H}
-                            preserveAspectRatio="none"
-                            aria-hidden="true"
-                        >
-                            <line
-                                className="compare__reference"
-                                x1={0}
-                                x2={COMPARE_W}
-                                y1={
-                                    COMPARE_H -
-                                    COMPARE_PAD -
-                                    ((100 - domain.min) / (domain.max - domain.min || 1)) *
-                                        (COMPARE_H - COMPARE_PAD * 2)
-                                }
-                                y2={
-                                    COMPARE_H -
-                                    COMPARE_PAD -
-                                    ((100 - domain.min) / (domain.max - domain.min || 1)) *
-                                        (COMPARE_H - COMPARE_PAD * 2)
-                                }
-                            />
-                            {geometries.map((g, i) => (
-                                <path
-                                    key={series[i]!.itemid}
-                                    className={`compare__line compare__line--${(i % 6) + 1}`}
-                                    d={g.linePath}
-                                />
-                            ))}
-                        </svg>
-                        {hoverIndex !== null && count > 0 && (
-                            <div
-                                className="compare__hover-line"
-                                style={{ left: `${(hoverIndex / (count - 1 || 1)) * 100}%` }}
-                            />
-                        )}
-                    </div>
+                    {(() => {
+                        const yOf = (v: number) =>
+                            COMPARE_H -
+                            COMPARE_PAD -
+                            ((v - domain.min) / (domain.max - domain.min || 1)) * (COMPARE_H - COMPARE_PAD * 2);
+                        const yTicks = niceTicks(domain.min, domain.max, 4);
+                        const xTickIdxs = timeTickIndices(timestamps.length, 4);
+                        return (
+                            <div className="chart">
+                                <div className="chart__y-axis" style={{ width: 34, height: COMPARE_H }}>
+                                    {yTicks.map((t) => (
+                                        <span
+                                            key={t}
+                                            className="chart__y-tick"
+                                            style={{ top: `${(yOf(t) / COMPARE_H) * 100}%` }}
+                                        >
+                                            {Math.round(t)}%
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="chart__body">
+                                    <div
+                                        className="compare__plot"
+                                        {...handlers}
+                                        tabIndex={0}
+                                        role="img"
+                                        aria-label="Compare chart"
+                                    >
+                                        <svg
+                                            viewBox={`0 0 ${COMPARE_W} ${COMPARE_H}`}
+                                            width="100%"
+                                            height={COMPARE_H}
+                                            preserveAspectRatio="none"
+                                            aria-hidden="true"
+                                        >
+                                            {yTicks.map((t) => (
+                                                <line
+                                                    key={t}
+                                                    className="chart__gridline"
+                                                    x1={0}
+                                                    x2={COMPARE_W}
+                                                    y1={yOf(t)}
+                                                    y2={yOf(t)}
+                                                    vector-effect="non-scaling-stroke"
+                                                />
+                                            ))}
+                                            <line
+                                                className="compare__reference"
+                                                x1={0}
+                                                x2={COMPARE_W}
+                                                y1={yOf(100)}
+                                                y2={yOf(100)}
+                                                vector-effect="non-scaling-stroke"
+                                            />
+                                            {geometries.map((g, i) => (
+                                                <path
+                                                    key={series[i]!.itemid}
+                                                    className={`compare__line compare__line--${(i % 6) + 1}`}
+                                                    d={g.linePath}
+                                                    vector-effect="non-scaling-stroke"
+                                                />
+                                            ))}
+                                        </svg>
+                                        {hoverIndex !== null && count > 0 && (
+                                            <div
+                                                className="compare__hover-line"
+                                                style={{ left: `${(hoverIndex / (count - 1 || 1)) * 100}%` }}
+                                            />
+                                        )}
+                                    </div>
+                                    <div className="chart__x-axis">
+                                        {xTickIdxs.map((i) => {
+                                            const t = timestamps[i];
+                                            if (t === undefined) return null;
+                                            const pct =
+                                                timestamps.length <= 1 ? 50 : (i / (timestamps.length - 1)) * 100;
+                                            const anchor = pct < 8 ? "start" : pct > 92 ? "end" : "center";
+                                            return (
+                                                <span
+                                                    key={i}
+                                                    className={`chart__x-tick chart__x-tick--${anchor}`}
+                                                    style={{ left: `${pct}%` }}
+                                                >
+                                                    {formatAxisTime(
+                                                        t,
+                                                        compareRange,
+                                                        compareHistory
+                                                            ? compareHistory.to - compareHistory.from
+                                                            : undefined,
+                                                    )}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                     <p className="compare__caption">
                         Each line is % of that item&apos;s first recorded value in this range. Hover for raw counts.
                         {flaggedModes.length > 0 && (

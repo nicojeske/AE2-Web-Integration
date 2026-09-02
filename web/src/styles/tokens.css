@@ -65,6 +65,13 @@
     --series-5: var(--blue);
     --series-6: var(--emerald);
 
-    /* Statistics sparkline area fill (M8) */
-    --sparkline-area: rgba(139, 123, 245, 0.14);
+    /* Statistics chart area fill (M8) */
+    --chart-area: rgba(139, 123, 245, 0.14);
+    /* Statistics chart chrome (chart-quality/derived-metrics pass) - gridlines/axis text/markers/
+     * threshold, checked for contrast against --bg-card (#161a26). */
+    --chart-grid: #1b2033;
+    --chart-axis-text: var(--text-dim);
+    --chart-threshold: var(--amber);
+    --chart-marker-min: var(--blue);
+    --chart-marker-max: var(--emerald);
 }
