@@ -55,8 +55,9 @@ public final class ItemIconIndex {
                 .endsWith(".png"));
         if (files == null) {
             LOG.warn(
-                "item_icon_directory '{}' does not exist or is not a readable directory - item icons disabled",
-                directory);
+                "item_icon_directory '" + directory
+                    + "' does not exist or is not a readable directory - item icons"
+                    + " disabled");
             return disabled();
         }
         // Sorted so that which file wins a normalized-name collision is deterministic, not
@@ -72,17 +73,19 @@ public final class ItemIconIndex {
             }
         }
         if (files.length == 0) {
-            LOG.warn("item_icon_directory '{}' contains no .png files - item icons disabled", directory);
+            LOG.warn("item_icon_directory '" + directory + "' contains no .png files - item icons disabled");
             return disabled();
         }
         if (collisions > 0) {
             LOG.info(
-                "item icon index: loaded {} icons from '{}' ({} filenames collided after normalization and were skipped)",
-                map.size(),
-                directory,
-                collisions);
+                "item icon index: loaded " + map.size()
+                    + " icons from '"
+                    + directory
+                    + "' ("
+                    + collisions
+                    + " filenames collided after normalization and were skipped)");
         } else {
-            LOG.info("item icon index: loaded {} icons from '{}'", map.size(), directory);
+            LOG.info("item icon index: loaded " + map.size() + " icons from '" + directory + "'");
         }
         return new ItemIconIndex(map, true);
     }
