@@ -9,7 +9,7 @@ import { Badge } from "../ui/Badge";
 import { Card } from "../ui/Card";
 import { Chart } from "../ui/Chart";
 import { isLowStock } from "./browserModel";
-import { COMPARE_W, deltaPercent, describeResolution, seriesStats, sumSeries } from "./statsModel";
+import { COMPARE_W, deltaPercent, describeResolution, isTrendSignificant, seriesStats, sumSeries } from "./statsModel";
 
 export interface StatsOverviewProps {
     gridId: number;
@@ -47,9 +47,12 @@ export function StatsOverview({
     for (const id of tracked) {
         const s = seriesStats(history?.byItem.get(id) ?? [], stepMillis);
         if (s.slopePerHour === null) continue;
-        if (s.slopePerHour > 0) rising++;
-        else if (s.slopePerHour < 0) falling++;
-        else flat++;
+        // A trend that doesn't clear isTrendSignificant's noise gate counts as flat here too - a
+        // sample-to-sample sawtooth around a steady mean has a nonzero slope by chance, but it isn't
+        // "rising" or "falling" in any actionable sense.
+        if (!isTrendSignificant(s)) flat++;
+        else if (s.slopePerHour > 0) rising++;
+        else falling++;
     }
 
     let lowStockCount = 0;

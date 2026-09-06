@@ -5,6 +5,7 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +27,7 @@ import com.google.gson.Gson;
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
+import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 import pl.kuba6000.ae2webintegration.core.utils.GSONUtils;
 
@@ -77,23 +79,27 @@ public final class ItemHistoryStore {
     /**
      * Sums stored amounts per {@code itemid} over one grid's storage list and records one sample for
      * every tracked item, including a real {@code 0} for a tracked item currently absent from the
-     * network (never a gap - the item is still tracked, it is simply empty right now).
+     * network (never a gap - the item is still tracked, it is simply empty right now). Returns the
+     * display name observed for each tracked item still in storage this sample (empty map if none),
+     * so a caller can remember a tracked item's name from the last time it was actually seen.
      */
-    public static void sample(long gridKey, Set<String> tracked, IStackList storage, long nowMillis) {
+    public static Map<String, String> sample(long gridKey, Set<String> tracked, IStackList storage, long nowMillis) {
         if (tracked.isEmpty()) {
-            return;
+            return Collections.emptyMap();
         }
         Map<String, Long> stored = new HashMap<>();
         for (String itemid : tracked) {
             stored.put(itemid, 0L);
         }
+        Map<String, String> observedNames = new HashMap<>();
         for (IAEGenericStack stack : storage.web$stacks()) {
-            String itemid = stack.web$what()
-                .web$getItemID();
+            IAEKey key = stack.web$what();
+            String itemid = key.web$getItemID();
             if (!stored.containsKey(itemid)) {
                 continue;
             }
             stored.merge(itemid, stack.web$amount(), Long::sum);
+            observedNames.putIfAbsent(itemid, key.web$getDisplayName());
         }
 
         long fineBucketMillis = fineBucketMillis();
@@ -114,6 +120,7 @@ public final class ItemHistoryStore {
             series.hourly.record(hourlyBucket, value);
         }
         dirty.set(true);
+        return observedNames;
     }
 
     /** Drops any series for items that are no longer tracked, e.g. after {@code TrackedItems} removes one. */

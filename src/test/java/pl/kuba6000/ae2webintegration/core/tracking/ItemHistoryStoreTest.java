@@ -1,11 +1,14 @@
 package pl.kuba6000.ae2webintegration.core.tracking;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -127,6 +130,39 @@ class ItemHistoryStoreTest {
 
         JSON_ItemHistory result = ItemHistoryStore.readSeries(gridKey, Arrays.asList("minecraft:diamond"), now, now, 1);
         assertEquals(0L, lastPoint(result, 0));
+    }
+
+    @Test
+    void sampleReturnsTheDisplayNameObservedForEachTrackedItemInStorage() {
+        long gridKey = 950_150L;
+        long now = 15_000_000L;
+        Map<String, String> observed = ItemHistoryStore.sample(
+            gridKey,
+            oneItem("minecraft:iron_ingot"),
+            TrackingTestFakes.stackList(TrackingTestFakes.stack("minecraft:iron_ingot", 5L, "Iron Ingot")),
+            now);
+        assertEquals("Iron Ingot", observed.get("minecraft:iron_ingot"));
+    }
+
+    @Test
+    void sampleOmitsATrackedItemThatIsAbsentFromStorageFromTheReturnedNames() {
+        long gridKey = 950_151L;
+        long now = 16_000_000L;
+        Map<String, String> observed = ItemHistoryStore
+            .sample(gridKey, oneItem("minecraft:diamond"), TrackingTestFakes.stackList(), now);
+        assertTrue(observed.isEmpty());
+    }
+
+    @Test
+    void sampleNeverReturnsANameForAnUntrackedItemEvenIfPresentInStorage() {
+        long gridKey = 950_152L;
+        long now = 17_000_000L;
+        Map<String, String> observed = ItemHistoryStore.sample(
+            gridKey,
+            oneItem("minecraft:iron_ingot"),
+            TrackingTestFakes.stackList(TrackingTestFakes.stack("minecraft:gold_ingot", 9L, "Gold Ingot")),
+            now);
+        assertFalse(observed.containsKey("minecraft:gold_ingot"));
     }
 
     @Test

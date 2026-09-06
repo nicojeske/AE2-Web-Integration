@@ -23,6 +23,7 @@ import {
     toCpuList,
     toGridSummaries,
     toJobData,
+    trackedItemNames,
 } from "./fixtures.ts";
 
 const STATS_RANGES = new Set<StatsRange>(["15m", "1h", "6h", "24h", "7d", "30d", "1y", "all", "custom"]);
@@ -398,7 +399,11 @@ export function mockApiPlugin(): Plugin {
                             if (!grid.historyStart.has(id)) grid.historyStart.set(id, Date.now());
                         }
                         grid.trackedItems = next2;
-                        ok(res, { tracked: grid.trackedItems, limit: MOCK_TRACKED_LIMIT });
+                        ok(res, {
+                            tracked: grid.trackedItems,
+                            limit: MOCK_TRACKED_LIMIT,
+                            names: trackedItemNames(grid),
+                        });
                         return;
                     }
                     case "/prefs": {

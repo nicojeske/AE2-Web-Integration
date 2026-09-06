@@ -8,6 +8,7 @@ import { useStats } from "../state/stats";
 import { Button } from "../ui/Button";
 import { Checkbox } from "../ui/Checkbox";
 import { FormattedText } from "../ui/FormattedText";
+import { ItemIcon } from "../ui/ItemIcon";
 import { Modal } from "../ui/Modal";
 import { buildTrackableRows, type TrackableSource } from "./statsModel";
 
@@ -18,7 +19,7 @@ export interface ManageTrackedModalProps {
 export function ManageTrackedModal({ onClose }: ManageTrackedModalProps) {
     const { selectedGrid } = useNetwork();
     const { items } = useItems();
-    const { tracked, trackedLimit, addTracked, removeTracked } = useStats();
+    const { tracked, trackedLimit, trackedNames, addTracked, removeTracked } = useStats();
     const [search, setSearch] = useState("");
     const [confirming, setConfirming] = useState<string | null>(null);
 
@@ -33,10 +34,14 @@ export function ManageTrackedModal({ onClose }: ManageTrackedModalProps) {
             names.set(item.itemid, item.itemname);
         }
         for (const id of tracked) {
-            if (!byId.has(id)) byId.set(id, { itemid: id, name: id, quantity: null });
+            if (!byId.has(id)) {
+                const remembered = trackedNames[id];
+                byId.set(id, { itemid: id, name: remembered ?? id, quantity: null });
+                if (remembered) names.set(id, remembered);
+            }
         }
         return { sources: [...byId.values()], rawNames: names };
-    }, [items, gridId, tracked]);
+    }, [items, gridId, tracked, trackedNames]);
 
     const rows = buildTrackableRows(sources, tracked, search);
     const atCap = tracked.length >= trackedLimit;
@@ -80,6 +85,7 @@ export function ManageTrackedModal({ onClose }: ManageTrackedModalProps) {
                                 }
                             }}
                         >
+                            <ItemIcon itemid={row.itemid} name={rawNames.get(row.itemid) ?? row.name} size={20} />
                             <FormattedText text={rawNames.get(row.itemid) ?? row.name} className="tracked__row-name" />
                             {row.quantity === null && <span className="tracked__row-missing">not on this network</span>}
                         </Checkbox>

@@ -55,7 +55,17 @@ export interface MockGrid {
 const serverStart = Date.now();
 
 // M8 Statistics fixture tuning - deliberately small so the cap is reachable by clicking in dev.
-export const MOCK_TRACKED_LIMIT = 8;
+export const MOCK_TRACKED_LIMIT = 10;
+
+/**
+ * A tracked itemid that never appears in any grid's `items` fixture - stands in for a tracked item that
+ * has emptied out of a real network entirely (only craftables survive a real `GetItems` at quantity 0).
+ * Its display name only ever reaches the client via `/trackeditems`' `names` field (see
+ * `trackedItemNames` below), mirroring `GridData.trackedItemNames` server-side - exercises the
+ * card/Manage-Tracked/Compare-legend name and icon fallback for an item `useItems()` can never resolve.
+ */
+export const MOCK_GHOST_ITEM_ID = "modpack:reactant_dust";
+const MOCK_GHOST_ITEM_NAME = "Reactant Dust";
 export const MOCK_SAMPLE_INTERVAL_MS = 5 * 60_000;
 export const MOCK_FINE_RETENTION_MS = 30 * 86_400_000;
 export const MOCK_HOURLY_RETENTION_DAYS = 365;
@@ -465,10 +475,11 @@ export const mockGrids: MockGrid[] = [
                 } satisfies TrackingDetail,
             ],
         ]),
-        // M8: seven tracked items (one below the 8-item mock cap, so an eighth click reaches
+        // M8: nine tracked items (one below the 10-item mock cap, so a tenth click reaches
         // TRACKED_LIMIT_REACHED) covering a normal trend, a gap, a zero-baseline ramp, a
-        // just-started item, a flat §-formatted one, a decline, and a large-magnitude item - see
-        // mockItemHistory's scenario table.
+        // just-started item, a flat §-formatted one, a decline, a large-magnitude item, a near-max
+        // sawtooth, and an item absent from the network entirely - see mockItemHistory's scenario
+        // table and mockBucketValue's per-item branches.
         trackedItems: [
             "minecraft:iron_ingot",
             "minecraft:redstone",
@@ -477,6 +488,8 @@ export const mockGrids: MockGrid[] = [
             "appliedenergistics2:processor_calc",
             "minecraft:sand",
             "appliedenergistics2:matter_ball",
+            "appliedenergistics2:sky_stone_block",
+            MOCK_GHOST_ITEM_ID,
         ],
         historyStart: new Map([
             ["minecraft:iron_ingot", serverStart - 40 * 86_400_000],
@@ -492,6 +505,8 @@ export const mockGrids: MockGrid[] = [
             // decline is visible within the default 7d card/compare range.
             ["minecraft:sand", serverStart - 10 * 86_400_000],
             ["appliedenergistics2:matter_ball", serverStart - 40 * 86_400_000],
+            ["appliedenergistics2:sky_stone_block", serverStart - 40 * 86_400_000],
+            [MOCK_GHOST_ITEM_ID, serverStart - 40 * 86_400_000],
         ]),
     },
     {
@@ -765,6 +780,25 @@ function itemLiveQuantity(grid: MockGrid, itemid: string): number {
     return grid.items.find((i) => i.itemid === itemid)?.quantity ?? 0;
 }
 
+/**
+ * `/trackeditems`' `names` field - mirrors `GridData.getTrackedItemNames()`: a display name for every
+ * tracked item still resolvable, either from the live item list or (for `MOCK_GHOST_ITEM_ID`) the one
+ * name it was ever given, standing in for a name the real server would have captured while the item was
+ * still in storage.
+ */
+export function trackedItemNames(grid: MockGrid): Record<string, string> {
+    const names: Record<string, string> = {};
+    for (const id of grid.trackedItems) {
+        const item = grid.items.find((i) => i.itemid === id);
+        if (item) {
+            names[id] = item.itemname;
+        } else if (id === MOCK_GHOST_ITEM_ID) {
+            names[id] = MOCK_GHOST_ITEM_NAME;
+        }
+    }
+    return names;
+}
+
 // Deliberate gap window for the redstone scenario: [now-9h, now-6h), independent of historyStart -
 // exercises a broken line/area in the middle of a series that otherwise has plenty of real samples.
 const REDSTONE_GAP_START_MS_AGO = 9 * 3_600_000;
@@ -787,7 +821,22 @@ function mockBucketValue(grid: MockGrid, itemid: string, bucketStartMs: number, 
 
     let target: number;
     let noiseAmplitude: number;
-    if (itemid === "appliedenergistics2:processor_calc") {
+    if (itemid === MOCK_GHOST_ITEM_ID) {
+        // Out of stock for its entire tracked span - not in any grid's `items` fixture at all, so
+        // `live` is always 0. Exercises the card's "out of stock" tag and the name/icon fallback to
+        // `/trackeditems`' `names` field once `item` itself can never resolve.
+        return 0;
+    } else if (itemid === "appliedenergistics2:sky_stone_block") {
+        // Sits within a few percent of its own max with small periodic dips that fully refill - a
+        // "topped-up buffer that dips under load" shape, not a drain. The triangle wave has (almost)
+        // no net trend, so seriesStats' rSquared stays low - exercises the rate badge's grey
+        // "noise, not a real trend" state and confirms "empty in ~X" correctly stays hidden.
+        const waveBuckets = 24; // ~2h period at the default 5-min sample interval
+        const phase = fineBucket % waveBuckets;
+        const triangle = phase < waveBuckets / 2 ? phase / (waveBuckets / 2) : 2 - phase / (waveBuckets / 2);
+        target = live * (1 - 0.05 * triangle);
+        noiseAmplitude = Math.max(1, live * 0.01);
+    } else if (itemid === "appliedenergistics2:processor_calc") {
         // Flat series (plus a §-formatted name) - exercises chartGeometry's span<=0 centering.
         target = live;
         noiseAmplitude = 0;

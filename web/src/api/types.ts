@@ -183,10 +183,13 @@ export interface ItemHistoryResult {
     series: ItemHistorySeries[];
 }
 
-/** `/trackeditems?grid=[&set=][&add=][&remove=]` response. */
+/** `/trackeditems?grid=[&set=][&add=][&remove=]` response. `names` (a display name last observed for
+ *  each tracked item still in storage) was added alongside the statistics dashboard's icon/name pass -
+ *  `undefined` against an older core that doesn't send it yet. */
 export interface TrackedItemsResult {
     tracked: string[];
     limit: number;
+    names?: Record<string, string>;
 }
 
 /** `/prefs` response (M13). `blob` is `null` until this principal has synced from any device; otherwise

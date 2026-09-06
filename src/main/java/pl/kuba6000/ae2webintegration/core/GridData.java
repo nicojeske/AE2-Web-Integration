@@ -7,7 +7,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
@@ -52,12 +54,57 @@ public class GridData {
      */
     private volatile Set<String> trackedItems = new LinkedHashSet<>();
 
+    /**
+     * The last display name observed (via {@code ItemHistoryStore.sample}) for each currently tracked
+     * item - kept so a tracked item that has since emptied out of the network (and so no longer appears
+     * in {@code GetItems}) still shows a real name and matches its icon, instead of falling back to the
+     * raw itemid. Replaced wholesale for the same torn-read reason as {@link #trackedItems}.
+     */
+    private volatile Map<String, String> trackedItemNames = new LinkedHashMap<>();
+
     public Set<String> getTrackedItems() {
         return trackedItems;
     }
 
     public void setTrackedItems(Collection<String> items) {
         trackedItems = Collections.unmodifiableSet(new LinkedHashSet<>(items));
+        // Wholesale replace, not an in-place retainAll, for the same torn-read reason as trackedItems
+        // itself - the sampler can be merging names into the live map concurrently.
+        Map<String, String> pruned = new LinkedHashMap<>(trackedItemNames);
+        pruned.keySet()
+            .retainAll(trackedItems);
+        trackedItemNames = pruned;
+    }
+
+    public Map<String, String> getTrackedItemNames() {
+        return trackedItemNames;
+    }
+
+    /**
+     * Merges freshly observed {@code itemid -> displayName} pairs (from one sampling pass) into the
+     * remembered set, restricted to currently tracked items, and reports whether anything actually
+     * changed - callers use this to skip a disk write when a sample just re-confirms names already
+     * known.
+     */
+    public boolean updateTrackedItemNames(Map<String, String> observed) {
+        if (observed.isEmpty()) {
+            return false;
+        }
+        Map<String, String> next = new LinkedHashMap<>(trackedItemNames);
+        boolean changed = false;
+        for (Map.Entry<String, String> entry : observed.entrySet()) {
+            if (!trackedItems.contains(entry.getKey())) {
+                continue;
+            }
+            if (!entry.getValue()
+                .equals(next.put(entry.getKey(), entry.getValue()))) {
+                changed = true;
+            }
+        }
+        if (changed) {
+            trackedItemNames = next;
+        }
+        return changed;
     }
 
     @GSONUtils.SkipGSON

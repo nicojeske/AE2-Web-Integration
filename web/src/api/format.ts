@@ -104,6 +104,25 @@ export function formatNumber(n: number, mode: "full" | "compact" = "full"): stri
     return n.toLocaleString("en-US");
 }
 
+/**
+ * A `seriesStats().slopePerHour` as a signed rate badge label - `+128/h` / `-9/d` / `~0/h`. Plain
+ * `Math.round(perHour)` would render any slow-but-real drain under 1/hour as a misleading `+0/h`
+ * (looks flat, isn't), so this falls back to a per-day unit once the per-hour figure would round away,
+ * and only settles for `~0` once even the per-day figure does too.
+ */
+export function formatRate(perHour: number, mode: "full" | "compact" = "full"): string {
+    if (Math.abs(perHour) >= 1) {
+        const rounded = Math.round(perHour);
+        return `${rounded >= 0 ? "+" : ""}${formatNumber(rounded, mode)}/h`;
+    }
+    const perDay = perHour * 24;
+    if (Math.abs(perDay) >= 1) {
+        const rounded = Math.round(perDay);
+        return `${rounded >= 0 ? "+" : ""}${formatNumber(rounded, mode)}/d`;
+    }
+    return "~0/h";
+}
+
 /** `"just now"` / `"12s ago"` / `"3m ago"` / `"2h ago"` - the topbar's items-freshness label (M11). */
 export function formatRelativeAge(fetchedAtMs: number, nowMs: number = Date.now()): string {
     const seconds = Math.max(0, Math.round((nowMs - fetchedAtMs) / 1000));

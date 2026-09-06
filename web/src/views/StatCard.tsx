@@ -5,15 +5,17 @@
 // once per card duplicating the same work under a slightly different name.
 import type { BrowserItem } from "../state/items";
 import type { StatsRange } from "../api/types";
-import { formatDuration, formatNumber } from "../api/format";
+import { formatDuration, formatNumber, formatRate } from "../api/format";
 import { Badge } from "../ui/Badge";
 import { Card } from "../ui/Card";
 import { Chart, type ChartMarker } from "../ui/Chart";
 import { ExpandIcon } from "../ui/icons";
 import { FormattedText } from "../ui/FormattedText";
+import { ItemIcon } from "../ui/ItemIcon";
 import {
     CARD_W,
     type ChartScale,
+    isTrendSignificant,
     lastNonGap,
     movingAverage,
     RANGE_OPTIONS,
@@ -26,6 +28,10 @@ export interface StatCardProps {
     itemid: string;
     /** `undefined` when the tracked item is no longer present in the loaded item list. */
     item: BrowserItem | undefined;
+    /** Last display name the server observed for this item while it was still in storage - the
+     *  fallback once `item` goes `undefined` because the item emptied out. `undefined` if the server
+     *  never saw it in stock either (predates this field, or genuinely never stocked). */
+    trackedName: string | undefined;
     values: (number | null)[];
     timestamps: number[];
     range: StatsRange;
@@ -44,6 +50,7 @@ export interface StatCardProps {
 export function StatCard({
     itemid,
     item,
+    trackedName,
     values,
     timestamps,
     range,
@@ -64,11 +71,16 @@ export function StatCard({
             : last != null
               ? formatNumber(last.value, numberFormat)
               : "—";
-    const name = item?.itemname ?? itemid;
+    const name = item?.itemname ?? trackedName ?? itemid;
     const rangeLabel = RANGE_OPTIONS.find((o) => o.value === range)?.label ?? range;
     const ariaLabel = `${name}, ${rangeLabel}`;
+    // A real `0` last sample (recorded even for a tracked item currently out of stock - see
+    // ItemHistoryStore.sample) reads as "out of stock"; no sample at all is the only case that still
+    // means "the server has never seen this item on this network".
+    const statusTag = item ? null : last !== null && last.value === 0 ? "out of stock" : "not on this network";
 
     const smoothedValues = smoothing ? movingAverage(values, SMOOTHING_WINDOW) : null;
+    const trendSignificant = isTrendSignificant(stats);
     const toEmpty = timeToEmptyMillis(stats);
     const markers: ChartMarker[] =
         stats.minIndex !== null && stats.maxIndex !== null && stats.minIndex !== stats.maxIndex
@@ -81,26 +93,47 @@ export function StatCard({
     return (
         <Card className="stat-card">
             <div className="stat-card__head">
+                <ItemIcon itemid={itemid} name={name} size={40} className="stat-card__icon" />
                 <div className="stat-card__identity">
-                    <FormattedText text={name} className="stat-card__name" />
-                    {!item && <span className="stat-card__missing">not on this network</span>}
-                    <span className="stat-card__value">{currentDisplay}</span>
-                </div>
-                <div className="stat-card__head-actions">
-                    {stats.changePct === null ? (
-                        <span title="Not enough samples yet">
-                            <Badge variant="grey" size="sm">
-                                n/a
+                    <div className="stat-card__name-row">
+                        <FormattedText text={name} className="stat-card__name" />
+                        {statusTag && <span className="stat-card__missing">{statusTag}</span>}
+                    </div>
+                    <div className="stat-card__value-row">
+                        <span className="stat-card__value">{currentDisplay}</span>
+                        {stats.samples > 0 &&
+                            stats.slopePerHour !== null &&
+                            (trendSignificant ? (
+                                <Badge variant={stats.slopePerHour >= 0 ? "green" : "red"} size="sm">
+                                    {formatRate(stats.slopePerHour, numberFormat)}
+                                </Badge>
+                            ) : (
+                                <span title="Trend is within sample noise">
+                                    <Badge variant="grey" size="sm">
+                                        {formatRate(stats.slopePerHour, numberFormat)}
+                                    </Badge>
+                                </span>
+                            ))}
+                        {stats.changePct === null ? (
+                            <span title="Not enough samples yet">
+                                <Badge variant="grey" size="sm">
+                                    n/a
+                                </Badge>
+                            </span>
+                        ) : (
+                            <Badge variant={stats.changePct >= 0 ? "green" : "red"} size="sm">
+                                {`${stats.changePct >= 0 ? "+" : ""}${stats.changePct.toFixed(1)}%`}
                             </Badge>
-                        </span>
-                    ) : (
-                        <Badge variant={stats.changePct >= 0 ? "green" : "red"} size="sm">
-                            {`${stats.changePct >= 0 ? "+" : ""}${stats.changePct.toFixed(1)}%`}
-                        </Badge>
-                    )}
-                    <button type="button" className="stat-card__expand" title="Compare over time" onClick={onExpand}>
-                        <ExpandIcon />
-                    </button>
+                        )}
+                        <button
+                            type="button"
+                            className="stat-card__expand"
+                            title="Compare over time"
+                            onClick={onExpand}
+                        >
+                            <ExpandIcon />
+                        </button>
+                    </div>
                 </div>
             </div>
             <Chart
@@ -129,12 +162,6 @@ export function StatCard({
                     <span>
                         max <strong>{formatNumber(stats.max!, numberFormat)}</strong>
                     </span>
-                    {stats.slopePerHour !== null && (
-                        <span>
-                            {stats.slopePerHour >= 0 ? "+" : ""}
-                            {formatNumber(Math.round(stats.slopePerHour), numberFormat)}/h
-                        </span>
-                    )}
                     {toEmpty !== null && (
                         <span className="stat-card__eta" title="Projected from the current trend, not a guarantee">
                             empty in ~{formatDuration(toEmpty)}

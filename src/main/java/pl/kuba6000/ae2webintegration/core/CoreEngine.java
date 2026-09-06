@@ -3,6 +3,7 @@ package pl.kuba6000.ae2webintegration.core;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
@@ -225,7 +226,11 @@ public class CoreEngine {
             if (storageGrid == null) {
                 return;
             }
-            ItemHistoryStore.sample(gridKey, tracked, storageGrid.web$getStorageList(), nowMillis);
+            Map<String, String> observedNames = ItemHistoryStore
+                .sample(gridKey, tracked, storageGrid.web$getStorageList(), nowMillis);
+            if (data.updateTrackedItemNames(observedNames)) {
+                GridData.saveChanges();
+            }
             return;
         }
         // Grid went offline or unattachable between the pass snapshot and this tick - skip, the next pass

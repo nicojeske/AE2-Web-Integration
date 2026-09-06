@@ -11,6 +11,7 @@ import { usePrefs } from "../state/prefs";
 import { useStats } from "../state/stats";
 import { Button } from "../ui/Button";
 import { useChartHover } from "../ui/useChartHover";
+import { ItemIcon } from "../ui/ItemIcon";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Modal } from "../ui/Modal";
 import { CustomRangeInput } from "./CustomRangeInput";
@@ -44,6 +45,7 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
         compareHistory,
         setCompareActive,
         tracked,
+        trackedNames,
     } = useStats();
 
     const [ids, setIds] = useState<string[]>(itemids.slice(0, MAX_COMPARE_SERIES));
@@ -62,8 +64,10 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
         for (const item of items) {
             if (item.sourceGridId === gridId) byId.set(item.itemid, item.plainName);
         }
-        return (itemid: string) => byId.get(itemid) ?? itemid;
-    }, [items, gridId]);
+        // Falls back to the server-remembered name (see state/stats.tsx's trackedNames) before the
+        // raw itemid - an emptied-out tracked item still gets a real name and a matching icon.
+        return (itemid: string) => byId.get(itemid) ?? trackedNames[itemid] ?? itemid;
+    }, [items, gridId, trackedNames]);
 
     const series = useMemo(() => {
         return ids.map((id) => {
@@ -182,6 +186,7 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                             className="compare__chip-dot"
                             style={{ backgroundColor: `var(--series-${(i % 6) + 1})` }}
                         />
+                        <ItemIcon itemid={s.itemid} name={nameOf(s.itemid)} size={16} />
                         {nameOf(s.itemid)}
                         <button
                             type="button"

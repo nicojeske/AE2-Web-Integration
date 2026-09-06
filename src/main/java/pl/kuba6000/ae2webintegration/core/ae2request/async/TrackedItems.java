@@ -2,6 +2,7 @@ package pl.kuba6000.ae2webintegration.core.ae2request.async;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,10 +20,19 @@ public class TrackedItems extends IAsyncRequest {
 
         ArrayList<String> tracked;
         int limit;
+        Map<String, String> names;
 
-        JSON_TrackedItemsResult(Set<String> tracked, int limit) {
+        JSON_TrackedItemsResult(Set<String> tracked, int limit, Map<String, String> names) {
             this.tracked = new ArrayList<>(tracked);
             this.limit = limit;
+            // Filtered to `tracked` so a stale name never leaks past its item being untracked.
+            this.names = new LinkedHashMap<>();
+            for (String itemid : tracked) {
+                String name = names.get(itemid);
+                if (name != null) {
+                    this.names.put(itemid, name);
+                }
+            }
         }
     }
 
@@ -77,7 +87,11 @@ public class TrackedItems extends IAsyncRequest {
             grid = stored;
         }
 
-        succeed(new JSON_TrackedItemsResult(grid != null ? grid.getTrackedItems() : Collections.emptySet(), limit));
+        succeed(
+            new JSON_TrackedItemsResult(
+                grid != null ? grid.getTrackedItems() : Collections.emptySet(),
+                limit,
+                grid != null ? grid.getTrackedItemNames() : Collections.emptyMap()));
     }
 
     private static List<String> parseCsv(String csv) {

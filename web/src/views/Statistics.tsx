@@ -49,6 +49,7 @@ export function Statistics() {
         setCustomMinutes,
         tracked,
         trackedLimit,
+        trackedNames,
         trackedError,
         history,
         historyLoading,
@@ -155,6 +156,7 @@ export function Statistics() {
                                         key={itemid}
                                         itemid={itemid}
                                         item={item}
+                                        trackedName={trackedNames[itemid]}
                                         values={history?.byItem.get(itemid) ?? []}
                                         timestamps={history?.timestamps ?? []}
                                         range={range}

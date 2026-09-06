@@ -18,6 +18,14 @@ final class TrackingTestFakes {
     private TrackingTestFakes() {}
 
     static IAEGenericStack stack(String itemid, long amount) {
+        return stack(itemid, amount, itemid);
+    }
+
+    /**
+     * Same as {@link #stack(String, long)}, but with a display name distinct from the itemid - needed
+     * to tell "captured the display name" apart from "captured the itemid" in a name-capture test.
+     */
+    static IAEGenericStack stack(String itemid, long amount, String displayName) {
         IAEKey key = new IAEKey() {
 
             @Override
@@ -27,7 +35,7 @@ final class TrackingTestFakes {
 
             @Override
             public String web$getDisplayName() {
-                return itemid;
+                return displayName;
             }
 
             @Override

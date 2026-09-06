@@ -14,7 +14,7 @@ import {
     setTrackedItems as apiSetTrackedItems,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
-import type { ItemHistoryResult, StatsRange } from "../api/types";
+import type { ItemHistoryResult, StatsRange, TrackedItemsResult } from "../api/types";
 import { CARD_POINTS, COMPARE_POINTS, DEFAULT_CUSTOM_MINUTES, toValues } from "../views/statsModel";
 import { useNetwork } from "./network";
 import { usePrefs } from "./prefs";
@@ -67,6 +67,9 @@ export interface StatsContextValue {
 
     tracked: string[];
     trackedLimit: number;
+    /** Last display name observed server-side for each tracked item, keyed by itemid - the fallback
+     *  a tracked item keeps once it empties out and drops out of `useItems()`. */
+    trackedNames: Record<string, string>;
     trackedLoading: boolean;
     trackedError: string | null;
 
@@ -118,6 +121,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
 
     const [tracked, setTracked] = useState<string[]>([]);
     const [trackedLimit, setTrackedLimit] = useState(0);
+    const [trackedNames, setTrackedNames] = useState<Record<string, string>>({});
     const [trackedLoading, setTrackedLoading] = useState(false);
     const [trackedError, setTrackedError] = useState<string | null>(null);
 
@@ -171,6 +175,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
         let cancelled = false;
         setTracked([]);
         setTrackedLimit(0);
+        setTrackedNames({});
         setTrackedError(null);
         setHistory(null);
         setHistoryError(null);
@@ -185,6 +190,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
                 if (cancelled) return;
                 setTracked(res.tracked);
                 setTrackedLimit(res.limit);
+                setTrackedNames(res.names ?? {});
             })
             .catch((e) => {
                 if (cancelled) return;
@@ -289,7 +295,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     const refresh = useCallback(() => runNowRef.current(), []);
 
     const applyTrackedMutation = useCallback(
-        (mutate: () => Promise<{ tracked: string[]; limit: number }>) => {
+        (mutate: () => Promise<TrackedItemsResult>) => {
             const gid = gridIdForMutationRef.current;
             if (gid === null) return Promise.resolve();
             const previous = trackedRef.current;
@@ -300,6 +306,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
                     if (gridIdForMutationRef.current !== gid) return;
                     setTracked(res.tracked);
                     setTrackedLimit(res.limit);
+                    setTrackedNames(res.names ?? {});
                     void runNowRef.current();
                 } catch (e) {
                     if (gridIdForMutationRef.current !== gid) return;
@@ -312,6 +319,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
                             if (gridIdForMutationRef.current === gid) {
                                 setTracked(res.tracked);
                                 setTrackedLimit(res.limit);
+                                setTrackedNames(res.names ?? {});
                             }
                         } catch {
                             // Best-effort resync only; the next grid change or manual refresh recovers.
@@ -364,6 +372,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             setCustomMinutes,
             tracked,
             trackedLimit,
+            trackedNames,
             trackedLoading,
             trackedError,
             history,
@@ -388,6 +397,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             customMinutes,
             tracked,
             trackedLimit,
+            trackedNames,
             trackedLoading,
             trackedError,
             history,

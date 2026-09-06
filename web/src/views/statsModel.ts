@@ -296,6 +296,15 @@ export interface SeriesStats {
     /** Least-squares slope over every non-gap point (not just first/last), in value units per hour.
      *  `null` under 2 samples - matches `deltaPercent`'s own "not enough samples" threshold. */
     slopePerHour: number | null;
+    /** Coefficient of determination of that same fit, in `[0, 1]` - how much of the series' shape the
+     *  linear trend actually explains, as opposed to noise around a flat mean. `null` under the same
+     *  conditions as `slopePerHour`, or when the series has zero variance (a degenerate "perfect" fit
+     *  that isn't a trend). See {@link isTrendSignificant}. */
+    rSquared: number | null;
+    /** Non-gap span covered by the fit, in hours - `lastNonGap.index - firstNonGap.index`, not the
+     *  whole requested window, so a recently tracked item isn't judged over its own leading gaps.
+     *  `null` under the same conditions as `slopePerHour`. */
+    spanHours: number | null;
     /** `last - first` (non-gap); `null` under the same conditions as `deltaPercent`. */
     changeAbs: number | null;
     changePct: number | null;
@@ -322,6 +331,9 @@ export function seriesStats(values: (number | null)[], stepMillis: number): Seri
     let sumY = 0;
     let sumXY = 0;
     let sumXX = 0;
+    let sumYY = 0;
+    let firstSampleIndex: number | null = null;
+    let lastSampleIndex = -1;
 
     for (let i = 0; i < values.length; i++) {
         const v = values[i];
@@ -331,6 +343,8 @@ export function seriesStats(values: (number | null)[], stepMillis: number): Seri
         }
         samples++;
         sum += v;
+        if (firstSampleIndex === null) firstSampleIndex = i;
+        lastSampleIndex = i;
         if (v < min) {
             min = v;
             minIndex = i;
@@ -344,6 +358,7 @@ export function seriesStats(values: (number | null)[], stepMillis: number): Seri
         sumY += v;
         sumXY += xHours * v;
         sumXX += xHours * xHours;
+        sumYY += v * v;
     }
 
     const avg = samples > 0 ? sum / samples : null;
@@ -358,9 +373,21 @@ export function seriesStats(values: (number | null)[], stepMillis: number): Seri
     }
 
     let slopePerHour: number | null = null;
+    let rSquared: number | null = null;
+    let spanHours: number | null = null;
     if (samples >= 2) {
-        const denom = samples * sumXX - sumX * sumX;
-        if (denom !== 0) slopePerHour = (samples * sumXY - sumX * sumY) / denom;
+        const xDenom = samples * sumXX - sumX * sumX;
+        if (xDenom !== 0) {
+            slopePerHour = (samples * sumXY - sumX * sumY) / xDenom;
+            const yDenom = samples * sumYY - sumY * sumY;
+            // yDenom is 0 for a perfectly flat series - no variance for a trend to explain, and
+            // dividing would read as a spurious "perfect fit" rather than "no fit at all".
+            if (yDenom !== 0) {
+                const corr = (samples * sumXY - sumX * sumY) / Math.sqrt(xDenom * yDenom);
+                rSquared = corr * corr;
+            }
+        }
+        spanHours = ((lastSampleIndex - firstSampleIndex!) * stepMillis) / 3_600_000;
     }
 
     const changeAbs =
@@ -378,19 +405,62 @@ export function seriesStats(values: (number | null)[], stepMillis: number): Seri
         samples,
         gaps,
         slopePerHour,
+        rSquared,
+        spanHours,
         changeAbs,
         changePct: deltaPercent(values),
     };
 }
 
+/** Minimum non-gap samples before a linear trend is trusted at all - matches `seriesStats`' own
+ *  2-sample floor for having a slope in the first place, but a slope from just 2-5 points is too
+ *  easily an artifact of where the window happens to start/end. */
+export const TREND_MIN_SAMPLES = 6;
+/** Minimum `rSquared` - below this the linear fit explains less than half the series' variance, so
+ *  calling it "a trend" rather than "noise around a mean" would overstate the fit's confidence. */
+export const TREND_MIN_R2 = 0.5;
+/** The fitted drop/rise across the whole observed span must be at least as large as the series' own
+ *  noise (`stdDev`) - the clause that actually distinguishes a real drain from a buffer that sits near
+ *  its max and dips (a real per-sample swing) before refilling: such a sawtooth can still fit a
+ *  shallow line with a middling R^2, but the line's total predicted movement stays small next to how
+ *  much the series itself jitters. */
+export const TREND_MIN_NOISE_RATIO = 1;
+
+/**
+ * Whether `stats`' linear trend is significant enough to act on (drive the rate badge's color, gate
+ * "empty in ~X", classify rising/falling in the overview KPI) rather than reading as noise around a
+ * flat mean. Deliberately independent of the trend's sign - a rising trend needs the same scrutiny as
+ * a falling one.
+ */
+export function isTrendSignificant(stats: SeriesStats): boolean {
+    if (
+        stats.samples < TREND_MIN_SAMPLES ||
+        stats.slopePerHour === null ||
+        stats.rSquared === null ||
+        stats.spanHours === null ||
+        stats.stdDev === null
+    ) {
+        return false;
+    }
+    if (stats.rSquared < TREND_MIN_R2) return false;
+    const predictedSwing = Math.abs(stats.slopePerHour * stats.spanHours);
+    return predictedSwing >= stats.stdDev * TREND_MIN_NOISE_RATIO;
+}
+
 /**
  * Projected time until the series' last value hits zero at its current `slopePerHour`, presented as
  * an estimate ("empty in ~4h 20m at current rate"), never as a fact. `null` whenever that projection
- * isn't meaningful: flat/rising slope, no current value, or too few samples for a slope at all.
+ * isn't meaningful: flat/rising slope, no current value, too few samples for a slope at all, the
+ * series is presently at its own window max (not draining right now), or the downward trend fails
+ * {@link isTrendSignificant} - e.g. a buffer that sits near its max and dips before refilling has a
+ * slightly negative fit purely by chance, which must not read as "running out". No cap on how far out
+ * the projection lands: a slow but genuine drain is still reported, however distant.
  */
 export function timeToEmptyMillis(stats: SeriesStats): number | null {
     if (stats.slopePerHour === null || stats.slopePerHour >= 0) return null;
     if (stats.last === null || stats.last <= 0) return null;
+    if (stats.max !== null && stats.last >= stats.max) return null;
+    if (!isTrendSignificant(stats)) return null;
     const hours = stats.last / -stats.slopePerHour;
     if (!Number.isFinite(hours) || hours <= 0) return null;
     return hours * 3_600_000;
