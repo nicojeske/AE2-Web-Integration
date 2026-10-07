@@ -7,13 +7,21 @@
 // URL shapes:
 //   #/browser?grid=3        #/jobs                  #/jobs/cpu/3/CPU%20%231
 //   #/history                #/history/3/482         #/favorites?grid=3     #/stats?grid=all
+//   #/machines               #/machines/0%3A120%3A64%3A-340                 #/power   #/production
+//
+// The GregTech sections aren't grid-scoped, so `buildHash` never writes `?grid=` for them and
+// `parseHash` ignores one if present.
 import { useCallback, useEffect, useState } from "preact/hooks";
 
 import type { GridSelection } from "../state/network";
 import type { Section } from "./section";
+import { isGTSection } from "./section";
 
 export type RouteDetail =
-    { type: "cpu"; gridId: number; cpuName: string } | { type: "history"; gridId: number; id: number } | null;
+    | { type: "cpu"; gridId: number; cpuName: string }
+    | { type: "history"; gridId: number; id: number }
+    | { type: "machine"; id: string }
+    | null;
 
 export interface Route {
     section: Section;
@@ -22,7 +30,16 @@ export interface Route {
     detail: RouteDetail;
 }
 
-const SECTIONS: readonly Section[] = ["browser", "jobs", "history", "favorites", "stats"];
+const SECTIONS: readonly Section[] = [
+    "browser",
+    "jobs",
+    "history",
+    "favorites",
+    "stats",
+    "machines",
+    "power",
+    "production",
+];
 
 function isSection(value: string): value is Section {
     return (SECTIONS as readonly string[]).includes(value);
@@ -45,7 +62,7 @@ export function parseHash(hash: string): Route {
         .map(decodeURIComponent);
 
     const section = isSection(segments[0] ?? "") ? (segments[0] as Section) : "browser";
-    const grid = parseGridParam(new URLSearchParams(queryPart ?? "").get("grid"));
+    const grid = isGTSection(section) ? null : parseGridParam(new URLSearchParams(queryPart ?? "").get("grid"));
 
     let detail: RouteDetail = null;
     if (section === "jobs" && segments[1] === "cpu" && segments.length >= 4) {
@@ -56,6 +73,8 @@ export function parseHash(hash: string): Route {
         const gridId = Number(segments[1]);
         const id = Number(segments[2]);
         if (Number.isFinite(gridId) && Number.isFinite(id)) detail = { type: "history", gridId, id };
+    } else if (section === "machines" && segments[1]) {
+        detail = { type: "machine", id: segments[1] };
     }
 
     return { section, grid, detail };
@@ -67,8 +86,11 @@ export function buildHash(route: Route): string {
         path += `/cpu/${route.detail.gridId}/${encodeURIComponent(route.detail.cpuName)}`;
     } else if (route.detail?.type === "history") {
         path += `/${route.detail.gridId}/${route.detail.id}`;
+    } else if (route.detail?.type === "machine") {
+        path += `/${encodeURIComponent(route.detail.id)}`;
     }
-    const query = route.grid !== null ? `?grid=${route.grid === "all" ? "all" : route.grid}` : "";
+    const query =
+        route.grid !== null && !isGTSection(route.section) ? `?grid=${route.grid === "all" ? "all" : route.grid}` : "";
     return `#${path}${query}`;
 }
 

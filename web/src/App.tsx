@@ -4,6 +4,7 @@ import { formatRelativeAge } from "./api/format";
 import { logout } from "./api/client";
 import { getContext } from "./context";
 import { CpusProvider, useCpus } from "./state/cpus";
+import { GTProvider, useGT } from "./state/gt";
 import { HistoryProvider, useHistory } from "./state/history";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
@@ -16,6 +17,7 @@ import { ToastProvider, useToast } from "./state/toast";
 import { OutdatedBanner } from "./shell/OutdatedBanner";
 import { useRoute } from "./shell/route";
 import type { Section } from "./shell/section";
+import { isGTSection } from "./shell/section";
 import { Sidebar } from "./shell/Sidebar";
 import { Topbar } from "./shell/Topbar";
 import { cx } from "./ui/cx";
@@ -24,8 +26,11 @@ import { CraftDetail } from "./views/CraftDetail";
 import { Favorites } from "./views/Favorites";
 import { History } from "./views/History";
 import { Jobs } from "./views/Jobs";
+import { Machines } from "./views/Machines";
 import { OrderModal } from "./views/OrderModal";
 import { PlanDetail } from "./views/PlanDetail";
+import { Power } from "./views/Power";
+import { Production } from "./views/Production";
 import { SettingsModal } from "./views/SettingsModal";
 import { Statistics } from "./views/Statistics";
 import { TrackingDetail } from "./views/TrackingDetail";
@@ -40,22 +45,33 @@ function Shell() {
     const { refresh: refreshHistory } = useHistory();
     const { setActive: setStatsActive, refresh: refreshStats } = useStats();
     const { favorites, thresholds, notifyEnabled, setNotifyEnabled, settings } = usePrefs();
+    const gt = useGT();
     const order = useOrder();
     const toast = useToast();
     const [search, setSearch] = useState("");
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
 
-    const section = route.section;
+    // A deep link to a GT section on a server without GregTech lands on the browser instead (the
+    // effect below rewrites the URL to match).
+    const section = isGTSection(route.section) && !gt.enabled ? "browser" : route.section;
     const craftDetail = route.detail?.type === "cpu" ? route.detail : null;
     const historyDetail = route.detail?.type === "history" ? route.detail : null;
 
+    const machineDetail = route.detail?.type === "machine" ? route.detail : null;
+
+    useEffect(() => {
+        if (section !== route.section) route.replace({ section, detail: null, grid: selected });
+    }, [section, route.section]);
+
+    // `grid` re-added explicitly: a GT section's URL carries none, so leaving one would otherwise drop
+    // `?grid=` from the next section's URL too (`buildHash` omits it again for GT sections).
     const changeSection = useCallback(
         (next: Section) => {
             setMobileNavOpen(false);
-            route.push({ section: next, detail: null });
+            route.push({ section: next, detail: null, grid: selected });
         },
-        [route],
+        [route, selected],
     );
 
     // Two-way sync between the URL's `?grid=` and network selection - the URL wins on load and on
@@ -108,6 +124,12 @@ function Shell() {
         setStatsActive(statsVisible);
     }, [statsVisible, setStatsActive]);
 
+    // Machines polls at the scan rate while it's on screen, and only slowly (for the badge) otherwise.
+    const machinesVisible = section === "machines" && !order.flow?.previewing;
+    useEffect(() => {
+        gt.setMachinesActive(machinesVisible);
+    }, [machinesVisible, gt.setMachinesActive]);
+
     const onToggleNotify = useCallback(() => {
         const next = !notifyEnabled;
         setNotifyEnabled(next);
@@ -117,9 +139,10 @@ function Shell() {
     }, [notifyEnabled, setNotifyEnabled]);
 
     const onRefresh = useCallback(async () => {
+        gt.refresh();
         await Promise.all([refreshGrids(), refreshItems(), refreshCpus(), refreshHistory(), refreshStats()]);
         toast("Refreshed");
-    }, [refreshGrids, refreshItems, refreshCpus, refreshHistory, refreshStats, toast]);
+    }, [refreshGrids, refreshItems, refreshCpus, refreshHistory, refreshStats, gt.refresh, toast]);
 
     // Scoped to whatever's currently loaded (the selected grid, or every grid in All-Grids mode) -
     // not every grid regardless of selection, which would mean fetching every grid's items just to
@@ -129,7 +152,8 @@ function Shell() {
         [items, favorites, thresholds],
     );
 
-    const updatedLabel = fetchedAt !== null ? `Updated ${formatRelativeAge(fetchedAt)}` : null;
+    // Item-list freshness - meaningless on the GT sections, which show their own scan age instead.
+    const updatedLabel = fetchedAt !== null && !isGTSection(section) ? `Updated ${formatRelativeAge(fetchedAt)}` : null;
 
     return (
         <div className={cx("app-shell", settings.density === "compact" && "app-shell--density-compact")}>
@@ -138,6 +162,8 @@ function Shell() {
                 onSectionChange={changeSection}
                 busyCount={busyCount}
                 lowStockFavCount={lowStockFavCount}
+                hasGT={gt.enabled}
+                gtProblemCount={gt.problemCount}
                 username={context.username}
                 isAdmin={context.isAdmin}
                 onLogout={logout}
@@ -192,6 +218,26 @@ function Shell() {
                             )}
                             {section === "favorites" && <Favorites />}
                             {section === "stats" && <Statistics />}
+                            {section === "machines" && (
+                                <Machines
+                                    openId={machineDetail?.id ?? null}
+                                    onOpen={(id) =>
+                                        route.push({
+                                            section: "machines",
+                                            detail: id === null ? null : { type: "machine", id },
+                                        })
+                                    }
+                                />
+                            )}
+                            {section === "power" && <Power />}
+                            {section === "production" && (
+                                <Production
+                                    onOpenMachine={(id) =>
+                                        route.push({ section: "machines", detail: { type: "machine", id } })
+                                    }
+                                    onOpenStats={() => route.push({ section: "stats", detail: null, grid: selected })}
+                                />
+                            )}
                         </>
                     )}
                 </div>
@@ -217,14 +263,16 @@ export function App() {
                         <CpusProvider>
                             <HistoryProvider>
                                 <StatsProvider>
-                                    {/* Outside OrderProvider on purpose - the driver must never touch
+                                    <GTProvider>
+                                        {/* Outside OrderProvider on purpose - the driver must never touch
                                         useOrder()'s single UI flow slot, only the same underlying API
                                         (via craftChain.ts) headlessly. */}
-                                    <AutoCraftProvider>
-                                        <OrderProvider>
-                                            <Shell />
-                                        </OrderProvider>
-                                    </AutoCraftProvider>
+                                        <AutoCraftProvider>
+                                            <OrderProvider>
+                                                <Shell />
+                                            </OrderProvider>
+                                        </AutoCraftProvider>
+                                    </GTProvider>
                                 </StatsProvider>
                             </HistoryProvider>
                         </CpusProvider>

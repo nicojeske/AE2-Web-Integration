@@ -34,7 +34,9 @@ the web frontend in `web/`, whose *build output* is committed into the Java reso
 ### Web frontend (`web/`)
 
 - `npm run dev` — Vite dev server against `src/dev/mock-server.ts` (fixture data, no real server needed;
-  serves both the terminal at `/` and the login page at `/login.html`)
+  serves both the terminal at `/` and the login page at `/login.html`). The GregTech sections are on by
+  default; `MOCK_GT=0` (or `?gt=0` on the page URL) simulates a server without GT, `MOCK_GT=na` (`?gt=na`) one
+  whose `/gt/*` endpoints answer `NOT_AVAILABLE`
 - `npm run build` — `tsc --noEmit` + two Vite builds (terminal, then `--mode login`); **writes directly into
   `../src/main/resources/assets/`** (`webpage.html` and `login.html`) and copies each on to
   `../example_website/` too — see Architecture below
@@ -131,9 +133,10 @@ must preserve the `_REPLACE_ME_USERNAME` / `_REPLACE_ME_IS_ADMIN` / `_REPLACE_ME
 Layout: `src/api/` (typed endpoint client, `{status,data}` envelope, `REFRESH_REQUIRED` single-retry
 wrapper, formatting helpers), `src/state/` (Preact context stores — network selection, items, prefs, toasts),
 `src/shell/` (sidebar/topbar/app chrome, the hash router), `src/ui/` (design-system primitives), `src/views/`
-(per-section panes: Browser, Jobs, History, Favorites, Statistics, Settings), `src/login/` (the separate
-login page entry), `src/dev/mock-server.ts` + `src/dev/fixtures.ts` (Vite dev-only middleware serving
-realistic fixture data so `npm run dev` needs no real server).
+(per-section panes: Browser, Jobs, History, Favorites, Statistics, Settings, and the GregTech hub's Machines,
+Power and Production — shown only when `hasGT`, see `docs/gt-hub/`), `src/login/` (the separate login page
+entry), `src/dev/mock-server.ts` + `src/dev/fixtures.ts` + `src/dev/gtFixtures.ts` (Vite dev-only middleware
+serving realistic fixture data so `npm run dev` needs no real server).
 
 `example_website/index.php` is a customer-hosted PHP reverse proxy for people who don't want to expose the
 mod's HTTP server directly. It serves the same `webpage.html`/`login.html` the mod itself does (copied there

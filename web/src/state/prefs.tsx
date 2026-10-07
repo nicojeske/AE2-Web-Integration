@@ -3,7 +3,7 @@ import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { getPrefs, setPrefs as apiSetPrefs } from "../api/client";
-import type { StatsRange } from "../api/types";
+import type { GTMachineStatus, StatsRange } from "../api/types";
 import type { ChartScale } from "../views/statsModel";
 
 const FAVORITES_KEY = "ae2.favorites";
@@ -11,6 +11,7 @@ const THRESHOLDS_KEY = "ae2.thresholds";
 const NOTIFY_KEY = "ae2.notifyEnabled";
 const BROWSER_FILTERS_KEY = "ae2.browserFilters";
 const STATS_VIEWS_KEY = "ae2.statsViews";
+const MACHINE_FILTERS_KEY = "ae2.machineFilters";
 const SETTINGS_KEY = "ae2.settings";
 const SCHEMA_KEY = "ae2.schema";
 
@@ -73,6 +74,21 @@ export const DEFAULT_BROWSER_FILTERS: BrowserFilters = {
     itemsType: 2,
     sortBy: 0,
     sortOrder: 0,
+};
+
+/** The GT Machines view's filters (the free-text search isn't persisted, same as the Browser's). */
+export interface MachineFilters {
+    /** Empty = every status. */
+    statuses: GTMachineStatus[];
+    /** `dimName` (or `"dim <n>"` when a machine has none), or `null` for every dimension. */
+    dimension: string | null;
+    showUnloaded: boolean;
+}
+
+export const DEFAULT_MACHINE_FILTERS: MachineFilters = {
+    statuses: [],
+    dimension: null,
+    showUnloaded: true,
 };
 
 /** A saved Statistics compare view (M8). Scoped to the grid it was saved on via `gridId`. */
@@ -138,9 +154,10 @@ function writeJSON(key: string, value: unknown): void {
 
 /**
  * The subset of prefs that follows a player across devices (M13) - favourites, thresholds, the Browser
- * toolbar filters, and saved Statistics views. Deliberately excludes `notifyEnabled` and `settings`
- * (M11): those are this device's own display/notification preferences, not account data, and syncing
- * e.g. `tileMin` across a phone and a desktop would fight whichever one saved last. The server never
+ * toolbar filters, saved Statistics views and the GT Machines filters. Deliberately excludes
+ * `notifyEnabled` and `settings` (M11): those are this device's own display/notification preferences,
+ * not account data, and syncing e.g. `tileMin` across a phone and a desktop would fight whichever one
+ * saved last. The server never
  * looks inside this shape at all - it stores whatever string this serializes to, verbatim, per
  * principal - so `schemaVersion` here is purely this client's own concern, unrelated to `CURRENT_SCHEMA_VERSION`'s
  * localStorage migration bookkeeping above.
@@ -151,6 +168,7 @@ interface SyncedPrefs {
     thresholds: Record<string, Thresholds>;
     browserFilters: BrowserFilters;
     statsViews: StatsView[];
+    machineFilters: MachineFilters;
 }
 
 function serializeSyncedPrefs(p: Omit<SyncedPrefs, "schemaVersion">): string {
@@ -169,6 +187,7 @@ function parseSyncedPrefs(raw: string): SyncedPrefs | null {
             thresholds: parsed.thresholds ?? {},
             browserFilters: { ...DEFAULT_BROWSER_FILTERS, ...parsed.browserFilters },
             statsViews: parsed.statsViews ?? [],
+            machineFilters: { ...DEFAULT_MACHINE_FILTERS, ...parsed.machineFilters },
         };
     } catch {
         return null;
@@ -191,6 +210,8 @@ export interface PrefsContextValue {
     setThreshold: (key: string, field: keyof Thresholds, value: number | boolean) => void;
     setNotifyEnabled: (enabled: boolean) => void;
     setBrowserFilters: (update: (current: BrowserFilters) => BrowserFilters) => void;
+    machineFilters: MachineFilters;
+    setMachineFilters: (update: (current: MachineFilters) => MachineFilters) => void;
     statsViews: StatsView[];
     addStatsView: (view: Omit<StatsView, "id">) => void;
     removeStatsView: (id: string) => void;
@@ -208,6 +229,10 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         readJSON(BROWSER_FILTERS_KEY, DEFAULT_BROWSER_FILTERS),
     );
     const [statsViews, setStatsViews] = useState<StatsView[]>(() => readJSON(STATS_VIEWS_KEY, []));
+    const [machineFilters, setMachineFiltersState] = useState<MachineFilters>(() => ({
+        ...DEFAULT_MACHINE_FILTERS,
+        ...readJSON(MACHINE_FILTERS_KEY, {}),
+    }));
     // Spread over the defaults (not a bare `readJSON` fallback) so a settings blob saved before a future
     // field existed still picks up that field's default instead of `undefined`.
     const [settings, setSettingsState] = useState<Settings>(() => ({
@@ -232,7 +257,9 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 const { blob } = await getPrefs();
                 if (cancelled) return;
                 if (blob === null) {
-                    await apiSetPrefs(serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews }));
+                    await apiSetPrefs(
+                        serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews, machineFilters }),
+                    );
                     return;
                 }
                 const parsed = parseSyncedPrefs(blob);
@@ -245,6 +272,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 writeJSON(BROWSER_FILTERS_KEY, parsed.browserFilters);
                 setStatsViews(parsed.statsViews);
                 writeJSON(STATS_VIEWS_KEY, parsed.statsViews);
+                setMachineFiltersState(parsed.machineFilters);
+                writeJSON(MACHINE_FILTERS_KEY, parsed.machineFilters);
             } catch {
                 // Offline, or no /prefs on this server yet - stay on localStorage alone.
             } finally {
@@ -260,19 +289,19 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         // later edit, which the push effect below already handles.
     }, []);
 
-    // Pushes favourites/thresholds/browserFilters/statsViews to the server whenever any of them change,
+    // Pushes favourites/thresholds/browserFilters/statsViews/machineFilters to the server whenever any of them change,
     // debounced so a burst of edits becomes one request. A push that lands before the mount-time fetch
     // above resolves would either race it or (worse) overwrite a blob it hasn't read yet - `hasHydratedRef`
     // holds this off until that reconciliation has actually run once, in either direction.
     useEffect(() => {
         if (!hasHydratedRef.current) return;
         const timer = setTimeout(() => {
-            void apiSetPrefs(serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews })).catch(
-                () => {},
-            );
+            void apiSetPrefs(
+                serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews, machineFilters }),
+            ).catch(() => {});
         }, PREFS_PUSH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [favorites, thresholds, browserFilters, statsViews]);
+    }, [favorites, thresholds, browserFilters, statsViews, machineFilters]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
@@ -330,6 +359,14 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
+    const setMachineFilters = useCallback((update: (current: MachineFilters) => MachineFilters) => {
+        setMachineFiltersState((current) => {
+            const next = update(current);
+            writeJSON(MACHINE_FILTERS_KEY, next);
+            return next;
+        });
+    }, []);
+
     // `id` is a string, not a bare `Date.now()` - two saves in the same millisecond would collide.
     const addStatsView = useCallback((view: Omit<StatsView, "id">) => {
         setStatsViews((current) => {
@@ -368,6 +405,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setThreshold,
             setNotifyEnabled,
             setBrowserFilters,
+            machineFilters,
+            setMachineFilters,
             statsViews,
             addStatsView,
             removeStatsView,
@@ -385,6 +424,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setThreshold,
             setNotifyEnabled,
             setBrowserFilters,
+            machineFilters,
+            setMachineFilters,
             statsViews,
             addStatsView,
             removeStatsView,

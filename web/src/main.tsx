@@ -11,6 +11,7 @@ import "./views/order.css";
 import "./views/history.css";
 import "./views/favorites.css";
 import "./views/statistics.css";
+import "./views/gt.css";
 import "./views/settings.css";
 
 const root = document.getElementById("app");

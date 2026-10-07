@@ -5,7 +5,7 @@
 // original convention) or, for SVG strokes, given `vector-effect="non-scaling-stroke"` so a vertical
 // gridline or marker ring isn't rendered ~4x thicker than a horizontal one under the same stretch.
 import { formatAxisTime, formatNumber } from "../api/format";
-import type { StatsRange } from "../api/types";
+import type { GTRange, StatsRange } from "../api/types";
 import {
     chartGeometry,
     type ChartScale,
@@ -15,6 +15,7 @@ import {
     timeTickIndices,
     unscaleValue,
 } from "../views/statsModel";
+import { cx } from "./cx";
 import { useChartHover } from "./useChartHover";
 
 export interface ChartMarker {
@@ -27,7 +28,7 @@ export interface ChartProps {
     /** Optional moving-average overlay over the same domain, drawn under the raw line. */
     smoothedValues?: (number | null)[] | null;
     timestamps: number[];
-    range: StatsRange;
+    range: StatsRange | GTRange;
     /** Only meaningful for `range === "custom"` - see `formatAxisTime`. */
     spanMillis?: number;
     /** Viewbox width unit the plot is stretched from - a geometry constant, not a CSS pixel count
@@ -45,6 +46,11 @@ export interface ChartProps {
     threshold?: number | null;
     /** Base description (`"Iron Ingot, last 7 days"`) - the live region appends the hovered point. */
     ariaLabel: string;
+    /** `"bars"` draws one bar per point from zero - for per-window sums (GT production), where a line
+     *  would suggest a continuous level that was never sampled. Gaps simply have no bar. */
+    variant?: "line" | "bars";
+    /** Overrides `formatNumber` for the y-axis ticks and the hover label (e.g. `formatEU`). */
+    formatValue?: (value: number) => string;
 }
 
 const PAD = 4;
@@ -67,11 +73,18 @@ export function Chart({
     markers,
     threshold,
     ariaLabel,
+    variant = "line",
+    formatValue,
 }: ChartProps) {
     const { index, handlers } = useChartHover(values.length);
+    const fmt = formatValue ?? ((v: number) => formatNumber(v, numberFormat));
+    const bars = variant === "bars";
 
     const scaled = scaleValues(values, scale);
-    const bounds = extent(scaled);
+    const dataBounds = extent(scaled);
+    // Bars grow from zero, so zero must be inside the domain even when every value is far above it.
+    const bounds =
+        dataBounds && bars ? { min: Math.min(0, dataBounds.min), max: Math.max(0, dataBounds.max) } : dataBounds;
 
     const plotHeight = showAxes ? height - X_AXIS_HEIGHT : height;
 
@@ -91,7 +104,15 @@ export function Chart({
         return span <= 0 ? plotHeight / 2 : plotHeight - PAD - ((v - bounds.min) / span) * (plotHeight - PAD * 2);
     };
 
-    const geo = chartGeometry(scaled, bounds.min, bounds.max, width, plotHeight, PAD);
+    const lineGeo = chartGeometry(scaled, bounds.min, bounds.max, width, plotHeight, PAD);
+    // Bars sit in equal slots, centred - edge-aligned line x positions would clip the first/last bar.
+    const slotW = width / Math.max(1, scaled.length);
+    const geo = bars
+        ? {
+              ...lineGeo,
+              pts: scaled.map((v, i) => (v === null ? null : { x: (i + 0.5) * slotW, y: yOf(v) })),
+          }
+        : lineGeo;
     const smoothedScaled = smoothedValues ? scaleValues(smoothedValues, scale) : null;
     const smoothedGeo = smoothedScaled
         ? chartGeometry(smoothedScaled, bounds.min, bounds.max, width, plotHeight, PAD)
@@ -109,7 +130,7 @@ export function Chart({
             ? ""
             : value === null
               ? `${formatAxisTime(hoverTimestamp, range, spanMillis)} · No data`
-              : `${formatAxisTime(hoverTimestamp, range, spanMillis)} · ${formatNumber(value, numberFormat)}`;
+              : `${formatAxisTime(hoverTimestamp, range, spanMillis)} · ${fmt(value)}`;
 
     return (
         <div className="chart">
@@ -117,7 +138,7 @@ export function Chart({
                 <div className="chart__y-axis" style={{ width: Y_AXIS_WIDTH, height: plotHeight }}>
                     {yTickValues.map((t) => (
                         <span key={t} className="chart__y-tick" style={{ top: `${(yOf(t) / plotHeight) * 100}%` }}>
-                            {formatNumber(unscaleValue(t, scale), numberFormat)}
+                            {fmt(unscaleValue(t, scale))}
                         </span>
                     ))}
                 </div>
@@ -169,8 +190,27 @@ export function Chart({
                                 vector-effect="non-scaling-stroke"
                             />
                         )}
-                        <path className="chart__area" d={geo.areaPath} />
-                        <path className="chart__line" d={geo.linePath} vector-effect="non-scaling-stroke" />
+                        {bars ? (
+                            geo.pts.map((p, i) => {
+                                if (!p) return null;
+                                const base = yOf(0);
+                                return (
+                                    <rect
+                                        key={i}
+                                        className={cx("chart__bar", index === i && "chart__bar--hover")}
+                                        x={i * slotW + slotW * 0.15}
+                                        width={slotW * 0.7}
+                                        y={Math.min(p.y, base)}
+                                        height={Math.max(Math.abs(base - p.y), 0.5)}
+                                    />
+                                );
+                            })
+                        ) : (
+                            <>
+                                <path className="chart__area" d={geo.areaPath} />
+                                <path className="chart__line" d={geo.linePath} vector-effect="non-scaling-stroke" />
+                            </>
+                        )}
                         {markers?.map((m) => {
                             const p = geo.pts[m.index];
                             if (!p) return null;
@@ -186,7 +226,7 @@ export function Chart({
                             );
                         })}
                     </svg>
-                    {point && (
+                    {point && !bars && (
                         <div
                             className="chart__dot"
                             style={{ left: `${(point.x / width) * 100}%`, top: `${(point.y / plotHeight) * 100}%` }}
@@ -212,7 +252,11 @@ export function Chart({
                         {xTickIdxs.map((i) => {
                             const t = timestamps[i];
                             if (t === undefined) return null;
-                            const pct = timestamps.length <= 1 ? 50 : (i / (timestamps.length - 1)) * 100;
+                            const pct = bars
+                                ? ((i + 0.5) / timestamps.length) * 100
+                                : timestamps.length <= 1
+                                  ? 50
+                                  : (i / (timestamps.length - 1)) * 100;
                             const anchor = pct < 8 ? "start" : pct > 92 ? "end" : "center";
                             return (
                                 <span

@@ -3,15 +3,20 @@ import type { ComponentChildren, ComponentType } from "preact";
 import { cx } from "../ui/cx";
 import { Drawer } from "../ui/Drawer";
 import type { IconProps } from "../ui/icons";
-import { ChartIcon, ClockIcon, CpuIcon, GridIcon, StarIcon } from "../ui/icons";
+import { BoltIcon, ChartIcon, ClockIcon, ConveyorIcon, CpuIcon, FactoryIcon, GridIcon, StarIcon } from "../ui/icons";
 import { NetworkPicker } from "./NetworkPicker";
 import type { Section } from "./section";
+import { isGTSection } from "./section";
 
 export interface SidebarProps {
     section: Section;
     onSectionChange: (section: Section) => void;
     busyCount: number;
     lowStockFavCount: number;
+    /** Whether the GregTech sections exist at all (`getContext().hasGT`). */
+    hasGT: boolean;
+    /** Loaded GT machines in a problem status - the Machines badge. */
+    gtProblemCount: number;
     username: string;
     isAdmin: boolean;
     onLogout: () => void;
@@ -26,6 +31,9 @@ const NAV_ITEMS: { section: Section; label: string; icon: ComponentType<IconProp
     { section: "history", label: "History", icon: ClockIcon },
     { section: "favorites", label: "Favorites", icon: StarIcon },
     { section: "stats", label: "Statistics", icon: ChartIcon },
+    { section: "machines", label: "Machines", icon: FactoryIcon },
+    { section: "power", label: "Power", icon: BoltIcon },
+    { section: "production", label: "Production", icon: ConveyorIcon },
 ];
 
 export function Sidebar({
@@ -33,6 +41,8 @@ export function Sidebar({
     onSectionChange,
     busyCount,
     lowStockFavCount,
+    hasGT,
+    gtProblemCount,
     username,
     isAdmin,
     onLogout,
@@ -43,30 +53,41 @@ export function Sidebar({
     // the <768px off-canvas Drawer, so the two never drift out of sync with each other.
     const body: ComponentChildren = (
         <>
-            <NetworkPicker className="sidebar__network" />
+            {/* The GT sections aren't grid-scoped - a network picker there would change nothing on screen. */}
+            {!isGTSection(section) && <NetworkPicker className="sidebar__network" />}
 
             <nav className="sidebar__nav">
-                {NAV_ITEMS.map(({ section: itemSection, label, icon: Icon }) => (
-                    <button
-                        key={itemSection}
-                        type="button"
-                        title={label}
-                        className={cx("nav-item", itemSection === section && "nav-item--active")}
-                        onClick={() => {
-                            onSectionChange(itemSection);
-                            onCloseMobile();
-                        }}
-                    >
-                        <Icon className="nav-item__icon" />
-                        <span className="nav-item__label">{label}</span>
-                        {itemSection === "jobs" && busyCount > 0 && (
-                            <span className="nav-item__pill nav-item__pill--busy">{busyCount}</span>
-                        )}
-                        {itemSection === "favorites" && lowStockFavCount > 0 && (
-                            <span className="nav-item__pill nav-item__pill--low-stock">{lowStockFavCount}</span>
-                        )}
-                    </button>
-                ))}
+                {(hasGT ? NAV_ITEMS : NAV_ITEMS.filter((item) => !isGTSection(item.section))).map(
+                    ({ section: itemSection, label, icon: Icon }) => (
+                        <button
+                            key={itemSection}
+                            type="button"
+                            title={label}
+                            className={cx("nav-item", itemSection === section && "nav-item--active")}
+                            onClick={() => {
+                                onSectionChange(itemSection);
+                                onCloseMobile();
+                            }}
+                        >
+                            <Icon className="nav-item__icon" />
+                            <span className="nav-item__label">{label}</span>
+                            {itemSection === "jobs" && busyCount > 0 && (
+                                <span className="nav-item__pill nav-item__pill--busy">{busyCount}</span>
+                            )}
+                            {itemSection === "favorites" && lowStockFavCount > 0 && (
+                                <span className="nav-item__pill nav-item__pill--low-stock">{lowStockFavCount}</span>
+                            )}
+                            {itemSection === "machines" && gtProblemCount > 0 && (
+                                <span
+                                    className="nav-item__pill nav-item__pill--problem"
+                                    title={`${gtProblemCount} machine${gtProblemCount === 1 ? "" : "s"} need attention`}
+                                >
+                                    {gtProblemCount}
+                                </span>
+                            )}
+                        </button>
+                    ),
+                )}
             </nav>
 
             <div className="sidebar__footer">

@@ -163,7 +163,8 @@
     color: var(--bg-app);
 }
 
-.nav-item__pill--low-stock {
+.nav-item__pill--low-stock,
+.nav-item__pill--problem {
     background: var(--red);
     color: var(--bg-app);
 }

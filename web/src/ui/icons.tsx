@@ -106,3 +106,40 @@ export function ExpandIcon({ size = 13, style, className }: IconProps) {
         </svg>
     );
 }
+
+/** A factory with a chimney - the GregTech Machines section. */
+export function FactoryIcon({ size = 18, style, className }: IconProps) {
+    return (
+        <svg {...base(size)} style={style} className={className}>
+            <path
+                d="M3 20V11l5 3v-3l5 3v-3l5 3V4h3v16z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linejoin="round"
+            />
+            <path d="M7 17h2M12 17h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+    );
+}
+
+export function BoltIcon({ size = 18, style, className }: IconProps) {
+    return (
+        <svg {...base(size)} style={style} className={className}>
+            <path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z" fill="currentColor" />
+        </svg>
+    );
+}
+
+/** A box on a conveyor - the GregTech Production section. */
+export function ConveyorIcon({ size = 18, style, className }: IconProps) {
+    return (
+        <svg {...base(size)} style={style} className={className}>
+            <rect x="8" y="4" width="8" height="8" rx="1" fill="currentColor" opacity="0.6" />
+            <rect x="3" y="14" width="18" height="5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <circle cx="6.5" cy="16.5" r="1" fill="currentColor" />
+            <circle cx="12" cy="16.5" r="1" fill="currentColor" />
+            <circle cx="17.5" cy="16.5" r="1" fill="currentColor" />
+        </svg>
+    );
+}

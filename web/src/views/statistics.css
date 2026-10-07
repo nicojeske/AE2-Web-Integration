@@ -330,6 +330,14 @@
     fill: var(--chart-area);
     stroke: none;
 }
+/* `variant="bars"` (GT production per window) */
+.chart__bar {
+    fill: var(--accent);
+    opacity: 0.75;
+}
+.chart__bar--hover {
+    opacity: 1;
+}
 .chart__line {
     fill: none;
     stroke: var(--accent);

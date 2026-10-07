@@ -3,6 +3,7 @@ import { GearIcon, MenuIcon } from "../ui/icons";
 import { NetworkPicker } from "./NetworkPicker";
 import { SECTION_TITLES } from "./section";
 import type { Section } from "./section";
+import { isGTSection } from "./section";
 
 export interface TopbarProps {
     section: Section;
@@ -37,7 +38,7 @@ export function Topbar({
                 <MenuIcon size={18} />
             </Button>
             <h1 className="topbar__title">{SECTION_TITLES[section]}</h1>
-            <NetworkPicker className="topbar__network" variant="topbar" />
+            {!isGTSection(section) && <NetworkPicker className="topbar__network" variant="topbar" />}
             {section === "browser" && onSearchChange && (
                 <input
                     type="text"
