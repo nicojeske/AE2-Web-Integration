@@ -46,12 +46,18 @@ dependencies {
     implementation 'commons-io:commons-io:2.5'
     implementation 'org.apache.commons:commons-lang3:3.5'
     implementation 'club.minnced:discord-webhooks:0.8.2'
+    // History database (PostgreSQL/TimescaleDB). No runtime dependencies of its own, so a version branch
+    // only has to shade this one jar next to core.
+    implementation 'org.postgresql:postgresql:42.7.13'
     // Log4j is provided by Minecraft at runtime — implementation for standalone core tests
     implementation 'org.apache.logging.log4j:log4j-api:2.17.2'
     implementation 'org.apache.logging.log4j:log4j-core:2.17.2'
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // Real PostgreSQL/TimescaleDB for the history database tests; skipped when Docker is unavailable.
+    testImplementation 'org.testcontainers:postgresql:1.21.4'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
 }
 
 test {

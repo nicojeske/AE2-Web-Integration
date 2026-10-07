@@ -11,7 +11,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
+import pl.kuba6000.ae2webintegration.core.history.HistoryTable;
+import pl.kuba6000.ae2webintegration.core.utils.GSONUtils;
 
 /**
  * What every machine produced, per (machine, item) pair, in hourly and daily buckets; persisted to
@@ -22,6 +28,8 @@ import pl.kuba6000.ae2webintegration.core.config.Config;
  * which is the usual trade-off for bucketed counters and is called out in the response's {@code from}.
  */
 public final class GTProductionLog {
+
+    private static final Logger LOG = LogManager.getLogger("ae2webintegration");
 
     private static final int SCHEMA_VERSION = 1;
     static final long HOUR_MILLIS = TimeUnit.HOURS.toMillis(1);
@@ -58,6 +66,9 @@ public final class GTProductionLog {
     private static volatile long trackingSinceMillis;
     private static final AtomicBoolean dirty = new AtomicBoolean(false);
     private static final GTJsonFile<PersistedFile> file = new GTJsonFile<>("gtproduction.json", PersistedFile.class);
+    /** Meta row holding machine names/owners and stack names in database mode. */
+    private static final String META_NAME = "gtproduction";
+    private static volatile boolean metaLoaded;
 
     // --- Writing (server thread) ---
 
@@ -76,10 +87,26 @@ public final class GTProductionLog {
         if (owner != null) {
             machine.owner = owner;
         }
-        PairSeries series = machine.stacks
-            .computeIfAbsent(stackId, k -> new PairSeries(new BucketSeries(), new BucketSeries()));
-        series.hourly.add(Math.floorDiv(nowMillis, HOUR_MILLIS), amount);
-        series.daily.add(Math.floorDiv(nowMillis, DAY_MILLIS), amount);
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            db.addCounter(
+                HistoryTable.PRODUCTION_HOURLY,
+                machineId,
+                stackId,
+                Math.floorDiv(nowMillis, HOUR_MILLIS) * HOUR_MILLIS,
+                amount);
+            db.addCounter(
+                HistoryTable.PRODUCTION_DAILY,
+                machineId,
+                stackId,
+                Math.floorDiv(nowMillis, DAY_MILLIS) * DAY_MILLIS,
+                amount);
+        } else {
+            PairSeries series = machine.stacks
+                .computeIfAbsent(stackId, k -> new PairSeries(new BucketSeries(), new BucketSeries()));
+            series.hourly.add(Math.floorDiv(nowMillis, HOUR_MILLIS), amount);
+            series.daily.add(Math.floorDiv(nowMillis, DAY_MILLIS), amount);
+        }
         StackMeta meta = stackMeta.get(stackId);
         if (meta == null || (stackName != null && !stackName.equals(meta.name))) {
             StackMeta updated = new StackMeta();
@@ -91,6 +118,19 @@ public final class GTProductionLog {
     }
 
     static void prune(long nowMillis) {
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            // Machine and stack names are kept: they are small, and the database may still hold their rows.
+            db.prune(
+                HistoryTable.PRODUCTION_HOURLY,
+                nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_HOURLY_RETENTION_DAYS()),
+                nowMillis);
+            db.prune(
+                HistoryTable.PRODUCTION_DAILY,
+                nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_DAILY_RETENTION_DAYS()),
+                nowMillis);
+            return;
+        }
         long minHourly = Math
             .floorDiv(nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_HOURLY_RETENTION_DAYS()), HOUR_MILLIS);
         long minDaily = Math
@@ -155,6 +195,29 @@ public final class GTProductionLog {
         long fromBucket = Math.floorDiv(fromMillis, bucketMillis);
         long toBucket = Math.floorDiv(toMillis, bucketMillis);
         List<Row> rows = new ArrayList<>();
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            List<HistoryDb.CounterTotal> totals = db.readCounterTotals(
+                hourly ? HistoryTable.PRODUCTION_HOURLY : HistoryTable.PRODUCTION_DAILY,
+                visibleMachines(ownerFilter, machineId),
+                fromBucket,
+                toBucket,
+                bucketMillis);
+            for (HistoryDb.CounterTotal total : totals) {
+                MachineProduction machine = machines.get(total.scope);
+                StackMeta meta = stackMeta.get(total.key);
+                rows.add(
+                    new Row(
+                        total.scope,
+                        machine == null ? null : machine.name,
+                        machine == null ? null : machine.owner,
+                        total.key,
+                        meta == null ? total.key : meta.name,
+                        meta != null && meta.fluid,
+                        total.total));
+            }
+            return rows;
+        }
         for (Map.Entry<String, MachineProduction> machineEntry : machines.entrySet()) {
             if (machineId != null && !machineId.equals(machineEntry.getKey())) {
                 continue;
@@ -210,6 +273,26 @@ public final class GTProductionLog {
         int capped = Math.max(1, maxPoints);
         long step = totalBuckets <= capped ? 1 : (totalBuckets + capped - 1) / capped;
 
+        Series series = new Series();
+        series.stack = stackId;
+        series.machine = machineId;
+        series.resolution = hourly ? "hourly" : "daily";
+        series.from = fromBucket * bucketMillis;
+        series.to = toBucket * bucketMillis;
+        series.stepMillis = step * bucketMillis;
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            series.points = db.readCounterWindows(
+                hourly ? HistoryTable.PRODUCTION_HOURLY : HistoryTable.PRODUCTION_DAILY,
+                visibleMachines(ownerFilter, machineId),
+                stackId,
+                fromBucket,
+                toBucket,
+                step,
+                bucketMillis);
+            return series;
+        }
+
         List<BucketSeries> selected = new ArrayList<>();
         for (Map.Entry<String, MachineProduction> machineEntry : machines.entrySet()) {
             if (machineId != null && !machineId.equals(machineEntry.getKey())) {
@@ -236,18 +319,22 @@ public final class GTProductionLog {
             points.add(sum);
         }
 
-        Series series = new Series();
-        series.stack = stackId;
-        series.machine = machineId;
-        series.resolution = hourly ? "hourly" : "daily";
-        series.from = fromBucket * bucketMillis;
-        series.to = toBucket * bucketMillis;
-        series.stepMillis = step * bucketMillis;
         series.points = new long[points.size()];
         for (int i = 0; i < series.points.length; i++) {
             series.points[i] = points.get(i);
         }
         return series;
+    }
+
+    /** Ids of the known machines {@code ownerFilter} lets through, optionally just {@code machineId}. */
+    private static List<String> visibleMachines(Predicate<UUID> ownerFilter, String machineId) {
+        List<String> ids = new ArrayList<>();
+        for (Map.Entry<String, MachineProduction> entry : machines.entrySet()) {
+            if ((machineId == null || machineId.equals(entry.getKey())) && ownerFilter.test(entry.getValue().owner)) {
+                ids.add(entry.getKey());
+            }
+        }
+        return ids;
     }
 
     /** When recording started (first recipe ever recorded), or 0 if nothing has been recorded yet. */
@@ -301,6 +388,14 @@ public final class GTProductionLog {
     static void loadData() {
         clear();
         PersistedFile loaded = file.load();
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            if (loaded != null) {
+                importInto(db, loaded);
+            }
+            db.loadMeta(META_NAME, GTProductionLog::mergeMeta);
+            return;
+        }
         if (loaded == null) {
             return;
         }
@@ -339,13 +434,130 @@ public final class GTProductionLog {
         }
     }
 
+    /**
+     * In database mode the counters go to the database as they are recorded; machine names, owners and stack
+     * names (what {@link #buildSnapshot} still holds, with no buckets) are stored as one meta row.
+     */
+    private static void importInto(HistoryDb db, PersistedFile loaded) {
+        HistoryDb.Import rows = new HistoryDb.Import();
+        if (loaded.machines != null) {
+            for (Map.Entry<String, PersistedMachine> machineEntry : loaded.machines.entrySet()) {
+                PersistedMachine machine = machineEntry.getValue();
+                if (machineEntry.getKey() == null || machine == null || machine.stacks == null) {
+                    continue;
+                }
+                for (Map.Entry<String, PersistedStack> stackEntry : machine.stacks.entrySet()) {
+                    PersistedStack stack = stackEntry.getValue();
+                    if (stackEntry.getKey() == null || stack == null) {
+                        continue;
+                    }
+                    importBuckets(
+                        rows,
+                        HistoryTable.PRODUCTION_HOURLY,
+                        machineEntry.getKey(),
+                        stackEntry.getKey(),
+                        stack.hourly,
+                        HOUR_MILLIS);
+                    importBuckets(
+                        rows,
+                        HistoryTable.PRODUCTION_DAILY,
+                        machineEntry.getKey(),
+                        stackEntry.getKey(),
+                        stack.daily,
+                        DAY_MILLIS);
+                }
+                machine.stacks = new LinkedHashMap<>();
+            }
+        }
+        rows.meta(
+            META_NAME,
+            GSONUtils.GSON_BUILDER.create()
+                .toJson(loaded));
+        db.importOnce(
+            file.file()
+                .getName(),
+            rows,
+            () -> HistoryDb.keepImportedFile(file.file()));
+    }
+
+    private static void importBuckets(HistoryDb.Import rows, HistoryTable table, String machineId, String stackId,
+        Map<Long, Long> buckets, long bucketMillis) {
+        if (buckets == null) {
+            return;
+        }
+        for (Map.Entry<Long, Long> bucket : buckets.entrySet()) {
+            if (bucket.getKey() != null && bucket.getValue() != null && bucket.getValue() > 0) {
+                rows.counter(table, machineId, stackId, bucket.getKey() * bucketMillis, bucket.getValue());
+            }
+        }
+    }
+
+    /**
+     * Folds the stored names into memory once the database answered; what was recorded since startup wins.
+     * Until then nothing is written back, so a partial in-memory view never replaces the stored one.
+     */
+    private static void mergeMeta(String json) {
+        PersistedFile stored = null;
+        if (json != null) {
+            try {
+                stored = GSONUtils.GSON_BUILDER.create()
+                    .fromJson(json, PersistedFile.class);
+            } catch (RuntimeException e) {
+                LOG.error("GregTech production names in the history database are unreadable, starting over", e);
+            }
+        }
+        if (stored != null) {
+            if (stored.trackingSinceMillis > 0
+                && (trackingSinceMillis == 0L || stored.trackingSinceMillis < trackingSinceMillis)) {
+                trackingSinceMillis = stored.trackingSinceMillis;
+            }
+            if (stored.machines != null) {
+                for (Map.Entry<String, PersistedMachine> entry : stored.machines.entrySet()) {
+                    if (entry.getKey() == null || entry.getValue() == null) {
+                        continue;
+                    }
+                    MachineProduction machine = machines.computeIfAbsent(entry.getKey(), k -> new MachineProduction());
+                    if (machine.name == null) {
+                        machine.name = entry.getValue().name;
+                    }
+                    if (machine.owner == null) {
+                        machine.owner = entry.getValue().owner;
+                    }
+                }
+            }
+            if (stored.stacks != null) {
+                for (Map.Entry<String, StackMeta> entry : stored.stacks.entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        stackMeta.putIfAbsent(entry.getKey(), entry.getValue());
+                    }
+                }
+            }
+        }
+        metaLoaded = true;
+        dirty.set(true);
+    }
+
     static void flushIfDirty() {
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            if (metaLoaded && dirty.compareAndSet(true, false)) {
+                db.putMeta(
+                    META_NAME,
+                    GSONUtils.GSON_BUILDER.create()
+                        .toJson(buildSnapshot()));
+            }
+            return;
+        }
         if (dirty.compareAndSet(true, false)) {
             file.saveAsync(buildSnapshot());
         }
     }
 
     static void saveNow() {
+        if (HistoryDb.get() != null) {
+            flushIfDirty();
+            return;
+        }
         dirty.set(false);
         file.saveNow(buildSnapshot());
     }
@@ -354,6 +566,7 @@ public final class GTProductionLog {
         machines.clear();
         stackMeta.clear();
         trackingSinceMillis = 0L;
+        metaLoaded = false;
         dirty.set(false);
     }
 }

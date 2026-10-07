@@ -50,7 +50,7 @@ class ConfigBootstrapTest {
         ConfigBootstrap.init(builder);
 
         // Should have exactly 25 config key definitions
-        assertEquals(25, builder.calls.size(), "expected exactly 25 config key definitions");
+        assertEquals(28, builder.calls.size(), "expected exactly 28 config key definitions");
 
         // Verify all expected keys with their types
         assertContainsCall("int", "port", builder.calls);
@@ -78,6 +78,9 @@ class ConfigBootstrapTest {
         assertContainsCall("int", "gt_production_hourly_retention_days", builder.calls);
         assertContainsCall("int", "gt_production_daily_retention_days", builder.calls);
         assertContainsCall("int", "gt_machine_forget_days", builder.calls);
+        assertContainsCall("string", "history_jdbc_url", builder.calls);
+        assertContainsCall("string", "history_db_user", builder.calls);
+        assertContainsCall("string", "history_db_password", builder.calls);
     }
 
     @Test
@@ -113,6 +116,12 @@ class ConfigBootstrapTest {
                 case "item_icon_directory":
                     // Empty: icons stay disabled until an admin points this at an icon export.
                     assertEquals("", call.defValue, "item_icon_directory default");
+                    break;
+                case "history_jdbc_url":
+                case "history_db_user":
+                case "history_db_password":
+                    // Empty: history stays in JSON files until a database is configured.
+                    assertEquals("", call.defValue, call.key + " default");
                     break;
                 case "track_machine_crafting":
                     assertEquals(false, call.defValue, call.key + " default");

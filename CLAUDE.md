@@ -88,6 +88,20 @@ limiting (`RateLimiter`) — never trust the raw TCP peer address alone for eith
 `GridData`/`CoreData` are the persisted stores (`griddata.json`, `webdata.json`, gitignored, written next to
 the running server). `AE2JobTracker` holds active-job tracking state.
 
+Sampled history (`ItemHistoryStore`, `GTPowerHistoryStore`, `GTProductionLog`) has two backends. Without
+`history_jdbc_url` it is the original in-memory rings/buckets persisted to `itemhistory.json`/`gtpower.json`/
+`gtproduction.json`. With it (env `AE2WEB_HISTORY_JDBC_URL`/`_DB_USER`/`_DB_PASSWORD` override the config) it
+goes to PostgreSQL via `core/history/HistoryDb`: hypertables with compression when TimescaleDB is installed,
+plain tables otherwise. Each store branches on `HistoryDb.get() != null` at its write/read/prune points and
+must answer identically in both modes (`ItemHistoryDbTest`/`GTHistoryDbTest` compare them). Item counts are
+stored change-only plus a per-grid `ae2wi_coverage` interval table, so "unchanged" and "offline" stay
+distinguishable. Writes only enqueue for the single `HistoryWriter` thread (never blocks a tick, retries while
+the DB is down); reads run on HTTP workers and degrade to no data. Existing JSON files are imported once
+(`importOnce`, guarded by a meta marker) and renamed to `*.json.migrated`. DB tests use Testcontainers and
+skip without Docker; `AE2WEB_SCALE_TEST=1` enables the 30k-item `HistoryDbScaleTest`. pgjdbc is core's only
+new runtime dependency: the version branches shade core with `transitive = false`, so they must shade
+`org.postgresql:postgresql` explicitly (and exclude it from 1.7.10's shadow minimization).
+
 `/prefs` (`PlayerPrefsHandler`) syncs the web terminal's favourites/thresholds/browser filters/saved stats
 views across a player's devices — an opaque JSON blob per principal in `CoreData`, keyed by
 `WebPrincipal.prefsKey()` (a reserved UUID for ADMIN/LOCALHOST, which have no player identity of their

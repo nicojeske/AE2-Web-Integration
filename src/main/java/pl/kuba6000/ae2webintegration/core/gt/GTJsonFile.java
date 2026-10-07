@@ -37,7 +37,7 @@ final class GTJsonFile<T> {
         this.type = type;
     }
 
-    private File file() {
+    File file() {
         return Config.getConfigFile(fileName);
     }
 

@@ -44,6 +44,12 @@ public class ConfigBootstrap {
     public static IConfigValue<Integer> statisticsHourlyRetentionDaysValue = () -> 365;
     public static IConfigValue<Integer> statisticsMaxTrackedItemsPerGridValue = () -> 24;
 
+    // --- History database ---
+
+    public static IConfigValue<String> historyJdbcUrlValue = () -> "";
+    public static IConfigValue<String> historyDbUserValue = () -> "";
+    public static IConfigValue<String> historyDbPasswordValue = () -> "";
+
     // --- GregTech ---
 
     public static IConfigValue<Boolean> gtEnabledValue = () -> true;
@@ -153,6 +159,24 @@ public class ConfigBootstrap {
             1,
             128,
             "Maximum number of items a single grid may track statistics history for");
+
+        historyJdbcUrlValue = builder.defineString(
+            "history_jdbc_url",
+            "",
+            "PostgreSQL JDBC URL (jdbc:postgresql://host:5432/db) to store statistics and GregTech history in,"
+                + " instead of JSON files next to this config. TimescaleDB is used automatically when the"
+                + " extension is installed. Keep empty to use the JSON files. The environment variable"
+                + " AE2WEB_HISTORY_JDBC_URL overrides this");
+        historyDbUserValue = builder.defineString(
+            "history_db_user",
+            "",
+            "Database user for history_jdbc_url, unless the URL carries one."
+                + " Overridden by AE2WEB_HISTORY_DB_USER");
+        historyDbPasswordValue = builder.defineString(
+            "history_db_password",
+            "",
+            "Database password for history_jdbc_url, unless the URL carries one."
+                + " Overridden by AE2WEB_HISTORY_DB_PASSWORD - prefer that over writing it here");
 
         gtEnabledValue = builder.defineBoolean(
             "gt_enabled",

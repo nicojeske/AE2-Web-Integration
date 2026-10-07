@@ -16,6 +16,7 @@ import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.config.CoreData;
 import pl.kuba6000.ae2webintegration.core.gt.GTEngine;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAESecurityGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
@@ -71,6 +72,8 @@ public class CoreEngine {
     private static void loadData() {
         CoreData.loadData();
         GridData.loadData();
+        // Before the history stores load: with a database configured they import their JSON files into it.
+        HistoryDb.start();
         ItemHistoryStore.loadData();
         GTEngine.loadData();
     }
@@ -255,6 +258,10 @@ public class CoreEngine {
         // Blocking here is fine - this runs during a deliberate shutdown, not inside the tick budget.
         ItemHistoryStore.saveNow();
         GTEngine.onServerStopping();
+        HistoryDb db = HistoryDb.get();
+        if (db != null && !db.flush(TimeUnit.SECONDS.toMillis(10))) {
+            LOG.warn("The history database did not confirm the last history writes before shutdown");
+        }
     }
 
     public static synchronized void onServerStopped() {

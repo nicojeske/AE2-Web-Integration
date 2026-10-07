@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
+import pl.kuba6000.ae2webintegration.core.history.HistoryTable;
 
 /**
  * Latest state plus two-tier history (fine at {@code gt_power_sample_interval_seconds}, hourly) for every
@@ -27,6 +29,11 @@ import pl.kuba6000.ae2webintegration.core.config.Config;
 public final class GTPowerHistoryStore {
 
     public static final long NO_SAMPLE = -1L;
+
+    /** Series keys of one power source in the history database. */
+    private static final String STORED = "stored";
+    private static final String AVG_IN = "avg_in";
+    private static final String AVG_OUT = "avg_out";
 
     private static final int SCHEMA_VERSION = 1;
     private static final long HOURLY_BUCKET_MILLIS = TimeUnit.HOURS.toMillis(1);
@@ -110,8 +117,13 @@ public final class GTPowerHistoryStore {
         }
         long fineBucket = Math.floorDiv(nowMillis, fineBucketMillis());
         long hourlyBucket = Math.floorDiv(nowMillis, HOURLY_BUCKET_MILLIS);
+        HistoryDb db = HistoryDb.get();
         for (GTPowerSourceSnapshot source : sources) {
             if (source == null || source.id == null) {
+                continue;
+            }
+            if (db != null) {
+                recordSample(db, source, fineBucket * fineBucketMillis(), hourlyBucket * HOURLY_BUCKET_MILLIS);
                 continue;
             }
             SourceHistory history = histories.computeIfAbsent(source.id, k -> new SourceHistory());
@@ -130,7 +142,32 @@ public final class GTPowerHistoryStore {
         dirty.set(true);
     }
 
+    private static void recordSample(HistoryDb db, GTPowerSourceSnapshot source, long fineStart, long hourlyStart) {
+        long stored = saturate(source.stored);
+        db.putGauge(HistoryTable.POWER_FINE, source.id, STORED, fineStart, stored);
+        db.putGauge(HistoryTable.POWER_HOURLY, source.id, STORED, hourlyStart, stored);
+        if (source.avgInPerTick != null) {
+            db.putGauge(HistoryTable.POWER_FINE, source.id, AVG_IN, fineStart, Math.max(0, source.avgInPerTick));
+            db.putGauge(HistoryTable.POWER_HOURLY, source.id, AVG_IN, hourlyStart, Math.max(0, source.avgInPerTick));
+        }
+        if (source.avgOutPerTick != null) {
+            db.putGauge(HistoryTable.POWER_FINE, source.id, AVG_OUT, fineStart, Math.max(0, source.avgOutPerTick));
+            db.putGauge(HistoryTable.POWER_HOURLY, source.id, AVG_OUT, hourlyStart, Math.max(0, source.avgOutPerTick));
+        }
+    }
+
     static void prune(long nowMillis) {
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            db.prune(
+                HistoryTable.POWER_FINE,
+                nowMillis - TimeUnit.HOURS.toMillis(Config.GT_POWER_FINE_RETENTION_HOURS()),
+                nowMillis);
+            db.prune(
+                HistoryTable.POWER_HOURLY,
+                nowMillis - TimeUnit.DAYS.toMillis(Config.GT_POWER_HOURLY_RETENTION_DAYS()),
+                nowMillis);
+        }
         long minFine = Math
             .floorDiv(nowMillis - TimeUnit.HOURS.toMillis(Config.GT_POWER_FINE_RETENTION_HOURS()), fineBucketMillis());
         long minHourly = Math.floorDiv(
@@ -231,6 +268,14 @@ public final class GTPowerHistoryStore {
         series.to = toBucket * tierBucketMillis;
         series.stepMillis = step * tierBucketMillis;
 
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            HistoryTable table = useFine ? HistoryTable.POWER_FINE : HistoryTable.POWER_HOURLY;
+            series.stored = db.readGauge(table, sourceId, STORED, fromBucket, toBucket, step, tierBucketMillis);
+            series.avgIn = db.readGauge(table, sourceId, AVG_IN, fromBucket, toBucket, step, tierBucketMillis);
+            series.avgOut = db.readGauge(table, sourceId, AVG_OUT, fromBucket, toBucket, step, tierBucketMillis);
+            return series;
+        }
         SourceHistory history = histories.get(sourceId);
         series.stored = downsample(
             history == null ? null : (useFine ? history.fineStored : history.hourlyStored),
@@ -321,6 +366,11 @@ public final class GTPowerHistoryStore {
         if (loaded == null || loaded.sources == null) {
             return;
         }
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            importInto(db, loaded);
+            return;
+        }
         for (Map.Entry<String, PersistedSource> entry : loaded.sources.entrySet()) {
             PersistedSource p = entry.getValue();
             if (entry.getKey() == null || p == null) {
@@ -340,13 +390,55 @@ public final class GTPowerHistoryStore {
         }
     }
 
+    /** One-time move of {@code gtpower.json} into the history database; the file is kept, renamed. */
+    private static void importInto(HistoryDb db, PersistedFile loaded) {
+        HistoryDb.Import rows = new HistoryDb.Import();
+        for (Map.Entry<String, PersistedSource> entry : loaded.sources.entrySet()) {
+            PersistedSource p = entry.getValue();
+            if (entry.getKey() == null || p == null) {
+                continue;
+            }
+            String id = entry.getKey();
+            // Bucket numbers are converted with the interval they were written with, so no tier is lost here.
+            importBuckets(rows, HistoryTable.POWER_FINE, id, STORED, p.fineStored, p.fineBucketMillis);
+            importBuckets(rows, HistoryTable.POWER_FINE, id, AVG_IN, p.fineIn, p.fineBucketMillis);
+            importBuckets(rows, HistoryTable.POWER_FINE, id, AVG_OUT, p.fineOut, p.fineBucketMillis);
+            importBuckets(rows, HistoryTable.POWER_HOURLY, id, STORED, p.hourlyStored, HOURLY_BUCKET_MILLIS);
+            importBuckets(rows, HistoryTable.POWER_HOURLY, id, AVG_IN, p.hourlyIn, HOURLY_BUCKET_MILLIS);
+            importBuckets(rows, HistoryTable.POWER_HOURLY, id, AVG_OUT, p.hourlyOut, HOURLY_BUCKET_MILLIS);
+        }
+        db.importOnce(
+            file.file()
+                .getName(),
+            rows,
+            () -> HistoryDb.keepImportedFile(file.file()));
+    }
+
+    private static void importBuckets(HistoryDb.Import rows, HistoryTable table, String sourceId, String key,
+        Map<Long, Long> buckets, long bucketMillis) {
+        if (buckets == null || bucketMillis <= 0) {
+            return;
+        }
+        for (Map.Entry<Long, Long> bucket : buckets.entrySet()) {
+            if (bucket.getKey() != null && bucket.getValue() != null) {
+                rows.gauge(table, sourceId, key, bucket.getKey() * bucketMillis, bucket.getValue());
+            }
+        }
+    }
+
     static void flushIfDirty() {
+        if (HistoryDb.get() != null) {
+            return;
+        }
         if (dirty.compareAndSet(true, false)) {
             file.saveAsync(buildSnapshot());
         }
     }
 
     static void saveNow() {
+        if (HistoryDb.get() != null) {
+            return;
+        }
         dirty.set(false);
         file.saveNow(buildSnapshot());
     }

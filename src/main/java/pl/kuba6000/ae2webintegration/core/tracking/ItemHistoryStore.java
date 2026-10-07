@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,6 +27,8 @@ import com.google.gson.Gson;
 
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
+import pl.kuba6000.ae2webintegration.core.history.HistoryTable;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
@@ -108,6 +111,21 @@ public final class ItemHistoryStore {
         long fineBucket = Math.floorDiv(nowMillis, fineBucketMillis);
         long hourlyBucket = Math.floorDiv(nowMillis, HOURLY_BUCKET_MILLIS);
 
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            String scope = Long.toString(gridKey);
+            long fineStart = fineBucket * fineBucketMillis;
+            long hourlyStart = hourlyBucket * HOURLY_BUCKET_MILLIS;
+            for (String itemid : tracked) {
+                long value = stored.getOrDefault(itemid, 0L);
+                db.putGauge(HistoryTable.ITEM_FINE, scope, itemid, fineStart, value);
+                db.putGauge(HistoryTable.ITEM_HOURLY, scope, itemid, hourlyStart, value);
+            }
+            db.markSampled(HistoryTable.ITEM_FINE, scope, fineStart, fineBucketMillis);
+            db.markSampled(HistoryTable.ITEM_HOURLY, scope, hourlyStart, HOURLY_BUCKET_MILLIS);
+            return observedNames;
+        }
+
         GridHistory history = gridHistories.computeIfAbsent(gridKey, k -> new GridHistory());
         for (String itemid : tracked) {
             long value = stored.getOrDefault(itemid, 0L);
@@ -125,6 +143,12 @@ public final class ItemHistoryStore {
 
     /** Drops any series for items that are no longer tracked, e.g. after {@code TrackedItems} removes one. */
     public static void pruneTo(long gridKey, Set<String> tracked) {
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            db.retainKeys(HistoryTable.ITEM_FINE, Long.toString(gridKey), tracked);
+            db.retainKeys(HistoryTable.ITEM_HOURLY, Long.toString(gridKey), tracked);
+            return;
+        }
         GridHistory history = gridHistories.get(gridKey);
         if (history == null) {
             return;
@@ -165,8 +189,21 @@ public final class ItemHistoryStore {
         result.to = toBucket * tierBucketMillis;
         result.stepMillis = stepBuckets * tierBucketMillis;
 
+        HistoryDb db = HistoryDb.get();
         GridHistory history = gridHistories.get(gridKey);
         for (String itemid : itemids) {
+            if (db != null) {
+                long[] values = db.readGauge(
+                    useFine ? HistoryTable.ITEM_FINE : HistoryTable.ITEM_HOURLY,
+                    Long.toString(gridKey),
+                    itemid,
+                    fromBucket,
+                    toBucket,
+                    stepBuckets,
+                    tierBucketMillis);
+                result.series.add(new JSON_ItemHistory.JSON_ItemSeries(itemid, values));
+                continue;
+            }
             ItemSeries series = history == null ? null : history.items.get(itemid);
             RingSeries ring = series == null ? null : (useFine ? series.fine : series.hourly);
             ArrayList<Long> points = new ArrayList<>();
@@ -363,6 +400,10 @@ public final class ItemHistoryStore {
 
     /** Synchronous write - only called from {@code onServerStopping}, where blocking the shutdown is fine. */
     public static void saveNow() {
+        if (HistoryDb.get() != null) {
+            // Already streamed to the database; CoreEngine.onServerStopping waits for the last batch.
+            return;
+        }
         if (Config.getConfigDirectory() == null) {
             // Startup failed before Config.init() ran, or a test never called it - a relative path under
             // the process's working directory would be the wrong place to write, so skip entirely rather
@@ -380,6 +421,20 @@ public final class ItemHistoryStore {
 
     /** Called periodically from {@code CoreEngine}; only schedules a background write if data changed. */
     public static void flushIfDirty() {
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            // Writes stream to the database as they happen; all that is left for the periodic flush is pruning.
+            long now = System.currentTimeMillis();
+            db.prune(
+                HistoryTable.ITEM_FINE,
+                now - TimeUnit.DAYS.toMillis(Config.STATISTICS_FINE_RETENTION_DAYS()),
+                now);
+            db.prune(
+                HistoryTable.ITEM_HOURLY,
+                now - TimeUnit.DAYS.toMillis(Config.STATISTICS_HOURLY_RETENTION_DAYS()),
+                now);
+            return;
+        }
         if (Config.getConfigDirectory() == null) {
             return;
         }
@@ -445,12 +500,26 @@ public final class ItemHistoryStore {
             LOG.info("Item history file not found, starting with empty history.");
             return;
         }
+        ConcurrentHashMap<Long, GridHistory> loaded = readFile(file);
+        if (loaded == null) {
+            return;
+        }
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            importInto(db, loaded, file);
+            return;
+        }
+        gridHistories = loaded;
+    }
+
+    /** Parses the JSON history file against the current config, or {@code null} if it cannot be read. */
+    private static ConcurrentHashMap<Long, GridHistory> readFile(File file) {
         Gson gson = GSONUtils.GSON_BUILDER.create();
         try (Reader reader = Files.newReader(file, StandardCharsets.UTF_8)) {
             PersistedFile loaded = gson.fromJson(reader, PersistedFile.class);
             if (loaded == null) {
                 LOG.error("Item history file is empty or malformed, starting with empty history.");
-                return;
+                return null;
             }
             if (loaded.schemaVersion > SCHEMA_VERSION) {
                 LOG.warn(
@@ -481,10 +550,79 @@ public final class ItemHistoryStore {
                     rebuilt.put(gridEntry.getKey(), history);
                 }
             }
-            gridHistories = rebuilt;
+            return rebuilt;
         } catch (Exception e) {
             // As in GridData/CoreData: a failed read must not overwrite the file it failed on.
             LOG.error("Failed to load item history from file: " + file.getAbsolutePath(), e);
+            return null;
+        }
+    }
+
+    /**
+     * One-time move of {@code itemhistory.json} into the history database: the rings become change-only rows,
+     * and the buckets any item of a grid was sampled in become that grid's coverage. The file is renamed once
+     * the import committed, and kept, so switching back to JSON storage is a rename away.
+     */
+    private static void importInto(HistoryDb db, Map<Long, GridHistory> grids, File file) {
+        HistoryDb.Import rows = new HistoryDb.Import();
+        for (Map.Entry<Long, GridHistory> gridEntry : grids.entrySet()) {
+            String scope = Long.toString(gridEntry.getKey());
+            Map<HistoryTable, TreeSet<Long>> sampled = new HashMap<>();
+            for (Map.Entry<String, ItemSeries> itemEntry : gridEntry.getValue().items.entrySet()) {
+                importRing(rows, HistoryTable.ITEM_FINE, scope, itemEntry.getKey(), itemEntry.getValue().fine, sampled);
+                importRing(
+                    rows,
+                    HistoryTable.ITEM_HOURLY,
+                    scope,
+                    itemEntry.getKey(),
+                    itemEntry.getValue().hourly,
+                    sampled);
+            }
+            for (Map.Entry<HistoryTable, TreeSet<Long>> entry : sampled.entrySet()) {
+                long bucketMillis = entry.getKey() == HistoryTable.ITEM_FINE ? fineBucketMillis()
+                    : HOURLY_BUCKET_MILLIS;
+                Long start = null;
+                Long previous = null;
+                for (long bucket : entry.getValue()) {
+                    if (previous != null && bucket != previous + 1) {
+                        rows.coverage(entry.getKey(), scope, start * bucketMillis, previous * bucketMillis);
+                        start = null;
+                    }
+                    if (start == null) {
+                        start = bucket;
+                    }
+                    previous = bucket;
+                }
+                if (start != null) {
+                    rows.coverage(entry.getKey(), scope, start * bucketMillis, previous * bucketMillis);
+                }
+            }
+        }
+        db.importOnce(file.getName(), rows, () -> HistoryDb.keepImportedFile(file));
+    }
+
+    private static void importRing(HistoryDb.Import rows, HistoryTable table, String scope, String itemid,
+        RingSeries ring, Map<HistoryTable, TreeSet<Long>> sampled) {
+        RingSnapshot snapshot = ring.snapshot();
+        if (snapshot.newestBucket == Long.MIN_VALUE) {
+            return;
+        }
+        long last = NO_SAMPLE;
+        long lastWrittenMillis = 0L;
+        for (long bucket = snapshot.newestBucket - snapshot.values.length + 1; bucket
+            <= snapshot.newestBucket; bucket++) {
+            long value = ring.get(bucket);
+            if (value == NO_SAMPLE) {
+                continue;
+            }
+            long startMillis = bucket * ring.bucketMillis;
+            sampled.computeIfAbsent(table, k -> new TreeSet<>())
+                .add(bucket);
+            if (last == NO_SAMPLE || value != last || startMillis - lastWrittenMillis >= table.anchorMillis()) {
+                rows.gauge(table, scope, itemid, startMillis, value);
+                last = value;
+                lastWrittenMillis = startMillis;
+            }
         }
     }
 

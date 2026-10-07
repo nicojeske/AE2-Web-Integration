@@ -96,6 +96,28 @@ public class Config {
         return ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue.get();
     }
 
+    // History database: environment variables win, so a Kubernetes secret never has to land in the config file.
+    public static String HISTORY_JDBC_URL() {
+        return envOr("AE2WEB_HISTORY_JDBC_URL", ConfigBootstrap.historyJdbcUrlValue.get());
+    }
+
+    public static String HISTORY_DB_USER() {
+        return envOr("AE2WEB_HISTORY_DB_USER", ConfigBootstrap.historyDbUserValue.get());
+    }
+
+    public static String HISTORY_DB_PASSWORD() {
+        return envOr("AE2WEB_HISTORY_DB_PASSWORD", ConfigBootstrap.historyDbPasswordValue.get());
+    }
+
+    private static String envOr(String variable, String configured) {
+        String env = System.getenv(variable);
+        if (env != null && !env.trim()
+            .isEmpty()) {
+            return env.trim();
+        }
+        return configured == null ? "" : configured.trim();
+    }
+
     // GregTech
     public static boolean GT_ENABLED() {
         return ConfigBootstrap.gtEnabledValue.get();
