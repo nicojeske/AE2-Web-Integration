@@ -4,9 +4,10 @@ import java.util.Iterator;
 
 import net.minecraft.world.World;
 
+import org.jetbrains.annotations.NotNull;
+
 import appeng.api.AEApi;
 import appeng.api.storage.data.IAEStack;
-import appeng.core.worlddata.WorldData;
 import appeng.hooks.TickHandler;
 import appeng.me.Grid;
 import pl.kuba6000.ae2webintegration.ae2interface.legacy.PlayerSourceLifecycle;
@@ -14,7 +15,6 @@ import pl.kuba6000.ae2webintegration.core.interfaces.IAE;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
-import pl.kuba6000.ae2webintegration.core.interfaces.IAEPlayerData;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 
 public class AE implements IAE {
@@ -28,7 +28,7 @@ public class AE implements IAE {
     static class AEGridIterable implements Iterable<IAEGrid> {
 
         @Override
-        public Iterator<IAEGrid> iterator() {
+        public @NotNull Iterator<IAEGrid> iterator() {
             return new Iterator<>() {
 
                 private final Iterator<Grid> iterator = TickHandler.INSTANCE.getGridList()
@@ -74,9 +74,4 @@ public class AE implements IAE {
         return (IAEGenericStack) stack;
     }
 
-    @Override
-    public IAEPlayerData web$getPlayerData() {
-        return (IAEPlayerData) WorldData.instance()
-            .playerData();
-    }
 }

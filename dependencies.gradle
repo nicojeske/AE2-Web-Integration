@@ -41,6 +41,12 @@ dependencies {
     }
     // Core's history database driver: core is shaded without its dependencies, so pgjdbc is named here.
     shadowImplementation("org.postgresql:postgresql:42.7.13")
+    shadowImplementation('com.electronwill.night-config:core:3.6.4') {
+        transitive = false
+    }
+    shadowImplementation('com.electronwill.night-config:toml:3.6.4') {
+        transitive = false
+    }
 
     api("com.github.GTNewHorizons:GTNHLib:0.11.52:dev")
     api("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1080-GTNH:dev")
@@ -58,9 +64,15 @@ tasks.named("test").configure {
 }
 
 tasks.named("shadowJar").configure {
-    dependsOn(project(":core").tasks.named("jar"))
-    // pgjdbc loads parts of itself by class name, which minimization cannot see.
-    minimize {
-        exclude(dependency("org.postgresql:postgresql:.*"))
+    relocate('com.electronwill.nightconfig', 'pl.kuba6000.ae2webintegration.internal.nightconfig')
+    if (minimizeShadowedDependencies.toBoolean()) {
+        minimize {
+            // Object conversion discovers field annotations reflectively.
+            exclude(dependency('com.electronwill.night-config:core:.*'))
+            exclude(dependency('com.electronwill.night-config:toml:.*'))
+            // pgjdbc loads parts of itself by class name, which minimization cannot see.
+            exclude(dependency("org.postgresql:postgresql:.*"))
+        }
     }
+    dependsOn(project(":core").tasks.named("jar"))
 }

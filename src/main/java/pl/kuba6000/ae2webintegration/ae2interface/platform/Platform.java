@@ -1,25 +1,23 @@
 package pl.kuba6000.ae2webintegration.ae2interface.platform;
 
 import java.io.File;
-import java.util.List;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 
+import com.github.bsideup.jabel.Desugar;
+
 import cpw.mods.fml.common.FMLCommonHandler;
+import pl.kuba6000.ae2webintegration.ae2interface.config.LegacyConfigReader;
+import pl.kuba6000.ae2webintegration.core.api.ILegacyConfigProvider;
 import pl.kuba6000.ae2webintegration.core.api.IServerPlatform;
 
-public class Platform implements IServerPlatform {
-
-    private final File configDir;
-
-    public Platform(File configDir) {
-        this.configDir = configDir;
-    }
+@Desugar
+public record Platform(File configDir) implements IServerPlatform {
 
     @Override
     public UUID getOnlinePlayerUUID(String username) {
-        for (EntityPlayerMP entityPlayerMP : (List<EntityPlayerMP>) FMLCommonHandler.instance()
+        for (EntityPlayerMP entityPlayerMP : FMLCommonHandler.instance()
             .getMinecraftServerInstance()
             .getConfigurationManager().playerEntityList) {
             if (entityPlayerMP.getCommandSenderName()
@@ -31,7 +29,21 @@ public class Platform implements IServerPlatform {
     }
 
     @Override
+    public File getWorldDirectory() {
+        return FMLCommonHandler.instance()
+            .getMinecraftServerInstance()
+            .worldServerForDimension(0)
+            .getSaveHandler()
+            .getWorldDirectory();
+    }
+
+    @Override
     public File getConfigDirectory() {
         return configDir;
+    }
+
+    @Override
+    public ILegacyConfigProvider getLegacyConfig() {
+        return LegacyConfigReader.open(getConfigDirectory());
     }
 }

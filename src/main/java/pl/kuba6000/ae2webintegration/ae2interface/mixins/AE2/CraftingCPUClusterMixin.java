@@ -8,20 +8,17 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-import com.llamalad7.mixinextras.sugar.Local;
 
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.ICraftingMedium;
 import appeng.api.networking.crafting.ICraftingPatternDetails;
 import appeng.api.storage.data.IAEStack;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
+import pl.kuba6000.ae2webintegration.ae2interface.accessors.ICraftingMediumTracker;
 import pl.kuba6000.ae2webintegration.core.api.IAEMixinCallbacks;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAECraftingPatternDetails;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.ICraftingCPUCluster;
-import pl.kuba6000.ae2webintegration.core.interfaces.ICraftingMediumKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IPatternProviderViewable;
 
 @Mixin(value = CraftingCPUCluster.class, remap = false)
@@ -29,11 +26,6 @@ public class CraftingCPUClusterMixin {
 
     @Shadow
     private IGrid getGrid() {
-        throw new IllegalStateException("Mixin failed to apply");
-    }
-
-    @Shadow
-    private void postCraftingStatusChange(final IAEStack<?> diff) {
         throw new IllegalStateException("Mixin failed to apply");
     }
 
@@ -55,17 +47,6 @@ public class CraftingCPUClusterMixin {
             .jobCancelled((IAEGrid) getGrid(), (ICraftingCPUCluster) this);
     }
 
-    @Inject(
-        method = "injectItems",
-        at = @At(
-            value = "INVOKE",
-            target = "Lappeng/api/storage/data/IAEStack;setStackSize(J)Lappeng/api/storage/data/IAEStack;",
-            shift = At.Shift.AFTER,
-            ordinal = 2))
-    void ae2webintegration$fixCpuCluster(CallbackInfoReturnable<IAEStack<?>> cir, @Local(ordinal = 1) IAEStack<?> is) {
-        postCraftingStatusChange(is);
-    }
-
     @Redirect(
         method = "executeCrafting",
         at = @At(
@@ -74,9 +55,8 @@ public class CraftingCPUClusterMixin {
     private boolean ae2webintegration$pushPattern(ICraftingMedium medium, ICraftingPatternDetails details,
         InventoryCrafting ic) {
         if (medium.pushPattern(details, ic)) {
-            IPatternProviderViewable viewable = ((IAEGrid) getGrid()).web$getCraftingGrid()
-                .web$getCraftingProviders()
-                .web$getViewableForCraftingMedium((ICraftingMediumKey) medium);
+            IPatternProviderViewable viewable = ((ICraftingMediumTracker) ((IAEGrid) getGrid()).web$getCraftingGrid())
+                .web$getViewableForCraftingMedium(medium);
             IAEMixinCallbacks.getInstance()
                 .pushedPattern((ICraftingCPUCluster) this, viewable, (IAECraftingPatternDetails) details);
             return true;
