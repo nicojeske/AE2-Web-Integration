@@ -23,13 +23,13 @@ export function ManageTrackedModal({ onClose }: ManageTrackedModalProps) {
     const [search, setSearch] = useState("");
     const [confirming, setConfirming] = useState<string | null>(null);
 
-    const gridId = selectedGrid?.key ?? null;
+    const gridKey = selectedGrid?.key ?? null;
 
     const { sources, rawNames } = useMemo(() => {
         const byId = new Map<string, TrackableSource>();
         const names = new Map<string, string>();
         for (const item of items) {
-            if (item.sourceGridId !== gridId) continue;
+            if (item.sourceGridKey !== gridKey) continue;
             byId.set(item.itemid, { itemid: item.itemid, name: item.plainName, quantity: item.quantity });
             names.set(item.itemid, item.itemname);
         }
@@ -41,7 +41,7 @@ export function ManageTrackedModal({ onClose }: ManageTrackedModalProps) {
             }
         }
         return { sources: [...byId.values()], rawNames: names };
-    }, [items, gridId, tracked, trackedNames]);
+    }, [items, gridKey, tracked, trackedNames]);
 
     const rows = buildTrackableRows(sources, tracked, search);
     const atCap = tracked.length >= trackedLimit;

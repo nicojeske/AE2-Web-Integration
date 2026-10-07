@@ -13,11 +13,14 @@ export function describeApiError(e: unknown, fallback: string): string {
         case "ALL_CPU_BUSY":
             return "Every crafting CPU is busy - cancel a job or wait for one to finish";
         case "FAIL":
-            // web$submitJob's own message (Job.java:149) - the only status where the payload is meant
-            // to be shown to the user rather than just logged.
+            // web$submitJob's own message (SubmitCraftingPlan.java) - the only status where the payload is
+            // meant to be shown to the user rather than just logged.
             return `AE2 refused the job: ${typeof e.payload === "string" ? e.payload : "unknown reason"}`;
         case "ITEM_NOT_FOUND":
+        case "ITEM_IDENTITY_UNKNOWN":
             return "That item is no longer on this network";
+        case "AMBIGUOUS_ITEM_KEY":
+            return "AE2 can't tell this item apart from another one - it can't be ordered from here";
         case "INVALID_QUANTITY":
             return "Enter a whole number greater than zero";
         case "CPU_NOT_FOUND":
@@ -38,6 +41,10 @@ export function describeApiError(e: unknown, fallback: string): string {
             return "The server rejected that request - try reloading the page";
         case "TRACKING_NOT_FOUND":
             return "This job's tracking data is gone - the server may have restarted since it finished";
+        case "CSRF_REJECTED":
+            return "The server rejected that request as unsafe - reload the page and try again";
+        case "TOO_MANY_REQUESTS":
+            return "Too many requests - wait a moment and try again";
         case "SERVER_BUSY":
             return "The server is busy right now - try again in a moment";
         case "TIMEOUT":

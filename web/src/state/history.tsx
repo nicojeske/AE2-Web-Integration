@@ -5,18 +5,18 @@ import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { ApiError, getTrackingHistory } from "../api/client";
-import type { TrackingHistoryElement } from "../api/types";
+import type { GridKey, TrackingHistoryElement } from "../api/types";
 import { gridOptionLabel } from "../shell/gridLabel";
 import { useCpus } from "./cpus";
 import { useNetwork } from "./network";
 
 export interface HistoryEntry extends TrackingHistoryElement {
     /** The real grid key this row came from - never `"all"`, even in All-Grids mode. */
-    sourceGridId: number;
+    sourceGridKey: GridKey;
     /** Owner-derived label for the source grid; only meaningful in All-Grids mode. */
     gridLabel: string;
     /** `GetTrackingHistory`'s `id` is a per-grid int starting at 1, so All-Grids mode needs a
-     *  collision-proof identity - `"{gridId}:{id}"`. */
+     *  collision-proof identity - `"{gridKey}:{id}"`. */
     key: string;
 }
 
@@ -31,8 +31,8 @@ export interface HistoryContextValue {
 
 const HistoryContext = createContext<HistoryContextValue | null>(null);
 
-function toHistoryEntries(rows: TrackingHistoryElement[], gridId: number, gridLabel: string): HistoryEntry[] {
-    return rows.map((row) => ({ ...row, sourceGridId: gridId, gridLabel, key: `${gridId}:${row.id}` }));
+function toHistoryEntries(rows: TrackingHistoryElement[], gridKey: GridKey, gridLabel: string): HistoryEntry[] {
+    return rows.map((row) => ({ ...row, sourceGridKey: gridKey, gridLabel, key: `${gridKey}:${row.id}` }));
 }
 
 export function HistoryProvider({ children }: { children?: ComponentChildren }) {
@@ -49,7 +49,7 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
         try {
             let collected: HistoryEntry[];
             if (selected === "all") {
-                const targets = grids.filter((g) => g.key !== -1);
+                const targets = grids;
                 const rows: HistoryEntry[] = [];
                 const failed: string[] = [];
                 for (const grid of targets) {
@@ -62,13 +62,13 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
                 }
                 setFailedGrids(failed);
                 collected = rows;
-            } else if (selectedGrid && selectedGrid.key !== -1) {
+            } else if (selectedGrid) {
                 setFailedGrids([]);
                 const history = await getTrackingHistory(selectedGrid.key);
                 collected = toHistoryEntries(history, selectedGrid.key, gridOptionLabel(selectedGrid, grids));
             } else {
-                // A persisted selection can name a stale grid key, or the disabled `key === -1` entry -
-                // neither is fetchable (mirrors `state/items.tsx`).
+                // A persisted selection can name a stale grid key - not fetchable (mirrors
+                // `state/items.tsx`).
                 setFailedGrids([]);
                 collected = [];
             }

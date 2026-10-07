@@ -16,6 +16,9 @@ import { useVirtualWindow } from "../ui/useVirtualWindow";
 import { filterItems, isLowStock, ITEMS_TYPE, SORT_BY, sortItems, STORED_CRAFTABLE } from "./browserModel";
 import type { BrowserItem } from "../state/items";
 
+/** Tooltip for a craftable item without a stable key (`identityStatus`), which the API can't order. */
+const NOT_ORDERABLE = "AE2 can't identify this item uniquely, so it can't be ordered from here";
+
 export interface BrowserProps {
     search: string;
 }
@@ -80,14 +83,14 @@ export function Browser({ search }: BrowserProps) {
 
     const onCraft = (item: BrowserItem) => {
         startOrder({
-            sourceGridId: item.sourceGridId,
+            sourceGridKey: item.sourceGridKey,
             gridLabel: item.gridLabel,
             itemid: item.itemid,
             itemname: item.itemname,
         });
     };
 
-    if (selected !== "all" && (!selectedGrid || selectedGrid.key === -1)) {
+    if (selected !== "all" && !selectedGrid) {
         return <div className="placeholder-panel">No network selected.</div>;
     }
 
@@ -141,18 +144,18 @@ export function Browser({ search }: BrowserProps) {
                     style={{ paddingTop: topSpacerPx, paddingBottom: bottomSpacerPx }}
                 >
                     {visible.map((item) => {
-                        const key = prefsKey(item.sourceGridId, item.itemid);
+                        const key = prefsKey(item.sourceGridKey, item.itemid);
                         const favorited = isFavorite(key);
                         const lowStock = isLowStock(item, favorites, thresholds);
                         return (
-                            <div key={`${item.sourceGridId}:${item.itemid}`} className="item-table-row">
+                            <div key={`${item.sourceGridKey}:${item.itemid}`} className="item-table-row">
                                 <button
                                     type="button"
                                     className="item-table-star"
                                     title="Favorite"
                                     aria-pressed={favorited}
                                     style={{ color: favorited ? "var(--amber)" : "var(--star-inactive)" }}
-                                    onClick={() => toggleFavorite(item.sourceGridId, item.itemid)}
+                                    onClick={() => toggleFavorite(item.sourceGridKey, item.itemid)}
                                 >
                                     <StarIcon size={14} />
                                 </button>
@@ -176,7 +179,13 @@ export function Browser({ search }: BrowserProps) {
                                 </span>
                                 <div className="item-table-actions">
                                     {item.craftable ? (
-                                        <Button variant="primary" size="sm" onClick={() => onCraft(item)}>
+                                        <Button
+                                            variant="primary"
+                                            size="sm"
+                                            disabled={item.itemKey === null}
+                                            title={item.itemKey === null ? NOT_ORDERABLE : undefined}
+                                            onClick={() => onCraft(item)}
+                                        >
                                             Craft
                                         </Button>
                                     ) : (
@@ -198,18 +207,18 @@ export function Browser({ search }: BrowserProps) {
                     }}
                 >
                     {visible.map((item) => {
-                        const key = prefsKey(item.sourceGridId, item.itemid);
+                        const key = prefsKey(item.sourceGridKey, item.itemid);
                         const favorited = isFavorite(key);
                         const lowStock = isLowStock(item, favorites, thresholds);
                         return (
-                            <Card key={`${item.sourceGridId}:${item.itemid}`} className="item-card">
+                            <Card key={`${item.sourceGridKey}:${item.itemid}`} className="item-card">
                                 <button
                                     type="button"
                                     className="item-card__star"
                                     title="Favorite"
                                     aria-pressed={favorited}
                                     style={{ color: favorited ? "var(--amber)" : "var(--star-inactive)" }}
-                                    onClick={() => toggleFavorite(item.sourceGridId, item.itemid)}
+                                    onClick={() => toggleFavorite(item.sourceGridKey, item.itemid)}
                                 >
                                     <StarIcon size={16} />
                                 </button>
@@ -244,6 +253,8 @@ export function Browser({ search }: BrowserProps) {
                                                 variant="primary"
                                                 size="sm"
                                                 className="item-card__craft"
+                                                disabled={item.itemKey === null}
+                                                title={item.itemKey === null ? NOT_ORDERABLE : undefined}
                                                 onClick={() => onCraft(item)}
                                             >
                                                 Craft

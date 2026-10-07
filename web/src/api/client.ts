@@ -3,6 +3,7 @@ import type {
     CpuList,
     DetailedItem,
     Envelope,
+    GridKey,
     GridSettingsResult,
     GridSummary,
     GTMachineDetail,
@@ -33,20 +34,39 @@ export class ApiError extends Error {
     }
 }
 
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(path, { credentials: "same-origin", ...init });
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+/**
+ * Every endpoint lives under `api/`, relative to the page so the panel keeps working below a reverse
+ * proxy's sub-path. Errors come back as a non-2xx status carrying the same `{status, data}` envelope, so
+ * the envelope - not the HTTP status - decides success.
+ */
+async function apiRequest<T>(method: Method, path: string, body?: unknown): Promise<T> {
+    const headers: Record<string, string> = {};
+    if (method !== "GET") {
+        // The router refuses a cookie-authenticated mutation without this marker (CSRF protection).
+        headers["X-AE2-Request"] = "true";
+    }
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await fetch(`api/${path}`, {
+        method,
+        credentials: "same-origin",
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+    });
     if (res.status === 401) {
-        // The session token expired or was revoked elsewhere (preHTTPHandler answers a bare 401 with
-        // no body - AE2Controller.java). A page navigation would land back on login.html for the same
-        // condition; do the same here instead of leaving the SPA stuck on a generic error toast. Never
-        // loops: login.html issues no API calls of its own.
+        // The session token expired or was revoked elsewhere. A page navigation would land back on
+        // login.html for the same condition; do the same here instead of leaving the SPA stuck on a
+        // generic error toast. Never loops: login.html issues no API calls of its own.
         window.location.href = ".";
         return new Promise<T>(() => {}); // navigation is about to tear this page down
     }
-    if (!res.ok) {
-        throw new ApiError(`HTTP_${res.status}`, await res.text().catch(() => null));
+    let envelope: Envelope<T>;
+    try {
+        envelope = (await res.json()) as Envelope<T>;
+    } catch {
+        throw new ApiError(`HTTP_${res.status}`, null);
     }
-    const envelope = (await res.json()) as Envelope<T>;
     if (envelope.status !== "OK") {
         throw new ApiError(envelope.status, envelope.data);
     }
@@ -54,7 +74,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function apiGet<T>(path: string): Promise<T> {
-    return apiRequest(path);
+    return apiRequest("GET", path);
 }
 
 function query(params: Record<string, string | number | boolean | undefined>): string {
@@ -66,71 +86,60 @@ function query(params: Record<string, string | number | boolean | undefined>): s
     return s ? `?${s}` : "";
 }
 
-/**
- * The async endpoints (trackinghistory / gettracking / gridsettings) authorize against a per-user
- * access set the server rebuilds during synced requests. After a long idle period it expires and the
- * server answers REFRESH_REQUIRED instead of serving the request. Fetching the grid list is a synced
- * request that rebuilds that set, so retry once through it before surfacing an error - ported from the
- * old webpage.html's getJSONWithGridRefresh.
- */
-async function withGridRefresh<T>(run: () => Promise<T>): Promise<T> {
-    try {
-        return await run();
-    } catch (e) {
-        if (e instanceof ApiError && e.status === "REFRESH_REQUIRED") {
-            await getGrids();
-            return run();
-        }
-        throw e;
-    }
+const seg = encodeURIComponent;
+
+function grid(gridKey: GridKey): string {
+    return `grids/${seg(gridKey)}`;
 }
 
 export function getGrids(): Promise<GridSummary[]> {
     return apiGet("grids");
 }
 
-export function getItems(gridId: number): Promise<DetailedItem[]> {
-    return apiGet(`items${query({ grid: gridId })}`);
+export function getItems(gridKey: GridKey): Promise<DetailedItem[]> {
+    return apiGet(`${grid(gridKey)}/items`);
 }
 
-export function getCpuList(gridId: number): Promise<CpuList> {
-    return apiGet(`list${query({ grid: gridId })}`);
+export function getCpuList(gridKey: GridKey): Promise<CpuList> {
+    return apiGet(`${grid(gridKey)}/cpus`);
 }
 
-export function getCpu(gridId: number, cpuName: string): Promise<CpuDetail> {
-    return apiGet(`get${query({ grid: gridId, cpu: cpuName })}`);
+export function getCpu(gridKey: GridKey, cpuKey: string): Promise<CpuDetail> {
+    return apiGet(`${grid(gridKey)}/cpus/${seg(cpuKey)}`);
 }
 
-export function cancelCpu(gridId: number, cpuName: string): Promise<null> {
-    return apiGet(`cancelcpu${query({ grid: gridId, cpu: cpuName })}`);
+export function cancelCpu(gridKey: GridKey, cpuKey: string): Promise<null> {
+    return apiRequest("POST", `${grid(gridKey)}/cpus/${seg(cpuKey)}/cancel`);
 }
 
-export function order(gridId: number, itemHashcode: number, quantity: number): Promise<OrderResult> {
-    return apiGet(`order${query({ grid: gridId, item: itemHashcode, quantity })}`);
+/** Starts a crafting calculation; poll it with `getJob` until `isDone`. */
+export function order(gridKey: GridKey, itemKey: string, quantity: number): Promise<OrderResult> {
+    return apiRequest("POST", `${grid(gridKey)}/crafting-plans`, { itemKey, quantity });
 }
 
-export function getJob(gridId: number, jobId: number): Promise<JobData> {
-    return apiGet(`job${query({ grid: gridId, id: jobId })}`);
+export function getJob(gridKey: GridKey, jobId: number): Promise<JobData> {
+    return apiGet(`${grid(gridKey)}/crafting-plans/${jobId}`);
 }
 
-export function cancelJob(gridId: number, jobId: number): Promise<null> {
-    return apiGet(`job${query({ grid: gridId, id: jobId, cancel: "" })}`);
+export function cancelJob(gridKey: GridKey, jobId: number): Promise<null> {
+    return apiRequest("DELETE", `${grid(gridKey)}/crafting-plans/${jobId}`);
 }
 
-export function submitJob(gridId: number, jobId: number, cpuName: string): Promise<null> {
-    return apiGet(`job${query({ grid: gridId, id: jobId, submit: "", cpu: cpuName })}`);
+/** `cpuKey` undefined lets AE2 pick any free CPU. */
+export function submitJob(gridKey: GridKey, jobId: number, cpuKey?: string): Promise<null> {
+    return apiRequest("POST", `${grid(gridKey)}/crafting-plans/${jobId}/submit`, cpuKey ? { cpuKey } : {});
 }
 
-export function getTrackingHistory(gridId: number): Promise<TrackingHistoryElement[]> {
-    return withGridRefresh(() => apiGet(`trackinghistory${query({ grid: gridId })}`));
+export function getTrackingHistory(gridKey: GridKey): Promise<TrackingHistoryElement[]> {
+    return apiGet(`${grid(gridKey)}/crafting-history`);
 }
 
-export function getTracking(gridId: number, id: number): Promise<TrackingDetail> {
-    return withGridRefresh(() => apiGet(`gettracking${query({ grid: gridId, id })}`));
+export function getTracking(gridKey: GridKey, id: number): Promise<TrackingDetail> {
+    return apiGet(`${grid(gridKey)}/crafting-history/${id}`);
 }
 
-export function setGridTracking(gridId: number, track: boolean): Promise<GridSettingsResult> {
-    return withGridRefresh(() => apiGet(`gridsettings${query({ grid: gridId, track: track ? "1" : "0" })}`));
+export function setGridTracking(gridKey: GridKey, track: boolean): Promise<GridSettingsResult> {
+    return apiRequest("PATCH", `${grid(gridKey)}/settings`, { isTracked: track });
 }
 
 /**
@@ -138,60 +147,51 @@ export function setGridTracking(gridId: number, track: boolean): Promise<GridSet
  * everywhere, to avoid ever sending a client-side tracked-item list that could drift from the server's.
  */
 export function getItemHistory(
-    gridId: number,
+    gridKey: GridKey,
     range: StatsRange,
     points: number,
     items?: string[],
     customMinutes?: number,
 ): Promise<ItemHistoryResult> {
-    return withGridRefresh(() =>
-        apiGet(
-            `itemhistory${query({
-                grid: gridId,
-                range,
-                points,
-                items: items?.join(","),
-                minutes: range === "custom" ? customMinutes : undefined,
-            })}`,
-        ),
+    return apiGet(
+        `${grid(gridKey)}/item-history${query({
+            range,
+            points,
+            items: items?.join(","),
+            minutes: range === "custom" ? customMinutes : undefined,
+        })}`,
     );
 }
 
-export function getTrackedItems(gridId: number): Promise<TrackedItemsResult> {
-    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId })}`));
+export function getTrackedItems(gridKey: GridKey): Promise<TrackedItemsResult> {
+    return apiGet(`${grid(gridKey)}/tracked-items`);
 }
 
-export function setTrackedItems(gridId: number, items: string[]): Promise<TrackedItemsResult> {
-    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId, set: items.join(",") })}`));
+export function setTrackedItems(gridKey: GridKey, items: string[]): Promise<TrackedItemsResult> {
+    return apiRequest("PUT", `${grid(gridKey)}/tracked-items`, { items: items.join(",") });
 }
 
-export function addTrackedItem(gridId: number, itemid: string): Promise<TrackedItemsResult> {
-    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId, add: itemid })}`));
+export function addTrackedItem(gridKey: GridKey, itemid: string): Promise<TrackedItemsResult> {
+    return apiRequest("PUT", `${grid(gridKey)}/tracked-items/${seg(itemid)}`);
 }
 
-export function removeTrackedItem(gridId: number, itemid: string): Promise<TrackedItemsResult> {
-    return withGridRefresh(() => apiGet(`trackeditems${query({ grid: gridId, remove: itemid })}`));
+export function removeTrackedItem(gridKey: GridKey, itemid: string): Promise<TrackedItemsResult> {
+    return apiRequest("DELETE", `${grid(gridKey)}/tracked-items/${seg(itemid)}`);
 }
 
-/**
- * `/prefs` isn't grid-scoped (it follows the logged-in principal, not any one grid), so unlike every
- * other endpoint here it takes no `withGridRefresh` wrapper and no `grid` param.
- * <p>
- * Both calls are POST - the server tells a read from a write by body presence, not HTTP method (see
- * `PlayerPrefsHandler.java`), and the Fetch spec disallows a body on GET at all.
- */
+/** Prefs follow the logged-in principal, not any one grid. */
 export function getPrefs(): Promise<PrefsResult> {
-    return apiRequest("prefs", { method: "POST" });
+    return apiGet("prefs");
 }
 
 /** `blob` is opaque to the server - whatever `state/prefs.tsx` last serialized. */
 export function setPrefs(blob: string): Promise<PrefsResult> {
-    return apiRequest("prefs", { method: "POST", body: blob });
+    return apiRequest("PUT", "prefs", { blob });
 }
 
-// GregTech hub (docs/gt-hub/phase-1-core.md §5). Like `/prefs` these aren't grid-scoped, so no `grid`
-// param and no `withGridRefresh` - they read GTEngine's stores, not GridAccessSessions. A server without
-// a GT provider answers every one of them `NOT_AVAILABLE` (see `isGTNotAvailable`).
+// GregTech hub (docs/gt-hub/phase-1-core.md §5). Like prefs these aren't grid-scoped - visibility is per
+// machine owner. A server without a GT provider answers every one of them `NOT_AVAILABLE` (see
+// `isGTNotAvailable`).
 
 /** `minutes` only travels with `range === "custom"`, same as `getItemHistory`. */
 function gtRange(range: GTRange, minutes?: number) {
@@ -203,7 +203,7 @@ export function getGTMachines(): Promise<GTMachines> {
 }
 
 export function getGTMachine(id: string, range: GTRange, minutes?: number): Promise<GTMachineDetail> {
-    return apiGet(`gt/machine${query({ id, ...gtRange(range, minutes) })}`);
+    return apiGet(`gt/machines/${seg(id)}${query(gtRange(range, minutes))}`);
 }
 
 export function getGTPower(): Promise<GTPower> {
@@ -216,7 +216,7 @@ export function getGTPowerHistory(
     points: number,
     minutes?: number,
 ): Promise<GTPowerHistory> {
-    return apiGet(`gt/powerhistory${query({ source, points, ...gtRange(range, minutes) })}`);
+    return apiGet(`gt/power/${seg(source)}/history${query({ points, ...gtRange(range, minutes) })}`);
 }
 
 export function getGTProduction(
@@ -236,7 +236,7 @@ export function getGTProductionHistory(opts: {
     minutes?: number;
 }): Promise<GTProductionHistory> {
     const { item, machine, range, points, minutes } = opts;
-    return apiGet(`gt/productionhistory${query({ item, machine, points, ...gtRange(range, minutes) })}`);
+    return apiGet(`gt/production/history${query({ item, machine, points, ...gtRange(range, minutes) })}`);
 }
 
 /** The server has no GregTech provider (or `gt_enabled=false`) - an empty state, never an error toast. */
@@ -244,13 +244,18 @@ export function isGTNotAvailable(e: unknown): boolean {
     return e instanceof ApiError && e.status === "NOT_AVAILABLE";
 }
 
-export function logout(): void {
-    window.location.href = "?logout";
+/** Revokes the session, then reloads: the server sees the now-invalid cookie and clears it. */
+export async function logout(): Promise<void> {
+    try {
+        await apiRequest("POST", "auth/logout");
+    } finally {
+        window.location.href = ".";
+    }
 }
 
 /**
  * URL for an item/fluid's icon, matched server-side by (already §-stripped) display name against
- * AE2Controller's ItemIconIndex - see ItemIcon.tsx for the fetch/fallback logic around this. A 404
+ * IconHandler's ItemIconIndex - see ItemIcon.tsx for the fetch/fallback logic around this. A 404
  * means no match; the caller is expected to fall back to the generated placeholder tile, not treat it
  * as an error.
  */

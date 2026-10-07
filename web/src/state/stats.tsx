@@ -14,7 +14,7 @@ import {
     setTrackedItems as apiSetTrackedItems,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
-import type { ItemHistoryResult, StatsRange, TrackedItemsResult } from "../api/types";
+import type { GridKey, ItemHistoryResult, StatsRange, TrackedItemsResult } from "../api/types";
 import { CARD_POINTS, COMPARE_POINTS, DEFAULT_CUSTOM_MINUTES, toValues } from "../views/statsModel";
 import { useNetwork } from "./network";
 import { usePrefs } from "./prefs";
@@ -56,9 +56,9 @@ function toBundle(result: ItemHistoryResult): HistoryBundle {
 }
 
 export interface StatsContextValue {
-    /** `null` in All-Grids mode, with no grid selected, or for the disabled `key === -1` grid - the
+    /** `null` in All-Grids mode or with no grid selected - the
      *  tracked set and its cap are per-grid server-side, so Statistics is single-grid only. */
-    gridId: number | null;
+    gridKey: GridKey | null;
     range: StatsRange;
     setRange: (r: StatsRange) => void;
     /** Only meaningful (and only sent to the server) while `range === "custom"`. */
@@ -108,7 +108,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     const { settings, setSettings } = usePrefs();
     const toast = useToast();
 
-    const gridId = selected !== "all" && selectedGrid && selectedGrid.key !== -1 ? selectedGrid.key : null;
+    const gridKey = selected !== "all" && selectedGrid ? selectedGrid.key : null;
 
     // Seeded from the Settings modal's persisted default (state/prefs.tsx) - every other Statistics
     // control resets on reload same as before; only the main range mirrors back into that setting below,
@@ -151,8 +151,8 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     compareActiveRef.current = compareActive;
     const trackedRef = useRef(tracked);
     trackedRef.current = tracked;
-    const gridIdForMutationRef = useRef(gridId);
-    gridIdForMutationRef.current = gridId;
+    const gridIdForMutationRef = useRef(gridKey);
+    gridIdForMutationRef.current = gridKey;
 
     const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const runNowRef = useRef<() => Promise<void>>(async () => {});
@@ -170,7 +170,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
 
     // Grid change: reload the tracked set fresh (it carries `limit`; `/gridsettings` doesn't) and
     // hard-reset everything else so a stale grid's cards never paint under the new selection - the
-    // poll effect below (restarting on `gridId`) refetches history on top of this.
+    // poll effect below (restarting on `gridKey`) refetches history on top of this.
     useEffect(() => {
         let cancelled = false;
         setTracked([]);
@@ -180,12 +180,12 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
         setHistory(null);
         setHistoryError(null);
         setCompareHistory(null);
-        if (gridId === null) {
+        if (gridKey === null) {
             setTrackedLoading(false);
             return;
         }
         setTrackedLoading(true);
-        void getTrackedItems(gridId)
+        void getTrackedItems(gridKey)
             .then((res) => {
                 if (cancelled) return;
                 setTracked(res.tracked);
@@ -202,7 +202,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
         return () => {
             cancelled = true;
         };
-    }, [gridId]);
+    }, [gridKey]);
 
     // Poll loop for the card bundle - restarts cleanly on a grid or range change (mirroring
     // cpus.tsx's restart-on-selection-change), so no separate "force an immediate fetch" effect is
@@ -213,14 +213,14 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
 
         const runAndSchedule = async (): Promise<void> => {
             if (stopped) return;
-            if (gridId === null || !activeRef.current || document.hidden) {
+            if (gridKey === null || !activeRef.current || document.hidden) {
                 timerRef.current = setTimeout(() => void runAndSchedule(), POLL_MS);
                 return;
             }
             setHistoryLoading(true);
             try {
                 const result = await getItemHistory(
-                    gridId,
+                    gridKey,
                     rangeRef.current,
                     CARD_POINTS,
                     undefined,
@@ -242,7 +242,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
                 setCompareLoading(true);
                 try {
                     const result = await getItemHistory(
-                        gridId,
+                        gridKey,
                         compareRangeRef.current,
                         COMPARE_POINTS,
                         undefined,
@@ -279,7 +279,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             clearTimeout(timerRef.current);
             document.removeEventListener("visibilitychange", onVisibilityChange);
         };
-    }, [gridId, range, customMinutes]);
+    }, [gridKey, range, customMinutes]);
 
     // Becoming the active section (or the compare modal opening/changing its own range) should
     // refetch immediately rather than waiting out whatever's left of the 60s interval. Both fire on
@@ -365,7 +365,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
 
     const value = useMemo<StatsContextValue>(
         () => ({
-            gridId,
+            gridKey,
             range,
             setRange,
             customMinutes,
@@ -392,7 +392,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             setTrackedSet,
         }),
         [
-            gridId,
+            gridKey,
             range,
             customMinutes,
             tracked,

@@ -7,7 +7,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "p
 
 import { cancelJob, submitJob } from "../api/client";
 import { describeApiError } from "../api/errors";
-import type { JobData } from "../api/types";
+import type { GridKey, JobData } from "../api/types";
 import { clampQuantity, pickDefaultCpu } from "../views/orderModel";
 import { computePlan } from "./craftChain";
 import { useCpus } from "./cpus";
@@ -16,7 +16,7 @@ import { useToast } from "./toast";
 export type OrderPhase = "quantity" | "calculating" | "plan" | "submitting";
 
 export interface OrderFlow {
-    gridId: number;
+    gridKey: GridKey;
     gridLabel: string;
     itemid: string;
     /** Raw, possibly §-formatted item name - render via `<FormattedText>`, never as a plain string. */
@@ -26,6 +26,7 @@ export interface OrderFlow {
     jobId: number | null;
     /** Only set once `calculate()` reaches a `isDone` response. */
     job: JobData | null;
+    /** CPU key of the CPU the plan will be submitted to. */
     selectedCpu: string | null;
     error: string | null;
     /** `false` while the order modal is showing; `true` once "Preview plan" swaps in the full-page view. */
@@ -34,7 +35,7 @@ export interface OrderFlow {
 }
 
 export interface StartOrderItem {
-    sourceGridId: number;
+    sourceGridKey: GridKey;
     gridLabel: string;
     itemid: string;
     itemname: string;
@@ -47,7 +48,7 @@ export interface OrderContextValue {
     startOrder: (item: StartOrderItem) => void;
     setQuantity: (n: number) => void;
     calculate: () => void;
-    selectCpu: (name: string) => void;
+    selectCpu: (cpuKey: string) => void;
     openPreview: () => void;
     closePreview: () => void;
     submit: () => Promise<boolean>;
@@ -72,16 +73,16 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
     // discard, unmount) so a stale poll loop notices and stops touching state instead of racing ahead.
     const generationRef = useRef(0);
 
-    const cancelPending = useCallback((jobId: number | null, gridId: number) => {
+    const cancelPending = useCallback((jobId: number | null, gridKey: GridKey) => {
         if (jobId === null) return;
         // Best-effort: an already-finished/expired job answers INVALID_ID, nothing to clean up.
-        void cancelJob(gridId, jobId).catch(() => {});
+        void cancelJob(gridKey, jobId).catch(() => {});
     }, []);
 
     const discard = useCallback(() => {
         generationRef.current++;
         const current = flowRef.current;
-        if (current) cancelPending(current.jobId, current.gridId);
+        if (current) cancelPending(current.jobId, current.gridKey);
         setFlow(null);
     }, [cancelPending]);
 
@@ -89,7 +90,7 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
         return () => {
             generationRef.current++;
             const current = flowRef.current;
-            if (current) cancelPending(current.jobId, current.gridId);
+            if (current) cancelPending(current.jobId, current.gridKey);
         };
         // Intentionally empty deps: this effect's cleanup only ever needs to run once, on unmount.
     }, []);
@@ -100,7 +101,7 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
         const onPageHide = () => {
             const current = flowRef.current;
             if (!current || current.jobId === null) return;
-            const url = `job?grid=${current.gridId}&id=${current.jobId}&cancel`;
+            const url = `job?grid=${current.gridKey}&id=${current.jobId}&cancel`;
             if (navigator.sendBeacon) navigator.sendBeacon(url);
             else void fetch(url, { keepalive: true }).catch(() => {});
         };
@@ -111,7 +112,7 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
     const startOrder = useCallback((item: StartOrderItem) => {
         generationRef.current++;
         setFlow({
-            gridId: item.sourceGridId,
+            gridKey: item.sourceGridKey,
             gridLabel: item.gridLabel,
             itemid: item.itemid,
             itemname: item.itemname,
@@ -131,7 +132,7 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
             const current = flowRef.current;
             if (!current) return;
             generationRef.current++; // supersede any in-flight calculate()
-            cancelPending(current.jobId, current.gridId); // a computed plan is for the old quantity
+            cancelPending(current.jobId, current.gridKey); // a computed plan is for the old quantity
             setFlow({
                 ...current,
                 quantity: clampQuantity(n),
@@ -155,7 +156,7 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
         void (async () => {
             try {
                 const handle = await computePlan(
-                    { gridId: snapshot.gridId, itemid: snapshot.itemid, quantity: snapshot.quantity },
+                    { gridKey: snapshot.gridKey, itemid: snapshot.itemid, quantity: snapshot.quantity },
                     {
                         isStale: () => generationRef.current !== generation,
                         onJobId: (jobId) => setFlow((f) => (f ? { ...f, jobId } : f)),
@@ -163,11 +164,11 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
                 );
                 if (!handle) return; // superseded
 
-                // Fresh /list so CPU validation runs against current storage, not a snapshot from
+                // Fresh CPU list so CPU validation runs against current storage, not a snapshot from
                 // before the plan was computed.
                 await refreshCpus();
                 if (generationRef.current !== generation) return;
-                const candidates = cpusRef.current.filter((c) => c.sourceGridId === snapshot.gridId);
+                const candidates = cpusRef.current.filter((c) => c.sourceGridKey === snapshot.gridKey);
                 const defaultCpu = pickDefaultCpu(candidates, handle.job.bytesTotal, snapshot.itemid);
                 setFlow((f) =>
                     f ? { ...f, phase: "plan", job: handle.job, selectedCpu: defaultCpu, error: null } : f,
@@ -183,8 +184,8 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
         })();
     }, [refreshCpus]);
 
-    const selectCpu = useCallback((name: string) => {
-        setFlow((f) => (f && f.phase === "plan" ? { ...f, selectedCpu: name } : f));
+    const selectCpu = useCallback((cpuKey: string) => {
+        setFlow((f) => (f && f.phase === "plan" ? { ...f, selectedCpu: cpuKey } : f));
     }, []);
 
     const openPreview = useCallback(() => {
@@ -202,8 +203,11 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
         }
         setFlow((f) => (f ? { ...f, phase: "submitting", error: null } : f));
         try {
-            await submitJob(snapshot.gridId, snapshot.jobId, snapshot.selectedCpu);
-            toast(`Crafting job started on ${snapshot.selectedCpu}`);
+            await submitJob(snapshot.gridKey, snapshot.jobId, snapshot.selectedCpu);
+            const cpu = cpusRef.current.find(
+                (c) => c.sourceGridKey === snapshot.gridKey && c.cpuKey === snapshot.selectedCpu,
+            );
+            toast(`Crafting job started on ${cpu?.name ?? "the selected CPU"}`);
             generationRef.current++;
             setFlow(null);
             void refreshCpus();

@@ -6,24 +6,30 @@ import { getLoginContext } from "./context";
 
 type Banner = { kind: "error"; text: string } | { kind: "confirm-registration"; command: string } | null;
 
+const STATUS_TEXT: Record<string, string> = {
+    NOT_ONLINE: "You have to be on the server (online) to perform this action.",
+    INVALID_PASSWORD: "Invalid password.",
+    INVALID_USER: "Invalid username.",
+};
+
 /**
- * Reads the four redirect params AE2Controller.checkAuth (native form POST -> 302, not the JSON /auth
- * API - see REDESIGN_MILESTONES.md M9 notes) can land the browser on, then scrubs the URL so a reload
- * doesn't re-show a stale banner. Ported from the old login.html's inline query-param handling.
+ * Reads the redirect params WebHandler's native form POST handling (-> 302, not the JSON /api/auth
+ * endpoints, which set no cookie) can land the browser on, then scrubs the URL so a reload doesn't re-show
+ * a stale banner. A failure arrives as a bare status code (`?INVALID_USER`), a pending registration as
+ * `?confirmregistration&token=`.
  */
 function readBanner(): Banner {
     const url = new URL(window.location.href);
     const params = url.searchParams;
     let banner: Banner = null;
-    if (params.has("notonline")) {
-        banner = { kind: "error", text: "You have to be on the server (online) to perform this action." };
-    } else if (params.has("invalidpassword")) {
-        banner = { kind: "error", text: "Invalid password." };
-    } else if (params.has("invaliduser")) {
-        banner = { kind: "error", text: "Invalid username." };
-    } else if (params.has("confirmregistration")) {
+    if (params.has("confirmregistration")) {
         const token = params.get("token") ?? "";
         banner = { kind: "confirm-registration", command: `/ae2webintegration auth ${token}` };
+    } else {
+        const status = [...params.keys()].find((key) => /^[A-Z_]+$/.test(key));
+        if (status) {
+            banner = { kind: "error", text: STATUS_TEXT[status] ?? `Sign-in failed (${status}).` };
+        }
     }
     if (banner) {
         window.history.replaceState(null, document.title, window.location.pathname);
@@ -86,9 +92,9 @@ export function Login() {
     const showRegister = context.isPublicMode && mode === "register";
 
     // Nothing in this file talks to the server directly - both forms are native
-    // method="POST" action="" submissions handled by AE2Controller.checkAuth, which answers with a
+    // method="POST" action="" submissions handled by WebHandler, which answers with a
     // 302 redirect and sets the session cookie itself (HttpOnly, so JS could never do this even if it
-    // wanted to). See REDESIGN_MILESTONES.md M9 notes for why this isn't a fetch() call to /auth.
+    // wanted to); the JSON /api/auth/login endpoint returns a Bearer token instead and sets no cookie.
     return (
         <div className="login-page">
             <div className="login-card">

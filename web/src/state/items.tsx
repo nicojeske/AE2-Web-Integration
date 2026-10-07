@@ -4,7 +4,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "p
 
 import { ApiError, getItems } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
-import type { DetailedItem } from "../api/types";
+import type { DetailedItem, GridKey } from "../api/types";
 import { gridOptionLabel } from "../shell/gridLabel";
 import { hasAutoCraftFavorite, isFluidId, modOf } from "../views/browserModel";
 import { useNetwork } from "./network";
@@ -14,7 +14,7 @@ import type { Settings } from "./prefs";
 /** A `DetailedItem` row tagged with derived/source fields the browser (and later M6) need. */
 export interface BrowserItem extends DetailedItem {
     /** The real grid key this row came from - never `"all"`, even in All-Grids mode. */
-    sourceGridId: number;
+    sourceGridKey: GridKey;
     /** Owner-derived label for the source grid; only meaningful in All-Grids mode. */
     gridLabel: string;
     mod: string;
@@ -23,10 +23,10 @@ export interface BrowserItem extends DetailedItem {
     plainName: string;
 }
 
-function toBrowserItems(rows: DetailedItem[], gridId: number, gridLabel: string): BrowserItem[] {
+function toBrowserItems(rows: DetailedItem[], gridKey: GridKey, gridLabel: string): BrowserItem[] {
     return rows.map((it) => ({
         ...it,
-        sourceGridId: gridId,
+        sourceGridKey: gridKey,
         gridLabel,
         mod: modOf(it.itemid),
         isFluid: isFluidId(it.itemid),
@@ -82,12 +82,11 @@ export function ItemsProvider({ children }: { children?: ComponentChildren }) {
         setFailedGrids([]);
         try {
             if (selected === "all") {
-                // Sequential, not fanned out: GetItems.java clears a single global static
-                // hashcodeToStack map on every call, so concurrent `items` requests corrupt each
-                // other's ordering, and the synced request queue is a 32-slot ArrayBlockingQueue
-                // that answers SERVER_BUSY on overflow. Collect per-grid failures instead of
-                // aborting the whole fetch so one unreachable grid doesn't blank the page.
-                const targets = grids.filter((g) => g.key !== -1);
+                // Sequential, not fanned out: each listing walks a whole network on the server
+                // thread, and the synced request queue is a 32-slot ArrayBlockingQueue that answers
+                // SERVER_BUSY on overflow. Collect per-grid failures instead of aborting the whole
+                // fetch so one unreachable grid doesn't blank the page.
+                const targets = grids;
                 const collected: BrowserItem[] = [];
                 const failed: string[] = [];
                 for (const grid of targets) {
@@ -101,14 +100,14 @@ export function ItemsProvider({ children }: { children?: ComponentChildren }) {
                 setItems(collected);
                 setFailedGrids(failed);
                 setFetchedAt(Date.now());
-            } else if (selectedGrid && selectedGrid.key !== -1) {
+            } else if (selectedGrid) {
                 const rows = await getItems(selectedGrid.key);
                 setItems(toBrowserItems(rows, selectedGrid.key, gridOptionLabel(selectedGrid, grids)));
                 setFetchedAt(Date.now());
             } else {
                 // A persisted selection can name a grid key no longer in `grids` (stale
-                // localStorage), or the disabled `key === -1` admin-only entry - neither is
-                // fetchable, so surface an empty list rather than calling `items?grid=<bad key>`.
+                // localStorage) - not fetchable, so surface an empty list rather than requesting
+                // the items of an unknown grid.
                 setItems([]);
                 setFetchedAt(null);
             }

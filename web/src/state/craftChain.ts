@@ -1,11 +1,22 @@
 // The order -> plan chain shared by the interactive order flow (order.tsx) and the headless auto-craft
 // driver (autoCraft.tsx, M6). Extracted from order.tsx's original calculate() so both callers run the
-// exact same sequence against the real API: re-fetch items for a live hashcode (caveat 3) -> order() ->
-// poll job?id= until isDone. No Preact here - a leaf module, like orderModel.ts/craftDetailModel.ts.
+// exact same sequence against the real API: re-fetch items to resolve the item's stable key -> order() ->
+// poll the crafting plan until isDone. No Preact here - a leaf module, like orderModel.ts/craftDetailModel.ts.
 import { cancelJob, getItems, getJob, order as orderRequest } from "../api/client";
-import type { JobData } from "../api/types";
+import type { GridKey, JobData } from "../api/types";
 
-/** Thrown when the target item is no longer present in a fresh `items?grid=` fetch. */
+/** Thrown when the target item is no longer present in a fresh items fetch. */
+export class NotOrderableError extends Error {
+    constructor(identityStatus: string | null) {
+        super(
+            identityStatus === "AMBIGUOUS"
+                ? "AE2 can't tell this item apart from another one with the same data - it can't be ordered from here"
+                : "This item can't be ordered from the web terminal",
+        );
+        this.name = "NotOrderableError";
+    }
+}
+
 export class ItemGoneError extends Error {
     constructor() {
         super("That item is no longer on this network");
@@ -27,7 +38,7 @@ export interface PlanHandle {
 }
 
 export interface ComputePlanRequest {
-    gridId: number;
+    gridKey: GridKey;
     itemid: string;
     quantity: number;
 }
@@ -53,27 +64,27 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Runs order -> poll job?id= to completion. Returns `null` when `isStale()` goes true mid-flight (the
+ * Runs order -> poll the crafting plan to completion. Returns `null` when `isStale()` goes true mid-flight (the
  * caller superseded this chain - not an error). Throws `ItemGoneError` when the item vanished from a
  * fresh `items` fetch, `PlanTimeoutError` when the poll loop exceeds `timeoutMs` (the job is cancelled
  * first), or an `ApiError`/`Error` from the underlying requests.
  */
 export async function computePlan(req: ComputePlanRequest, hooks: ComputePlanHooks): Promise<PlanHandle | null> {
-    const { gridId, itemid, quantity } = req;
+    const { gridKey, itemid, quantity } = req;
     const { isStale, onJobId, timeoutMs = DEFAULT_TIMEOUT_MS } = hooks;
 
-    // A direct single-grid fetch, not a shared items store's refresh(): GetItems.java clears the one
-    // global hashcodeToStack map on every call, so only a fresh call against *this* grid guarantees a
-    // live hashcode for the order that follows (REDESIGN_MILESTONES.md caveat 3).
-    const rows = await getItems(gridId);
+    // A direct single-grid fetch, not a shared items store's refresh(): favorites and auto-craft only know
+    // the itemid, and this both resolves its stable item key and confirms the item is still there.
+    const rows = await getItems(gridKey);
     if (isStale()) return null;
     const row = rows.find((r) => r.itemid === itemid);
     if (!row) throw new ItemGoneError();
+    if (row.itemKey === null) throw new NotOrderableError(row.identityStatus);
 
-    const { jobID } = await orderRequest(gridId, row.hashcode, quantity);
+    const { jobID } = await orderRequest(gridKey, row.itemKey, quantity);
     if (isStale()) {
         // Best-effort: an already-finished/expired job answers INVALID_ID, nothing to clean up.
-        void cancelJob(gridId, jobID).catch(() => {});
+        void cancelJob(gridKey, jobID).catch(() => {});
         return null;
     }
     onJobId?.(jobID);
@@ -83,10 +94,10 @@ export async function computePlan(req: ComputePlanRequest, hooks: ComputePlanHoo
         if (isStale()) return null;
         const elapsed = Date.now() - startedPolling;
         if (elapsed >= timeoutMs) {
-            void cancelJob(gridId, jobID).catch(() => {});
+            void cancelJob(gridKey, jobID).catch(() => {});
             throw new PlanTimeoutError();
         }
-        const job = await getJob(gridId, jobID);
+        const job = await getJob(gridKey, jobID);
         if (isStale()) return null;
         if (job.isDone) return { jobId: jobID, job };
         await sleep(elapsed < FAST_POLL_WINDOW_MS ? FAST_POLL_MS : SLOW_POLL_MS);

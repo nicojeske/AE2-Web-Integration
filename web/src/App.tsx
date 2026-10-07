@@ -105,12 +105,12 @@ function Shell() {
         changeSection("jobs");
     }, [changeSection]);
 
-    // Shell is the single writer of `detailScope` - the expensive per-CPU `/get` fan-in covers every
+    // Shell is the single writer of `detailScope` - the expensive per-CPU detail fan-in covers every
     // busy CPU while Jobs is the active section, narrows to just the one CPU Craft Detail is showing,
     // and stops entirely everywhere else (server-thread drain budget - see CoreEngine.DRAIN_BUDGET_NANOS).
     useEffect(() => {
         if (craftDetail) {
-            setDetailScope({ gridId: craftDetail.gridId, cpuName: craftDetail.cpuName });
+            setDetailScope({ gridKey: craftDetail.gridKey, cpuKey: craftDetail.cpuKey });
         } else {
             setDetailScope(section === "jobs" ? "all" : null);
         }
@@ -184,13 +184,13 @@ function Shell() {
                 <div className="content">
                     {craftDetail ? (
                         <CraftDetail
-                            gridId={craftDetail.gridId}
-                            cpuName={craftDetail.cpuName}
+                            gridKey={craftDetail.gridKey}
+                            cpuKey={craftDetail.cpuKey}
                             onClose={() => route.push({ detail: null })}
                         />
                     ) : historyDetail ? (
                         <TrackingDetail
-                            gridId={historyDetail.gridId}
+                            gridKey={historyDetail.gridKey}
                             id={historyDetail.id}
                             onClose={() => route.push({ detail: null })}
                         />
@@ -204,15 +204,15 @@ function Shell() {
                                     onOpenCraftDetail={(cpu) =>
                                         route.push({
                                             section: "jobs",
-                                            detail: { type: "cpu", gridId: cpu.sourceGridId, cpuName: cpu.name },
+                                            detail: { type: "cpu", gridKey: cpu.sourceGridKey, cpuKey: cpu.cpuKey },
                                         })
                                     }
                                 />
                             )}
                             {section === "history" && (
                                 <History
-                                    onOpen={({ gridId, id }) =>
-                                        route.push({ section: "history", detail: { type: "history", gridId, id } })
+                                    onOpen={({ gridKey, id }) =>
+                                        route.push({ section: "history", detail: { type: "history", gridKey, id } })
                                     }
                                 />
                             )}

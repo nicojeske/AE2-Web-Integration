@@ -29,12 +29,12 @@ export function PlanDetail({ onSubmitted }: PlanDetailProps) {
 
     const job = flow.job;
     const view = buildPlanDetail(job);
-    // `/list` keeps polling in the background while this page is open (M2's poller isn't scoped to a
+    // The CPU list keeps polling in the background while this page is open (M2's poller isn't scoped to a
     // section), so re-check the selected CPU is still valid rather than trusting the choice made back
     // when the plan was first computed - it can go idle-to-busy-elsewhere or lose the storage headroom
     // in the meantime.
     const selectedCpuLive = flow.selectedCpu
-        ? cpus.find((c) => c.sourceGridId === flow.gridId && c.name === flow.selectedCpu)
+        ? cpus.find((c) => c.sourceGridKey === flow.gridKey && c.cpuKey === flow.selectedCpu)
         : undefined;
     const selectedStillValid = !!selectedCpuLive && isValidCpuForPlan(selectedCpuLive, view.bytesTotal, flow.itemid);
     const canStart = !job.isSimulating && selectedStillValid;

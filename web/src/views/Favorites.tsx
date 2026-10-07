@@ -11,10 +11,11 @@ import { Card } from "../ui/Card";
 import { Checkbox } from "../ui/Checkbox";
 import { FormattedText } from "../ui/FormattedText";
 import { isLowStock } from "./browserModel";
+import type { GridKey } from "../api/types";
 
 interface FavoriteRow {
     key: string;
-    gridId: number;
+    gridKey: GridKey;
     gridLabel: string;
     itemid: string;
     itemname: string;
@@ -36,15 +37,15 @@ export function Favorites() {
     const { startOrder } = useOrder();
 
     const rows = useMemo<FavoriteRow[]>(() => {
-        const byKey = new Map(items.map((item) => [prefsKey(item.sourceGridId, item.itemid), item]));
+        const byKey = new Map(items.map((item) => [prefsKey(item.sourceGridKey, item.itemid), item]));
         return Object.keys(favorites)
             .map((key) => byKey.get(key))
             .filter((item): item is NonNullable<typeof item> => item != null)
             .map((item) => {
-                const key = prefsKey(item.sourceGridId, item.itemid);
+                const key = prefsKey(item.sourceGridKey, item.itemid);
                 return {
                     key,
-                    gridId: item.sourceGridId,
+                    gridKey: item.sourceGridKey,
                     gridLabel: item.gridLabel,
                     itemid: item.itemid,
                     itemname: item.itemname,
@@ -79,7 +80,7 @@ export function Favorites() {
                     onThresholdChange={(field, value) => setThreshold(row.key, field, value)}
                     onCraft={() =>
                         startOrder({
-                            sourceGridId: row.gridId,
+                            sourceGridKey: row.gridKey,
                             gridLabel: row.gridLabel,
                             itemid: row.itemid,
                             itemname: row.itemname,

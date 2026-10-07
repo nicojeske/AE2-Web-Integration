@@ -38,7 +38,7 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
     if (!flow || flow.previewing) return null;
 
     const bytesTotal = flow.job?.bytesTotal ?? 0;
-    const gridCpus = cpus.filter((c) => c.sourceGridId === flow.gridId);
+    const gridCpus = cpus.filter((c) => c.sourceGridKey === flow.gridKey);
     const rows =
         flow.phase === "plan" && flow.job && !flow.job.isSimulating
             ? gridCpus.map((c) => cpuRow(c, bytesTotal, flow.itemid, flow.selectedCpu))
@@ -144,13 +144,13 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
                             <div className="order-modal__cpu-list">
                                 {rows.map((row) => (
                                     <button
-                                        key={row.name}
+                                        key={row.cpuKey}
                                         type="button"
                                         className={`order-modal__cpu-row order-modal__cpu-row--${row.state}${
                                             row.selected ? " order-modal__cpu-row--selected" : ""
                                         }`}
                                         disabled={!row.selectable}
-                                        onClick={() => order.selectCpu(row.name)}
+                                        onClick={() => order.selectCpu(row.cpuKey)}
                                     >
                                         <span className="order-modal__cpu-row-head">
                                             <span>{row.name}</span>

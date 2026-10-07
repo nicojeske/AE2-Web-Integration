@@ -3,7 +3,7 @@ import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { getPrefs, setPrefs as apiSetPrefs } from "../api/client";
-import type { GTMachineStatus, StatsRange } from "../api/types";
+import type { GridKey, GTMachineStatus, StatsRange } from "../api/types";
 import type { ChartScale } from "../views/statsModel";
 
 const FAVORITES_KEY = "ae2.favorites";
@@ -37,7 +37,7 @@ function migratePrefsSchema(): void {
 // way, but doing it at import time keeps the provider's own body free of one-time setup noise.
 migratePrefsSchema();
 
-/** Per-item auto-craft configuration, keyed by `prefsKey(gridId, itemid)`. Also used by M6. */
+/** Per-item auto-craft configuration, keyed by `prefsKey(gridKey, itemid)`. Also used by M6. */
 export interface Thresholds {
     alertBelow: number;
     keepStock: number;
@@ -54,12 +54,11 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
 };
 
 /**
- * Favorites/thresholds are keyed on `itemid`, never `hashcode` - `hashcode` is `stack.hashCode()`
- * held in a server-side map that every `items` call wipes (see REDESIGN_MILESTONES.md caveat 3), so
- * it isn't a stable identity across requests.
+ * Favorites/thresholds are keyed on `itemid`, never `itemKey` - the itemid is readable and version
+ * independent, and it is what the statistics history is keyed by too.
  */
-export function prefsKey(gridId: number, itemid: string): string {
-    return `${gridId}:${itemid}`;
+export function prefsKey(gridKey: GridKey, itemid: string): string {
+    return `${gridKey}:${itemid}`;
 }
 
 /** The browser toolbar's four filter/sort pills - legacy webpage.html cookie-persisted these too. */
@@ -92,10 +91,10 @@ export const DEFAULT_MACHINE_FILTERS: MachineFilters = {
     showUnloaded: true,
 };
 
-/** A saved Statistics compare view (M8). Scoped to the grid it was saved on via `gridId`. */
+/** A saved Statistics compare view (M8). Scoped to the grid it was saved on via `gridKey`. */
 export interface StatsView {
     id: string;
-    gridId: number;
+    gridKey: GridKey;
     name: string;
     itemids: string[];
     range: StatsRange;
@@ -209,7 +208,7 @@ export interface PrefsContextValue {
     notifyEnabled: boolean;
     browserFilters: BrowserFilters;
     isFavorite: (key: string) => boolean;
-    toggleFavorite: (gridId: number, itemid: string) => void;
+    toggleFavorite: (gridKey: GridKey, itemid: string) => void;
     removeFavorite: (key: string) => void;
     setThreshold: (key: string, field: keyof Thresholds, value: number | boolean) => void;
     setNotifyEnabled: (enabled: boolean) => void;
@@ -330,8 +329,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
-    const toggleFavorite = useCallback((gridId: number, itemid: string) => {
-        const key = prefsKey(gridId, itemid);
+    const toggleFavorite = useCallback((gridKey: GridKey, itemid: string) => {
+        const key = prefsKey(gridKey, itemid);
         setFavorites((current) => {
             const next = { ...current };
             if (next[key]) {

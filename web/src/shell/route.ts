@@ -5,8 +5,8 @@
 // it stays local state in `state/order.tsx`, same as before this milestone.
 //
 // URL shapes:
-//   #/browser?grid=3        #/jobs                  #/jobs/cpu/3/CPU%20%231
-//   #/history                #/history/3/482         #/favorites?grid=3     #/stats?grid=all
+//   #/browser?grid=<key>    #/jobs                  #/jobs/cpu/<gridKey>/<cpuKey>
+//   #/history                #/history/<gridKey>/482 #/favorites?grid=<key> #/stats?grid=all
 //   #/machines               #/machines/0%3A120%3A64%3A-340                 #/power   #/production
 //
 // The GregTech sections aren't grid-scoped, so `buildHash` never writes `?grid=` for them and
@@ -16,10 +16,11 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import type { GridSelection } from "../state/network";
 import type { Section } from "./section";
 import { isGTSection } from "./section";
+import type { GridKey } from "../api/types";
 
 export type RouteDetail =
-    | { type: "cpu"; gridId: number; cpuName: string }
-    | { type: "history"; gridId: number; id: number }
+    | { type: "cpu"; gridKey: GridKey; cpuKey: string }
+    | { type: "history"; gridKey: GridKey; id: number }
     | { type: "machine"; id: string }
     | null;
 
@@ -46,10 +47,7 @@ function isSection(value: string): value is Section {
 }
 
 function parseGridParam(raw: string | null): GridSelection | null {
-    if (raw === null) return null;
-    if (raw === "all") return "all";
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
+    return raw === null || raw === "" ? null : raw;
 }
 
 /** Pure - exported for tests and for `buildHash`'s "does this already match" comparisons. */
@@ -66,13 +64,13 @@ export function parseHash(hash: string): Route {
 
     let detail: RouteDetail = null;
     if (section === "jobs" && segments[1] === "cpu" && segments.length >= 4) {
-        const gridId = Number(segments[2]);
-        const cpuName = segments[3];
-        if (Number.isFinite(gridId) && cpuName !== undefined) detail = { type: "cpu", gridId, cpuName };
+        const gridKey = segments[2];
+        const cpuKey = segments[3];
+        if (gridKey && cpuKey) detail = { type: "cpu", gridKey, cpuKey };
     } else if (section === "history" && segments.length >= 3) {
-        const gridId = Number(segments[1]);
+        const gridKey = segments[1];
         const id = Number(segments[2]);
-        if (Number.isFinite(gridId) && Number.isFinite(id)) detail = { type: "history", gridId, id };
+        if (gridKey && Number.isFinite(id)) detail = { type: "history", gridKey, id };
     } else if (section === "machines" && segments[1]) {
         detail = { type: "machine", id: segments[1] };
     }
@@ -83,14 +81,13 @@ export function parseHash(hash: string): Route {
 export function buildHash(route: Route): string {
     let path = `/${route.section}`;
     if (route.detail?.type === "cpu") {
-        path += `/cpu/${route.detail.gridId}/${encodeURIComponent(route.detail.cpuName)}`;
+        path += `/cpu/${encodeURIComponent(route.detail.gridKey)}/${encodeURIComponent(route.detail.cpuKey)}`;
     } else if (route.detail?.type === "history") {
-        path += `/${route.detail.gridId}/${route.detail.id}`;
+        path += `/${encodeURIComponent(route.detail.gridKey)}/${route.detail.id}`;
     } else if (route.detail?.type === "machine") {
         path += `/${encodeURIComponent(route.detail.id)}`;
     }
-    const query =
-        route.grid !== null && !isGTSection(route.section) ? `?grid=${route.grid === "all" ? "all" : route.grid}` : "";
+    const query = route.grid !== null && !isGTSection(route.section) ? `?grid=${encodeURIComponent(route.grid)}` : "";
     return `#${path}${query}`;
 }
 

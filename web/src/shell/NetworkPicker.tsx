@@ -67,21 +67,18 @@ export function NetworkPicker({ className, variant = "sidebar" }: NetworkPickerP
                 value={String(selected)}
                 onChange={(e) => {
                     const value = (e.target as HTMLSelectElement).value;
-                    const next: GridSelection = value === "all" ? "all" : Number(value);
-                    selectGrid(next);
+                    selectGrid(value as GridSelection);
                 }}
             >
                 <option value="all">All Grids</option>
                 {grids.map((g) => (
-                    <option key={g.key} value={g.key} disabled={g.key === -1}>
+                    <option key={g.key} value={g.key}>
                         {gridOptionLabel(g, grids)}
                     </option>
                 ))}
             </select>
             <span className="network-picker__meta">{gridMetaLine(selected, grids, selectedGrid)}</span>
-            {selectedGrid && selectedGrid.key !== -1 && (
-                <GridTrackingCheckbox grid={selectedGrid} onTracked={refresh} />
-            )}
+            {selectedGrid && <GridTrackingCheckbox grid={selectedGrid} onTracked={refresh} />}
         </div>
     );
 }

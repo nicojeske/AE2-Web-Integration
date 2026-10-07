@@ -37,11 +37,11 @@ export function Statistics() {
         );
     }
 
-    if (!selectedGrid || selectedGrid.key === -1) {
+    if (!selectedGrid) {
         return <div className="placeholder-panel">No network selected.</div>;
     }
 
-    const gridId = selectedGrid.key;
+    const gridKey = selectedGrid.key;
     const {
         range,
         setRange,
@@ -56,7 +56,7 @@ export function Statistics() {
         refresh,
         setCompareRange,
     } = stats;
-    const views = statsViews.filter((v) => v.gridId === gridId);
+    const views = statsViews.filter((v) => v.gridKey === gridKey);
     const spanMillis = history ? history.to - history.from : undefined;
     const chartHeight = CHART_SIZE_PX[settings.statsChartSize];
 
@@ -135,7 +135,7 @@ export function Statistics() {
                 ) : (
                     <>
                         <StatsOverview
-                            gridId={gridId}
+                            gridKey={gridKey}
                             tracked={tracked}
                             trackedLimit={trackedLimit}
                             items={items}
@@ -148,8 +148,8 @@ export function Statistics() {
                         />
                         <div className="stats__grid">
                             {tracked.map((itemid) => {
-                                const item = items.find((it) => it.sourceGridId === gridId && it.itemid === itemid);
-                                const key = prefsKey(gridId, itemid);
+                                const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === itemid);
+                                const key = prefsKey(gridKey, itemid);
                                 const threshold = favorites[key] ? alertBelowFor(thresholds, key) : null;
                                 return (
                                     <StatCard

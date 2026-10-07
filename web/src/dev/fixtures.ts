@@ -5,6 +5,7 @@ import type {
     CpuList,
     DetailedItem,
     DimensionalCoords,
+    GridKey,
     GridSummary,
     ItemHistoryResult,
     ItemStack,
@@ -37,7 +38,7 @@ export interface MockBusyCpu {
 }
 
 export interface MockGrid {
-    key: number;
+    key: GridKey;
     owner: string;
     isOwned: boolean;
     isTrackingEnabled: boolean;
@@ -73,58 +74,79 @@ const MOCK_HOURLY_BUCKET_MS = 60 * 60_000;
 
 export const mockGrids: MockGrid[] = [
     {
-        key: 1,
+        key: "mockGridSteve000000001",
         owner: "Steve",
         isOwned: true,
         isTrackingEnabled: true,
         items: [
             {
-                hashcode: 1001,
+                itemKey: "item-1001",
+                identityStatus: null,
                 itemid: "minecraft:iron_ingot",
                 itemname: "Iron Ingot",
                 quantity: 12480,
                 craftable: true,
             },
-            { hashcode: 1002, itemid: "minecraft:redstone", itemname: "Redstone", quantity: 3400, craftable: true },
             {
-                hashcode: 1003,
+                itemKey: "item-1002",
+                identityStatus: null,
+                itemid: "minecraft:redstone",
+                itemname: "Redstone",
+                quantity: 3400,
+                craftable: true,
+            },
+            {
+                itemKey: "item-1003",
+                identityStatus: null,
                 itemid: "appliedenergistics2:crystal_fluix",
                 itemname: "Fluix Crystal",
                 quantity: 860,
                 craftable: true,
             },
             {
-                hashcode: 1004,
+                itemKey: "item-1004",
+                identityStatus: null,
                 itemid: "appliedenergistics2:crystal_certus",
                 itemname: "Certus Quartz Crystal",
                 quantity: 210,
                 craftable: false,
             },
             {
-                hashcode: 1005,
+                itemKey: "item-1005",
+                identityStatus: null,
                 itemid: "appliedenergistics2:material_silicon",
                 itemname: "Silicon",
                 quantity: 640,
                 craftable: true,
             },
             {
-                hashcode: 1006,
+                itemKey: "item-1006",
+                identityStatus: null,
                 itemid: "appliedenergistics2:processor_calc",
                 itemname: "§b§lProcessor (Calculation)",
                 quantity: 24,
                 craftable: true,
             },
             {
-                hashcode: 1007,
+                itemKey: "item-1007",
+                identityStatus: null,
                 itemid: "appliedenergistics2:sky_stone_block",
                 itemname: "Sky Stone Block",
                 quantity: 1800,
                 craftable: true,
             },
-            { hashcode: 1008, itemid: "ae2fc:fluid_drop:water", itemname: "Water", quantity: 64000, craftable: false },
+            {
+                itemKey: "item-1008",
+                identityStatus: null,
+                itemid: "ae2fc:fluid_drop:water",
+                itemname: "Water",
+                quantity: 64000,
+                craftable: false,
+            },
             // Extra mods, plus the shapes M1 needs real fixture coverage for:
             {
-                hashcode: 1009,
+                itemKey: "item-1009",
+                identityStatus: null,
                 itemid: "thermalfoundation:material",
                 itemname: "Tin Ingot",
                 quantity: 320,
@@ -132,21 +154,24 @@ export const mockGrids: MockGrid[] = [
             },
             // Craft-only, unstored - GetItems.java synthesises these via web$stackOf(craftable, 0).
             {
-                hashcode: 1010,
+                itemKey: "item-1010",
+                identityStatus: null,
                 itemid: "thermalfoundation:material_copper",
                 itemname: "Copper Ingot",
                 quantity: 0,
                 craftable: true,
             },
             {
-                hashcode: 1011,
+                itemKey: "item-1011",
+                identityStatus: null,
                 itemid: "immersiveengineering:metal_aluminum",
                 itemname: "Aluminum",
                 quantity: 0,
                 craftable: true,
             },
             {
-                hashcode: 1012,
+                itemKey: "item-1012",
+                identityStatus: null,
                 itemid: "immersiveengineering:metal_steel",
                 itemname: "Steel Ingot",
                 quantity: 512,
@@ -154,29 +179,40 @@ export const mockGrids: MockGrid[] = [
             },
             // Under the default alertBelow (100) - star these in dev to see "Low stock".
             {
-                hashcode: 1013,
+                itemKey: "item-1013",
+                identityStatus: null,
                 itemid: "biomesoplenty:gem_amethyst",
                 itemname: "Amethyst",
                 quantity: 88,
                 craftable: false,
             },
             {
-                hashcode: 1014,
+                itemKey: "item-1014",
+                identityStatus: null,
                 itemid: "biomesoplenty:log_mahogany",
                 itemname: "Mahogany Log",
                 quantity: 2200,
                 craftable: false,
             },
             {
-                hashcode: 1015,
+                itemKey: "item-1015",
+                identityStatus: null,
                 itemid: "mekanism:ingot_osmium",
                 itemname: "Osmium Ingot",
                 quantity: 960,
                 craftable: true,
             },
-            { hashcode: 1016, itemid: "mekanism:dust_iron", itemname: "Dust (Iron)", quantity: 3050, craftable: true },
             {
-                hashcode: 1017,
+                itemKey: "item-1016",
+                identityStatus: null,
+                itemid: "mekanism:dust_iron",
+                itemname: "Dust (Iron)",
+                quantity: 3050,
+                craftable: true,
+            },
+            {
+                itemKey: "item-1017",
+                identityStatus: null,
                 itemid: "appliedenergistics2:quartz",
                 itemname: "Certus Quartz",
                 quantity: 1500,
@@ -184,12 +220,20 @@ export const mockGrids: MockGrid[] = [
             },
             // A native fluid's itemid has no colon at all on 1.7.10/1.12.2 (fluid.getName()) - unlike
             // the ae2fc fluid-drop item above, which is a real item id. Both should trip isFluidId.
-            { hashcode: 1018, itemid: "molten.fluix", itemname: "Molten Fluix", quantity: 4000, craftable: false },
+            {
+                itemKey: "item-1018",
+                identityStatus: null,
+                itemid: "molten.fluix",
+                itemname: "Molten Fluix",
+                quantity: 4000,
+                craftable: false,
+            },
             // Under the default alertBelow (100) *and* craftable - star this one with Auto-craft on in
             // dev to exercise the M6 driver end to end (order -> plan -> submit -> stock credited on
             // completion via settleCompletedJobs, above).
             {
-                hashcode: 1019,
+                itemKey: "item-1019",
+                identityStatus: null,
                 itemid: "minecraft:charcoal",
                 itemname: "Charcoal",
                 quantity: 40,
@@ -198,11 +242,21 @@ export const mockGrids: MockGrid[] = [
             // M8 chart-quality/derived-metrics pass: a monotonically declining tracked item, so
             // `seriesStats`' negative `slopePerHour` and `timeToEmptyMillis`'s projection have
             // something to show in dev - see mockBucketValue's "sand" branch.
-            { hashcode: 1020, itemid: "minecraft:sand", itemname: "Sand", quantity: 1500, craftable: false },
-            // Large-magnitude tracked item (~2.4M) alongside everything else's 3-4 digit quantities -
-            // exercises log scale and compact number formatting on the overview's aggregate chart.
             {
-                hashcode: 1021,
+                itemKey: "item-1020",
+                identityStatus: null,
+                itemid: "minecraft:sand",
+                itemname: "Sand",
+                quantity: 1500,
+                craftable: false,
+            },
+            // Large-magnitude tracked item (~2.4M) alongside everything else's 3-4 digit quantities -
+            // exercises log scale and compact number formatting on the overview's aggregate chart. Also the
+            // one item whose identity is AMBIGUOUS (two stacks with the same canonical data), so it lists
+            // without an itemKey and the order flow's "can't be ordered" path is reachable in dev.
+            {
+                itemKey: null,
+                identityStatus: "AMBIGUOUS",
                 itemid: "appliedenergistics2:matter_ball",
                 itemname: "Matter Ball",
                 quantity: 2_400_000,
@@ -219,7 +273,7 @@ export const mockGrids: MockGrid[] = [
                 output: {
                     itemid: "appliedenergistics2:processor_calc",
                     itemname: "§b§lProcessor (Calculation)",
-                    hashcode: 1006,
+                    itemKey: "item-1006",
                     quantity: 16,
                 },
                 startedAt: serverStart - 214_000,
@@ -273,7 +327,7 @@ export const mockGrids: MockGrid[] = [
                 output: {
                     itemid: "appliedenergistics2:crystal_fluix",
                     itemname: "Fluix Crystal",
-                    hashcode: 1003,
+                    itemKey: "item-1003",
                     quantity: 256,
                 },
                 startedAt: serverStart - 40_000,
@@ -298,7 +352,7 @@ export const mockGrids: MockGrid[] = [
                 finalOutput: {
                     itemid: "appliedenergistics2:crystal_fluix",
                     itemname: "Fluix Crystal",
-                    hashcode: 1003,
+                    itemKey: "item-1003",
                     quantity: 128,
                 },
             },
@@ -310,7 +364,7 @@ export const mockGrids: MockGrid[] = [
                 finalOutput: {
                     itemid: "appliedenergistics2:sky_stone_block",
                     itemname: "Sky Stone Block",
-                    hashcode: 1007,
+                    itemKey: "item-1007",
                     quantity: 512,
                 },
             },
@@ -322,7 +376,7 @@ export const mockGrids: MockGrid[] = [
                 finalOutput: {
                     itemid: "appliedenergistics2:processor_calc",
                     itemname: "Calculation Processor",
-                    hashcode: 1010,
+                    itemKey: "item-1010",
                     quantity: 256,
                 },
             },
@@ -337,7 +391,7 @@ export const mockGrids: MockGrid[] = [
                 finalOutput: {
                     itemid: "minecraft:redstone",
                     itemname: "Redstone",
-                    hashcode: 1099,
+                    itemKey: "item-1099",
                     quantity: 64,
                 },
             },
@@ -349,7 +403,7 @@ export const mockGrids: MockGrid[] = [
                     finalOutput: {
                         itemid: "appliedenergistics2:crystal_fluix",
                         itemname: "Fluix Crystal",
-                        hashcode: 1003,
+                        itemKey: "item-1003",
                         quantity: 128,
                     },
                     timeStarted: serverStart - 3_600_000,
@@ -398,7 +452,7 @@ export const mockGrids: MockGrid[] = [
                     finalOutput: {
                         itemid: "appliedenergistics2:processor_calc",
                         itemname: "Calculation Processor",
-                        hashcode: 1010,
+                        itemKey: "item-1010",
                         quantity: 256,
                     },
                     timeStarted: serverStart - 1_800_000,
@@ -510,26 +564,55 @@ export const mockGrids: MockGrid[] = [
         ]),
     },
     {
-        key: 2,
+        key: "mockGridNotch000000002",
         owner: "Notch",
         isOwned: false,
         isTrackingEnabled: false,
         items: [
             {
-                hashcode: 2001,
+                itemKey: "item-2001",
+                identityStatus: null,
                 itemid: "minecraft:cobblestone",
                 itemname: "Cobblestone",
                 quantity: 98400,
                 craftable: false,
             },
-            { hashcode: 2002, itemid: "minecraft:coal", itemname: "Coal", quantity: 5200, craftable: false },
-            { hashcode: 2003, itemid: "minecraft:raw_iron", itemname: "Raw Iron", quantity: 2100, craftable: false },
+            {
+                itemKey: "item-2002",
+                identityStatus: null,
+                itemid: "minecraft:coal",
+                itemname: "Coal",
+                quantity: 5200,
+                craftable: false,
+            },
+            {
+                itemKey: "item-2003",
+                identityStatus: null,
+                itemid: "minecraft:raw_iron",
+                itemname: "Raw Iron",
+                quantity: 2100,
+                craftable: false,
+            },
             // Deliberately no fluids in this grid (unlike grid 1) - lets the Items/Fluids toolbar
             // pill be exercised appearing and disappearing when switching networks.
-            { hashcode: 2004, itemid: "minecraft:granite", itemname: "Granite", quantity: 8000, craftable: false },
+            {
+                itemKey: "item-2004",
+                identityStatus: null,
+                itemid: "minecraft:granite",
+                itemname: "Granite",
+                quantity: 8000,
+                craftable: false,
+            },
             // Grid 2's one craftable item - lets an M4 order/plan test target grid 2 in All-Grids mode
             // (every other row here is stored-only, unlike grid 1).
-            { hashcode: 2005, itemid: "minecraft:brick", itemname: "Brick", quantity: 340, craftable: true },
+            {
+                itemKey: "item-2005",
+                identityStatus: null,
+                itemid: "minecraft:brick",
+                itemname: "Brick",
+                quantity: 340,
+                craftable: true,
+            },
         ],
         idleCpus: [{ name: "Outpost CPU", coProcessors: 1, availableStorage: 1024 * 1024 }],
         busyCpus: [
@@ -547,7 +630,7 @@ export const mockGrids: MockGrid[] = [
                 output: {
                     itemid: "minecraft:coal",
                     itemname: "Coal",
-                    hashcode: 2002,
+                    itemKey: "item-2002",
                     quantity: 64,
                 },
                 startedAt: serverStart,
@@ -563,38 +646,32 @@ export const mockGrids: MockGrid[] = [
     },
 ];
 
-/** Admin-only, no security terminal attached - see GetGridList.java. */
-export const unattachedGrid: GridSummary = {
-    key: -1,
-    owner: "N/A",
-    cpuCount: 1,
-    isOwned: false,
-    isTrackingEnabled: false,
-};
-
-export function findGrid(key: number): MockGrid | undefined {
+export function findGrid(key: GridKey | null): MockGrid | undefined {
     return mockGrids.find((g) => g.key === key);
 }
 
-export function findItemByHashcode(hashcode: number): { grid: MockGrid; item: DetailedItem } | undefined {
+export function findItemByKey(itemKey: string): { grid: MockGrid; item: DetailedItem } | undefined {
     for (const grid of mockGrids) {
-        const item = grid.items.find((i) => i.hashcode === hashcode);
+        const item = grid.items.find((i) => i.itemKey === itemKey);
         if (item) return { grid, item };
     }
     return undefined;
 }
 
+/** Stand-in for a CPU's stable key - real ones are opaque tokens, and display names need not be unique. */
+export function mockCpuKey(name: string): string {
+    return `cpu-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
 export function toGridSummaries(): GridSummary[] {
-    return [
-        ...mockGrids.map((g) => ({
-            key: g.key,
-            owner: g.owner,
-            cpuCount: g.idleCpus.length + g.busyCpus.length,
-            isOwned: g.isOwned,
-            isTrackingEnabled: g.isTrackingEnabled,
-        })),
-        unattachedGrid,
-    ];
+    return mockGrids.map((g) => ({
+        key: g.key,
+        owner: g.owner,
+        cpuCount: g.idleCpus.length + g.busyCpus.length,
+        isOwned: g.isOwned,
+        isTrackingEnabled: g.isTrackingEnabled,
+        accessSources: {},
+    }));
 }
 
 function craftProgress(cpu: MockBusyCpu): number {
@@ -684,7 +761,8 @@ export function recordTracking(grid: MockGrid, cpu: MockBusyCpu, wasCancelled: b
 export function toCpuList(grid: MockGrid): CpuList {
     const list: CpuList = {};
     for (const cpu of grid.idleCpus) {
-        list[cpu.name] = {
+        list[mockCpuKey(cpu.name)] = {
+            name: cpu.name,
             isBusy: false,
             finalOutput: null,
             availableStorage: cpu.availableStorage,
@@ -695,7 +773,8 @@ export function toCpuList(grid: MockGrid): CpuList {
         };
     }
     for (const cpu of grid.busyCpus) {
-        list[cpu.name] = {
+        list[mockCpuKey(cpu.name)] = {
+            name: cpu.name,
             isBusy: true,
             finalOutput: cpu.output,
             availableStorage: cpu.availableStorage,
@@ -983,7 +1062,7 @@ const DEFAULT_INGREDIENTS: MockIngredient[] = [
     { itemid: "appliedenergistics2:material_silicon", itemname: "Silicon", perUnit: 1, craftable: true },
 ];
 
-function storedQuantity(gridKey: number, itemid: string): number {
+function storedQuantity(gridKey: GridKey, itemid: string): number {
     return findGrid(gridKey)?.items.find((i) => i.itemid === itemid)?.quantity ?? 0;
 }
 
@@ -993,7 +1072,7 @@ function storedQuantity(gridKey: number, itemid: string): number {
  * order are exercisable under `npm run dev`, not just against a real server.
  */
 function buildMockPlan(job: MockJob): JobPlanItem[] {
-    const match = findItemByHashcode(job.itemHashcode);
+    const match = findItemByKey(job.itemKey);
     const outputItemid = match?.item.itemid ?? "unknown";
     const outputName = match?.item.itemname ?? "Unknown";
     const ingredients = MOCK_RECIPE_TREE[outputItemid] ?? DEFAULT_INGREDIENTS;
@@ -1057,9 +1136,9 @@ function buildMockPlan(job: MockJob): JobPlanItem[] {
 
 interface MockJob {
     id: number;
-    gridKey: number;
+    gridKey: GridKey;
     createdAt: number;
-    itemHashcode: number;
+    itemKey: string;
     quantity: number;
     isSimulating: boolean;
     /** How long `/job` reports `isDone: false` for - varied so the modal's "Calculating…" state is
@@ -1070,12 +1149,12 @@ interface MockJob {
 let nextJobId = 1;
 export const mockJobs = new Map<number, MockJob>();
 
-export function createJob(gridKey: number, itemHashcode: number, quantity: number): MockJob {
+export function createJob(gridKey: GridKey, itemKey: string, quantity: number): MockJob {
     const job: MockJob = {
         id: nextJobId++,
         gridKey,
         createdAt: Date.now(),
-        itemHashcode,
+        itemKey,
         quantity,
         // Every 5th order comes back as a simulated (unsubmittable) plan, so the UI has something to exercise.
         isSimulating: nextJobId % 5 === 0,

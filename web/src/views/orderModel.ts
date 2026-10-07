@@ -8,6 +8,8 @@ import type { BadgeVariant } from "../ui/Badge";
 /** Structural subset of `CpuView`/`CpuSummary` this module needs - kept local (not imported from
  *  `state/cpus`) so this stays a leaf module with no dependency on the polling state. */
 export interface CpuLike {
+    /** Address for submitting; `name` is only shown. */
+    cpuKey: string;
     name: string;
     isBusy: boolean;
     finalOutput: { itemid: string } | null;
@@ -19,6 +21,7 @@ export interface CpuLike {
 export type OrderCpuState = "invalid" | "mergeable" | "idle";
 
 export interface OrderCpuRow {
+    cpuKey: string;
     name: string;
     state: OrderCpuState;
     selected: boolean;
@@ -28,9 +31,8 @@ export interface OrderCpuRow {
 }
 
 /**
- * Ported from the old `webpage.html:1161` `isValidCPUForOrder`, with the merge-identity check moved from
- * `finalOutput.hashcode` to `finalOutput.itemid` - see REDESIGN_MILESTONES.md's M4 deviation log for why
- * (a modern-branch `GenericStack` hashcode includes stack size, so a hashcode compare could never match).
+ * Ported from the old `webpage.html:1161` `isValidCPUForOrder`, with the merge-identity check done on
+ * `finalOutput.itemid`.
  */
 export function isValidCpuForPlan(cpu: CpuLike, bytesTotal: number, outputItemid: string): boolean {
     if (!cpu.isBusy) return cpu.availableStorage >= bytesTotal;
@@ -56,14 +58,15 @@ export function cpuRow(
     cpu: CpuLike,
     bytesTotal: number,
     outputItemid: string,
-    selectedName: string | null,
+    selectedKey: string | null,
 ): OrderCpuRow {
     const valid = isValidCpuForPlan(cpu, bytesTotal, outputItemid);
     const state = cpuState(cpu, valid);
     return {
+        cpuKey: cpu.cpuKey,
         name: cpu.name,
         state,
-        selected: valid && selectedName === cpu.name,
+        selected: valid && selectedKey === cpu.cpuKey,
         selectable: valid,
         tag: state === "invalid" ? "Not enough storage" : state === "mergeable" ? "Merge into job" : "Idle",
         detail: storageDetail(cpu),
@@ -74,7 +77,7 @@ export function cpuRow(
  *  whichever comes first (merge or idle), not the smallest or fastest fit. */
 export function pickDefaultCpu(cpus: CpuLike[], bytesTotal: number, outputItemid: string): string | null {
     for (const cpu of cpus) {
-        if (isValidCpuForPlan(cpu, bytesTotal, outputItemid)) return cpu.name;
+        if (isValidCpuForPlan(cpu, bytesTotal, outputItemid)) return cpu.cpuKey;
     }
     return null;
 }

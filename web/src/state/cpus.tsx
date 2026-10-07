@@ -4,7 +4,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "p
 
 import { ApiError, getCpu, getCpuList } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
-import type { CpuDetail, CpuSummary, GridSummary } from "../api/types";
+import type { CpuDetail, CpuSummary, GridKey, GridSummary } from "../api/types";
 import { gridOptionLabel } from "../shell/gridLabel";
 import { notify } from "../util/notify";
 import { craftTotals, progressFraction } from "./craftProgress";
@@ -14,17 +14,17 @@ import { usePrefs } from "./prefs";
 import { useToast } from "./toast";
 
 /**
- * A `CpuSummary` (`/list` entry) tagged with its source grid and, while `detailScope` covers it, the
- * latest `/get` detail plus a derived progress estimate.
+ * A `CpuSummary` (CPU list entry) tagged with its source grid and, while `detailScope` covers it, the
+ * latest per-CPU detail plus a derived progress estimate.
  */
 export interface CpuView extends CpuSummary {
-    /** The map key from `/list` - see the name-instability caveat on `cpuKey` below. */
-    name: string;
+    /** The map key from the CPU list: stable for as long as the CPU exists. `name` is display-only. */
+    cpuKey: string;
     /** The real grid key this row came from - never `"all"`, even in All-Grids mode. */
-    sourceGridId: number;
+    sourceGridKey: GridKey;
     /** Owner-derived label for the source grid; only meaningful in All-Grids mode. */
     gridLabel: string;
-    /** From `/get`, fetched only within `detailScope` and only for busy CPUs. */
+    /** Per-CPU detail, fetched only within `detailScope` and only for busy CPUs. */
     detail: CpuDetail | null;
     /**
      * `Date.now()` when `detail` was fetched - `detail.timeElapsed`/`timeStarted` are the *server's*
@@ -37,22 +37,22 @@ export interface CpuView extends CpuSummary {
 }
 
 /**
- * Which busy CPUs the expensive `/get` fan-in should cover this poll cycle - `null` fetches none,
+ * Which busy CPUs the expensive per-CPU detail fan-in should cover this poll cycle - `null` fetches none,
  * `"all"` fetches every busy CPU (the Jobs view), and a specific CPU fetches just that one (Craft
  * Detail, which only ever needs the one it's showing). Narrower than plain on/off so opening Craft
- * Detail doesn't keep fanning `/get` out to every other busy CPU in the background.
+ * Detail doesn't keep fanning detail requests out to every other busy CPU in the background.
  */
-export type DetailScope = "all" | { gridId: number; cpuName: string } | null;
+export type DetailScope = "all" | { gridKey: GridKey; cpuKey: string } | null;
 
 export interface CpusContextValue {
     cpus: CpuView[];
     busyCount: number;
     loading: boolean;
     error: string | null;
-    /** Grid labels that failed during an All-Grids `/list` fan-out. */
+    /** Grid labels that failed during an All-Grids CPU-list fan-out. */
     failedGrids: string[];
     /**
-     * Fans the expensive per-busy-CPU `/get` in on top of `/list`. Callers gate this to when it's
+     * Fans the expensive per-busy-CPU detail in on top of the CPU list. Callers gate this to when it's
      * actually shown (Jobs: `"all"`, Craft Detail: the one CPU it's rendering) - never globally - per
      * the server-thread drain budget (`CoreEngine.DRAIN_BUDGET_NANOS`, `AE2Controller.requests`'
      * 32-slot queue).
@@ -60,7 +60,7 @@ export interface CpusContextValue {
     detailScope: DetailScope;
     setDetailScope: (scope: DetailScope) => void;
     /** Suppresses the next busy->idle completion toast/notification for one CPU (a drawer-initiated cancel). */
-    suppressCompletion: (gridId: number, cpuName: string) => void;
+    suppressCompletion: (gridKey: GridKey, cpuKey: string) => void;
     refresh: () => Promise<void>;
 }
 
@@ -69,15 +69,15 @@ const CpusContext = createContext<CpusContextValue | null>(null);
 const SINGLE_GRID_INTERVAL_MS = 2500;
 const ALL_GRIDS_INTERVAL_MS = 5000;
 
-/** Opaque per-CPU identity for this poll cycle. Not stable long-term - see the comment on `computeTargets`. */
-function cpuKey(gridId: number, name: string): string {
-    return `${gridId} ${name}`;
+/** CPU identity across grids: CPU keys are only unique within one grid. */
+function cpuIdentity(gridKey: GridKey, cpuKey: string): string {
+    return `${gridKey} ${cpuKey}`;
 }
 
 function computeTargets(selection: GridSelection, allGrids: GridSummary[]): GridSummary[] {
-    if (selection === "all") return allGrids.filter((g) => g.key !== -1);
+    if (selection === "all") return allGrids;
     const grid = allGrids.find((g) => g.key === selection);
-    return grid && grid.key !== -1 ? [grid] : [];
+    return grid ? [grid] : [];
 }
 
 /**
@@ -126,12 +126,12 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
     const seededGenerationRef = useRef(-1);
     const runNowRef = useRef<() => Promise<void>>(async () => {});
 
-    const suppressCompletion = useCallback((gridId: number, cpuName: string) => {
-        suppressRef.current.add(cpuKey(gridId, cpuName));
+    const suppressCompletion = useCallback((gridKey: GridKey, cpuKey: string) => {
+        suppressRef.current.add(cpuIdentity(gridKey, cpuKey));
     }, []);
 
     // Force one immediate cycle whenever the detail scope changes (Jobs mounts, or Craft Detail opens
-    // targeting a different CPU), rather than waiting out whatever's left of the current `/list`-only
+    // targeting a different CPU), rather than waiting out whatever's left of the current list-only
     // interval - otherwise the view can show stale/empty detail for up to the poll interval.
     useEffect(() => {
         if (detailScope !== null) void runNowRef.current();
@@ -150,7 +150,7 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
             const nextBusy = new Map<string, LastBusyEntry>();
             for (const cpu of collected) {
                 if (cpu.isBusy && cpu.finalOutput) {
-                    nextBusy.set(cpuKey(cpu.sourceGridId, cpu.name), {
+                    nextBusy.set(cpuIdentity(cpu.sourceGridKey, cpu.cpuKey), {
                         cpuName: cpu.name,
                         itemname: cpu.finalOutput.itemname,
                         quantity: cpu.finalOutput.quantity,
@@ -160,10 +160,9 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
             if (!firstCycleOfGeneration) {
                 for (const [key, prev] of lastBusyRef.current) {
                     if (nextBusy.has(key)) continue; // still busy
-                    // A key that disappeared entirely (not just gone idle) is a renumbered/removed
-                    // cluster (GetCPUList.java's internalID is reassigned on every enumeration) - not
-                    // a completion, so only fire for a key still present but now idle.
-                    const stillPresent = collected.some((c) => cpuKey(c.sourceGridId, c.name) === key);
+                    // A key that disappeared entirely (not just gone idle) is a removed cluster - not a
+                    // completion, so only fire for a key still present but now idle.
+                    const stillPresent = collected.some((c) => cpuIdentity(c.sourceGridKey, c.cpuKey) === key);
                     if (!stillPresent) continue;
                     const suppressed = suppressRef.current.delete(key);
                     if (!suppressed) {
@@ -200,11 +199,11 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
                         try {
                             const list = await getCpuList(grid.key);
                             const label = gridOptionLabel(grid, gridsRef.current);
-                            for (const [name, summary] of Object.entries(list)) {
+                            for (const [cpuKey, summary] of Object.entries(list)) {
                                 collected.push({
                                     ...summary,
-                                    name,
-                                    sourceGridId: grid.key,
+                                    cpuKey,
+                                    sourceGridKey: grid.key,
                                     gridLabel: label,
                                     detail: null,
                                     fetchedAt: null,
@@ -218,16 +217,19 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
 
                     const scope = detailScopeRef.current;
                     if (scope !== null) {
-                        // Sequential, not fanned out: `/get` is a server-thread task under a 5ms/tick
+                        // Sequential, not fanned out: each detail read is a server-thread task under a 5ms/tick
                         // drain budget (CoreEngine.DRAIN_BUDGET_NANOS) - see REDESIGN_MILESTONES.md caveat 2.
                         for (const cpu of collected) {
                             if (generation !== generationRef.current) return;
                             if (!cpu.isBusy) continue;
-                            if (scope !== "all" && (scope.gridId !== cpu.sourceGridId || scope.cpuName !== cpu.name)) {
+                            if (
+                                scope !== "all" &&
+                                (scope.gridKey !== cpu.sourceGridKey || scope.cpuKey !== cpu.cpuKey)
+                            ) {
                                 continue;
                             }
                             try {
-                                const detail = await getCpu(cpu.sourceGridId, cpu.name);
+                                const detail = await getCpu(cpu.sourceGridKey, cpu.cpuKey);
                                 cpu.detail = detail;
                                 cpu.fetchedAt = Date.now();
                                 cpu.progressPct = estimateProgress(detail, cpu.hasTrackingInfo);
@@ -308,4 +310,4 @@ export function useCpus(): CpusContextValue {
     return ctx;
 }
 
-export { cpuKey };
+export { cpuIdentity };

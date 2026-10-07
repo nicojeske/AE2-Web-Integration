@@ -3,17 +3,17 @@ import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useState } from "preact/hooks";
 
 import { getGrids } from "../api/client";
-import type { GridSummary } from "../api/types";
+import type { GridKey, GridSummary } from "../api/types";
 import { parseHash } from "../shell/route";
 
 const SELECTED_GRID_STORAGE_KEY = "ae2.selectedGrid";
 
 /** `"all"` fans requests out across every accessible grid - the reason Statistics (state/stats.tsx) is
  *  single-grid only: its tracked-item set and cap are per-grid server-side, with no sane "all" story. */
-export type GridSelection = "all" | number;
+export type GridSelection = "all" | GridKey;
 
 export interface NetworkContextValue {
-    /** Every grid the server returned, including disabled (`key === -1`) admin-only entries. */
+    /** Every grid the server returned for this user. */
     grids: GridSummary[];
     loading: boolean;
     error: string | null;
@@ -34,9 +34,7 @@ function readInitialSelection(): GridSelection {
     const fromUrl = parseHash(window.location.hash).grid;
     if (fromUrl !== null) return fromUrl;
     const raw = localStorage.getItem(SELECTED_GRID_STORAGE_KEY);
-    if (raw === null || raw === "all") return "all";
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : "all";
+    return raw === null || raw === "" ? "all" : raw;
 }
 
 const NetworkContext = createContext<NetworkContextValue | null>(null);

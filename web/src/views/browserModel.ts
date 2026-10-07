@@ -118,7 +118,7 @@ export function sortItems(
         if (sortBy === 1) return a.quantity - b.quantity;
         return a.mod.localeCompare(b.mod);
     };
-    const favRank = (it: BrowserItem): number => (isFavorite(prefsKey(it.sourceGridId, it.itemid)) ? 1 : 0);
+    const favRank = (it: BrowserItem): number => (isFavorite(prefsKey(it.sourceGridKey, it.itemid)) ? 1 : 0);
     return rows.slice().sort((a, b) => favRank(b) - favRank(a) || primary(a, b) * dir);
 }
 
@@ -133,11 +133,11 @@ export function alertBelowFor(thresholds: Record<string, Thresholds>, key: strin
  * pill (`App.tsx`) and the Favorites pane (M6) so the three can never disagree.
  */
 export function isLowStock(
-    item: Pick<BrowserItem, "sourceGridId" | "itemid" | "quantity">,
+    item: Pick<BrowserItem, "sourceGridKey" | "itemid" | "quantity">,
     favorites: Record<string, true>,
     thresholds: Record<string, Thresholds>,
 ): boolean {
-    const key = prefsKey(item.sourceGridId, item.itemid);
+    const key = prefsKey(item.sourceGridKey, item.itemid);
     if (!favorites[key]) return false;
     return item.quantity < alertBelowFor(thresholds, key);
 }
@@ -153,7 +153,7 @@ export function hasAutoCraftFavorite(
     thresholds: Record<string, Thresholds>,
 ): boolean {
     return items.some((item) => {
-        const key = prefsKey(item.sourceGridId, item.itemid);
+        const key = prefsKey(item.sourceGridKey, item.itemid);
         return favorites[key] && thresholds[key]?.autoCraft;
     });
 }

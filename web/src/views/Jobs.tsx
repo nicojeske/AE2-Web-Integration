@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 
 import { formatBytes, formatNumber } from "../api/format";
-import { cpuKey, useCpus } from "../state/cpus";
+import { cpuIdentity, useCpus } from "../state/cpus";
 import { useNetwork } from "../state/network";
 import { usePrefs } from "../state/prefs";
 import { Badge } from "../ui/Badge";
@@ -26,15 +26,17 @@ export function Jobs({ onOpenCraftDetail }: JobsProps) {
     const [drawerKey, setDrawerKey] = useState<string | null>(null);
 
     const isAllGrids = selected === "all";
-    const drawerCpu = drawerKey ? (cpus.find((c) => cpuKey(c.sourceGridId, c.name) === drawerKey) ?? null) : null;
+    const drawerCpu = drawerKey
+        ? (cpus.find((c) => cpuIdentity(c.sourceGridKey, c.cpuKey) === drawerKey) ?? null)
+        : null;
 
     const onCardClick = (cpu: CpuView) => {
         if (cpu.isBusy) onOpenCraftDetail(cpu);
-        else setDrawerKey(cpuKey(cpu.sourceGridId, cpu.name));
+        else setDrawerKey(cpuIdentity(cpu.sourceGridKey, cpu.cpuKey));
     };
     const closeDrawer = () => setDrawerKey(null);
 
-    if (selected !== "all" && (!selectedGrid || selectedGrid.key === -1)) {
+    if (selected !== "all" && !selectedGrid) {
         return <div className="placeholder-panel">No network selected.</div>;
     }
 
@@ -79,7 +81,7 @@ export function Jobs({ onOpenCraftDetail }: JobsProps) {
                 <section className="cpu-grid">
                     {cpus.map((cpu) => (
                         <Card
-                            key={`${cpu.sourceGridId}:${cpu.name}`}
+                            key={`${cpu.sourceGridKey}:${cpu.cpuKey}`}
                             clickable
                             className="cpu-card"
                             onClick={() => onCardClick(cpu)}

@@ -340,7 +340,7 @@ function StockHistoryButton({ itemid, onOpenStats }: { itemid: string; onOpenSta
     const { tracked, trackedLimit, addTracked } = useStats();
     const [confirming, setConfirming] = useState(false);
 
-    if (selected === "all" || !selectedGrid || selectedGrid.key === -1) {
+    if (selected === "all" || !selectedGrid) {
         return (
             <span title="Statistics is per-network - pick a single network to compare with stock history">
                 <Button variant="text" disabled>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { ApiError, cancelCpu } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
+import type { GridKey } from "../api/types";
 import { useCpus } from "../state/cpus";
 import { useNetwork } from "../state/network";
 import { useToast } from "../state/toast";
@@ -14,12 +15,12 @@ import { buildActiveCraftDetail, isJobFinished, snapshotOf } from "./craftDetail
 import type { CraftDetailSnapshot } from "./craftDetailModel";
 
 export interface CraftDetailProps {
-    gridId: number;
-    cpuName: string;
+    gridKey: GridKey;
+    cpuKey: string;
     onClose: () => void;
 }
 
-export function CraftDetail({ gridId, cpuName, onClose }: CraftDetailProps) {
+export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
     const { cpus, suppressCompletion, refresh } = useCpus();
     const { selected } = useNetwork();
     const toast = useToast();
@@ -38,7 +39,7 @@ export function CraftDetail({ gridId, cpuName, onClose }: CraftDetailProps) {
         return () => clearInterval(id);
     }, []);
 
-    const live = cpus.find((c) => c.sourceGridId === gridId && c.name === cpuName) ?? null;
+    const live = cpus.find((c) => c.sourceGridKey === gridKey && c.cpuKey === cpuKey) ?? null;
 
     // Freezes the last-known busy state so the page can render "Took"/"Completed" once the CPU goes
     // idle or drops out of `/list` entirely, instead of collapsing to nothing the instant it finishes -
@@ -51,13 +52,14 @@ export function CraftDetail({ gridId, cpuName, onClose }: CraftDetailProps) {
     }
 
     const view = buildActiveCraftDetail(live, snapshotRef.current, now);
+    const cpuName = live?.name ?? snapshotRef.current?.cpuName ?? "this CPU";
     const finished = isJobFinished(live);
 
     const onConfirmCancel = async () => {
         setCancelling(true);
         try {
-            await cancelCpu(gridId, cpuName);
-            suppressCompletion(gridId, cpuName);
+            await cancelCpu(gridKey, cpuKey);
+            suppressCompletion(gridKey, cpuKey);
             toast(`Job cancelled on ${cpuName}`);
             setConfirmOpen(false);
             onClose();

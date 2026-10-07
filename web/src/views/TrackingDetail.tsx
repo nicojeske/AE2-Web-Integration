@@ -7,10 +7,10 @@ import { FormattedText } from "../ui/FormattedText";
 import { Timeline } from "../ui/Timeline";
 import { CraftDetailHeader, StatCard } from "./craftDetailParts";
 import { buildTrackingDetail } from "./trackingDetailModel";
-import type { TrackingDetail as TrackingDetailData } from "../api/types";
+import type { GridKey, TrackingDetail as TrackingDetailData } from "../api/types";
 
 export interface TrackingDetailProps {
-    gridId: number;
+    gridKey: GridKey;
     id: number;
     onClose: () => void;
 }
@@ -21,7 +21,7 @@ export interface TrackingDetailProps {
  * immutable once it exists (only added to `trackingInfos` after `timeDone` is set) so this fetches once
  * on mount - no polling, no ticking clock.
  */
-export function TrackingDetail({ gridId, id, onClose }: TrackingDetailProps) {
+export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
     const [detail, setDetail] = useState<TrackingDetailData | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +29,7 @@ export function TrackingDetail({ gridId, id, onClose }: TrackingDetailProps) {
         let cancelled = false;
         setDetail(null);
         setError(null);
-        getTracking(gridId, id)
+        getTracking(gridKey, id)
             .then((d) => {
                 if (!cancelled) setDetail(d);
             })
@@ -39,7 +39,7 @@ export function TrackingDetail({ gridId, id, onClose }: TrackingDetailProps) {
         return () => {
             cancelled = true;
         };
-    }, [gridId, id]);
+    }, [gridKey, id]);
 
     if (error) {
         return (

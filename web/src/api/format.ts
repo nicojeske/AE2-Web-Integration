@@ -201,7 +201,7 @@ const SI_SUFFIXES = ["", "k", "M", "G", "T", "P", "E"];
 
 /**
  * `8.2G` / `950` / `1.23e+23` - SI-scaled, one decimal, scientific past exa. Takes the decimal strings
- * `/gt/power` sends for stored/capacity too: `Number()` loses precision past 2^53, which is irrelevant
+ * `/api/gt/power` sends for stored/capacity too: `Number()` loses precision past 2^53, which is irrelevant
  * at one displayed decimal.
  */
 function formatSI(value: string | number): string {

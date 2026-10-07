@@ -9,9 +9,10 @@ import { Card } from "../ui/Card";
 import { FormattedText } from "../ui/FormattedText";
 import { useVirtualWindow } from "../ui/useVirtualWindow";
 import type { HistoryEntry } from "../state/history";
+import type { GridKey } from "../api/types";
 
 export interface HistoryProps {
-    onOpen: (entry: { gridId: number; id: number }) => void;
+    onOpen: (entry: { gridKey: GridKey; id: number }) => void;
 }
 
 /** `.history-row`'s rendered height plus one `.history-list` row gap (`history.css`) - measured against
@@ -44,7 +45,7 @@ export function History({ onOpen }: HistoryProps) {
     );
     const visible = filtered.slice(startRow, endRow);
 
-    if (selected !== "all" && (!selectedGrid || selectedGrid.key === -1)) {
+    if (selected !== "all" && !selectedGrid) {
         return <div className="placeholder-panel">No network selected.</div>;
     }
 
@@ -95,7 +96,7 @@ export function History({ onOpen }: HistoryProps) {
                             key={entry.key}
                             clickable
                             className="history-row"
-                            onClick={() => onOpen({ gridId: entry.sourceGridId, id: entry.id })}
+                            onClick={() => onOpen({ gridKey: entry.sourceGridKey, id: entry.id })}
                         >
                             <div className="history-row__main">
                                 <span className="history-row__item">

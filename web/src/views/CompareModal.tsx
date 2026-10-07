@@ -58,16 +58,16 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
         return () => setCompareActive(false);
     }, [setCompareActive]);
 
-    const gridId = selectedGrid?.key ?? null;
+    const gridKey = selectedGrid?.key ?? null;
     const nameOf = useMemo(() => {
         const byId = new Map<string, string>();
         for (const item of items) {
-            if (item.sourceGridId === gridId) byId.set(item.itemid, item.plainName);
+            if (item.sourceGridKey === gridKey) byId.set(item.itemid, item.plainName);
         }
         // Falls back to the server-remembered name (see state/stats.tsx's trackedNames) before the
         // raw itemid - an emptied-out tracked item still gets a real name and a matching icon.
         return (itemid: string) => byId.get(itemid) ?? trackedNames[itemid] ?? itemid;
-    }, [items, gridId, trackedNames]);
+    }, [items, gridKey, trackedNames]);
 
     const series = useMemo(() => {
         return ids.map((id) => {
@@ -163,8 +163,8 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
                             size="sm"
                             disabled={viewName.trim().length === 0}
                             onClick={() => {
-                                if (gridId === null || viewName.trim().length === 0) return;
-                                addStatsView({ gridId, name: viewName.trim(), itemids: ids, range: compareRange });
+                                if (gridKey === null || viewName.trim().length === 0) return;
+                                addStatsView({ gridKey, name: viewName.trim(), itemids: ids, range: compareRange });
                                 setSavingView(false);
                                 setViewName("");
                             }}

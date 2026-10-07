@@ -1,6 +1,6 @@
 // Statistics dashboard header (chart-quality/derived-metrics pass) - a KPI row plus one aggregate
 // chart, both computed from the `history` bundle `state/stats.tsx` already polls; no extra requests.
-import type { StatsRange } from "../api/types";
+import type { GridKey, StatsRange } from "../api/types";
 import { formatNumber, formatRelativeAge } from "../api/format";
 import type { HistoryBundle } from "../state/stats";
 import type { BrowserItem } from "../state/items";
@@ -12,7 +12,7 @@ import { isLowStock } from "./browserModel";
 import { COMPARE_W, deltaPercent, describeResolution, isTrendSignificant, seriesStats, sumSeries } from "./statsModel";
 
 export interface StatsOverviewProps {
-    gridId: number;
+    gridKey: GridKey;
     tracked: string[];
     trackedLimit: number;
     items: BrowserItem[];
@@ -25,7 +25,7 @@ export interface StatsOverviewProps {
 }
 
 export function StatsOverview({
-    gridId,
+    gridKey,
     tracked,
     trackedLimit,
     items,
@@ -57,7 +57,7 @@ export function StatsOverview({
 
     let lowStockCount = 0;
     for (const id of tracked) {
-        const item = items.find((it) => it.sourceGridId === gridId && it.itemid === id);
+        const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === id);
         // Reuses the Browser badge's own rule - a tracked item only counts here if it's favourited
         // (otherwise it has no `alertBelow` to compare against) and still on the network.
         if (item && isLowStock(item, favorites, thresholds)) lowStockCount++;

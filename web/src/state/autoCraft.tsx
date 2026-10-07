@@ -17,6 +17,7 @@ import { useNetwork } from "./network";
 import { prefsKey, usePrefs } from "./prefs";
 import type { Thresholds } from "./prefs";
 import { useToast } from "./toast";
+import type { GridKey } from "../api/types";
 
 /** Don't retry a failed candidate (simulating plan, no valid CPU, ALL_CPU_BUSY, timeout, ...) for 5
  *  minutes - the milestone's required guard against a retry storm on a plan that keeps simulating. */
@@ -24,7 +25,7 @@ const BACKOFF_MS = 5 * 60_000;
 
 interface AutoCraftCandidate {
     key: string;
-    gridId: number;
+    gridKey: GridKey;
     itemid: string;
     itemname: string;
     quantity: number;
@@ -46,18 +47,18 @@ function findCandidates(
 ): AutoCraftCandidate[] {
     const out: AutoCraftCandidate[] = [];
     for (const item of items) {
-        const key = prefsKey(item.sourceGridId, item.itemid);
+        const key = prefsKey(item.sourceGridKey, item.itemid);
         if (!favorites[key]) continue;
         const cfg = thresholds[key];
         if (!cfg?.autoCraft) continue;
         if (item.quantity >= cfg.keepStock) continue;
         if ((backoff.get(key) ?? 0) > now) continue;
         const alreadyCrafting = cpus.some(
-            (c) => c.sourceGridId === item.sourceGridId && c.isBusy && c.finalOutput?.itemid === item.itemid,
+            (c) => c.sourceGridKey === item.sourceGridKey && c.isBusy && c.finalOutput?.itemid === item.itemid,
         );
         if (alreadyCrafting) continue;
         const quantity = Math.max(1, Math.min(cfg.batchSize, cfg.keepStock - item.quantity));
-        out.push({ key, gridId: item.sourceGridId, itemid: item.itemid, itemname: item.itemname, quantity });
+        out.push({ key, gridKey: item.sourceGridKey, itemid: item.itemid, itemname: item.itemname, quantity });
     }
     return out;
 }
@@ -91,13 +92,13 @@ export function AutoCraftProvider({ children }: { children?: ComponentChildren }
     const backoffRef = useRef<Map<string, number>>(new Map());
     // The one computed-but-not-yet-submitted (or not-yet-cancelled) job, if any - cleaned up on grid
     // switch, unmount, and tab close, since GridData's job map has no idle expiry of its own.
-    const pendingRef = useRef<{ gridId: number; jobId: number } | null>(null);
+    const pendingRef = useRef<{ gridKey: GridKey; jobId: number } | null>(null);
 
     const cancelPending = useCallback(() => {
         const pending = pendingRef.current;
         if (!pending) return;
         pendingRef.current = null;
-        void cancelJob(pending.gridId, pending.jobId).catch(() => {});
+        void cancelJob(pending.gridKey, pending.jobId).catch(() => {});
     }, []);
 
     // A grid switch invalidates any chain computed against the old grid's CPUs/storage; unmount needs
@@ -114,7 +115,7 @@ export function AutoCraftProvider({ children }: { children?: ComponentChildren }
         const onPageHide = () => {
             const pending = pendingRef.current;
             if (!pending) return;
-            const url = `job?grid=${pending.gridId}&id=${pending.jobId}&cancel`;
+            const url = `job?grid=${pending.gridKey}&id=${pending.jobId}&cancel`;
             if (navigator.sendBeacon) navigator.sendBeacon(url);
             else void fetch(url, { keepalive: true }).catch(() => {});
         };
@@ -143,11 +144,11 @@ export function AutoCraftProvider({ children }: { children?: ComponentChildren }
         };
         try {
             const handle = await computePlan(
-                { gridId: candidate.gridId, itemid: candidate.itemid, quantity: candidate.quantity },
+                { gridKey: candidate.gridKey, itemid: candidate.itemid, quantity: candidate.quantity },
                 {
                     isStale: () => generationRef.current !== generation,
                     onJobId: (jobId) => {
-                        pendingRef.current = { gridId: candidate.gridId, jobId };
+                        pendingRef.current = { gridKey: candidate.gridKey, jobId };
                     },
                 },
             );
@@ -162,14 +163,15 @@ export function AutoCraftProvider({ children }: { children?: ComponentChildren }
             // the plan was computed.
             await refreshCpus();
             if (generationRef.current !== generation) return;
-            const gridCpus = cpusRef.current.filter((c) => c.sourceGridId === candidate.gridId);
-            const cpuName = pickDefaultCpu(gridCpus, handle.job.bytesTotal, candidate.itemid);
-            if (!cpuName) {
+            const gridCpus = cpusRef.current.filter((c) => c.sourceGridKey === candidate.gridKey);
+            const cpuKey = pickDefaultCpu(gridCpus, handle.job.bytesTotal, candidate.itemid);
+            if (!cpuKey) {
                 fail();
                 return;
             }
 
-            await submitJob(candidate.gridId, handle.jobId, cpuName);
+            await submitJob(candidate.gridKey, handle.jobId, cpuKey);
+            const cpuName = gridCpus.find((c) => c.cpuKey === cpuKey)?.name ?? "a crafting CPU";
             pendingRef.current = null;
             backoffRef.current.delete(candidate.key);
             toastRef.current(
