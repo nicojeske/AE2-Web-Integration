@@ -50,7 +50,7 @@ Out of scope for v1: Discord alerts, remote on/off, quests, pollution.
 |---|---|---|---|
 | 0: version check | live server | (this file) | ✅ done |
 | 1: core: provider API, stores, endpoints, tests | `core` | [phase-1-core.md](phase-1-core.md) | ✅ done (`db97705`, `db584c0`) |
-| 2: web frontend: Machines, Power, Production views | `core` (`web/`) | [phase-2-frontend.md](phase-2-frontend.md) | ⏳ todo |
+| 2: web frontend: Machines, Power, Production views | `core` (`web/`) | [phase-2-frontend.md](phase-2-frontend.md) | ✅ done (`6ea72f7`, `8980264`) |
 | 3: 1.7.10 adapter: GT provider and production mixin | `1.7.10` | [phase-3-adapter-1.7.10.md](phase-3-adapter-1.7.10.md) | ⏳ todo |
 
 Phases 2 and 3 are independent and can be done in either order. Phase 2 can be built and checked entirely

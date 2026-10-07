@@ -171,12 +171,32 @@ Add fixtures that make every state visible:
 4. `./gradlew build` still green (the bundle lives in Java resources).
 
 ## 7. Checklist / definition of done
-- [ ] Context flag `hasGT` end to end (webpage.html, context.ts, mock, index.php)
-- [ ] Types and client for all 6 endpoints, with `NOT_AVAILABLE` turned into an empty state
-- [ ] Sections, route, sidebar (with problem badge) and App wiring, all hidden without GT
-- [ ] Machines view, filters, grouping, detail drawer
-- [ ] Power view with gauges, countdowns and history
-- [ ] Production view with grouping, breakdown, bar chart and the stock-history cross-link
-- [ ] Fixtures covering every status and edge case
-- [ ] Prettier clean, typecheck clean, bundles rebuilt and committed in the same commit
-- [ ] Update the README phase table (Phase 2 ✅ plus commit sha)
+- [x] Context flag `hasGT` end to end (webpage.html, context.ts, mock, index.php)
+- [x] Types and client for all 6 endpoints, with `NOT_AVAILABLE` turned into an empty state
+- [x] Sections, route, sidebar (with problem badge) and App wiring, all hidden without GT
+- [x] Machines view, filters, grouping, detail drawer
+- [x] Power view with gauges, countdowns and history
+- [x] Production view with grouping, breakdown, bar chart and the stock-history cross-link
+- [x] Fixtures covering every status and edge case
+- [x] Prettier clean, typecheck clean, bundles rebuilt and committed in the same commit
+- [x] Update the README phase table (Phase 2 ✅ plus commit sha)
+
+## 8. As built (`6ea72f7`, `8980264`)
+
+Where the code differs from the plan above:
+- Files: GT fixtures live in `src/dev/gtFixtures.ts` (not `fixtures.ts`), the shared view helpers in
+  `views/gtModel.ts` + `views/gtCommon.tsx` (not `machinesModel.ts`), and all three views share one
+  `views/gt.css`.
+- Mock toggles: `MOCK_GT=0|na`, or `?gt=0|na` on the page URL (read back off API calls' Referer), instead
+  of `?fail=` on the page. `?fail=NOT_AVAILABLE` still works on a direct `/gt/*` request.
+- Polling ignores Settings' auto-refresh: that setting is `autoRefreshItems` and only governs the
+  server-thread `/items` poll. `/gt/*` is async (no drain budget), so GT polls like Jobs does and only
+  pauses while the tab is hidden.
+- `formatDuration` (ms, not seconds) gained a days tier instead of a second helper.
+- Recipe progress is interpolated client-side between scans and wraps at the recipe length, so short
+  recipes don't sit at 100% for most of each 10 s scan.
+- Stock history: disabled in All-Grids mode (Statistics is per-network). For an untracked item it asks
+  inline ("Track & open"), since tracking uses one of the network's limited slots.
+- Phone width: the Production row actions move into the expanded row.
+- The terminal has no light theme, so "both themes" only applies to dark.
+
