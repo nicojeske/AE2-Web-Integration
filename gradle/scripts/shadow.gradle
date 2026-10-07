@@ -11,6 +11,10 @@ dependencies {
     coreShadow(project(':core')) {
         transitive = false
     }
+    // Core's history database driver: core is shaded without its dependencies, so pgjdbc is named here.
+    coreShadow('org.postgresql:postgresql:42.7.13') {
+        transitive = false
+    }
 }
 
 tasks.named('shadowJar').configure {
@@ -28,6 +32,7 @@ tasks.named('shadowJar').configure {
         relocate('org.apache.commons', "${shadowRelocationPrefix}.org.apache.commons")
         relocate('commons-io', "${shadowRelocationPrefix}.commons-io")
         relocate('club.minnced', "${shadowRelocationPrefix}.club.minnced")
+        relocate('org.postgresql', "${shadowRelocationPrefix}.org.postgresql")
         relocate(
             'pl.kuba6000.ae2webintegration.core',
             "${shadowRelocationPrefix}.pl.kuba6000.ae2webintegration.core")
