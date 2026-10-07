@@ -2,7 +2,7 @@
 // section-sign (§) formatting codes from the AE2 item registry - these two are meant to be used
 // together: strip for plain-text contexts, parse for display.
 
-import type { StatsRange } from "./types";
+import type { GTRange, StatsRange } from "./types";
 
 const EXTRA_FORMAT_CHARS = "klmno"; // obfuscated, bold, strikethrough, underline, italic
 const RESET_CHAR = "r";
@@ -84,7 +84,8 @@ export function formatDuration(ms: number): string {
     const seconds = totalSeconds % 60;
     if (minutes < 60) return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
     const hours = Math.floor(minutes / 60);
-    return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+    if (hours < 24) return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+    return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
 export function formatPercent(fraction: number): string {
@@ -151,11 +152,11 @@ export function formatTimestamp(ms: number): string {
 
 /**
  * Short axis label for a Statistics chart, scaled to what's distinguishable at the range's own
- * resolution - a clock time at 15m/1h/6h/24h (5-min buckets), a day at 7d/30d, month+year at 1y/all
+ * resolution - a clock time at 15m/1h/6h/24h (5-min buckets), a day at 7d/30d/90d, month+year at 1y/all
  * (hourly buckets, so individual days aren't meaningful). `"custom"` has no resolution of its own, so
  * `spanMillis` (the request's own span, e.g. `history.to - history.from`) decides instead.
  */
-export function formatAxisTime(ms: number, range: StatsRange, spanMillis?: number): string {
+export function formatAxisTime(ms: number, range: StatsRange | GTRange, spanMillis?: number): string {
     const date = new Date(ms);
     const clock = () => date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
     const day = () => date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
@@ -167,6 +168,69 @@ export function formatAxisTime(ms: number, range: StatsRange, spanMillis?: numbe
         return monthYear();
     }
     if (range === "15m" || range === "1h" || range === "6h" || range === "24h") return clock();
-    if (range === "7d" || range === "30d") return day();
+    if (range === "7d" || range === "30d" || range === "90d") return day();
     return monthYear();
+}
+
+// ---- GregTech hub ----
+
+/** GT voltage tiers by `GTMachine.voltageTier` - see `gtTierName` for the out-of-range fallback. */
+export const GT_TIERS = [
+    "ULV",
+    "LV",
+    "MV",
+    "HV",
+    "EV",
+    "IV",
+    "LuV",
+    "ZPM",
+    "UV",
+    "UHV",
+    "UEV",
+    "UIV",
+    "UMV",
+    "UXV",
+    "MAX",
+];
+
+export function gtTierName(tier: number): string {
+    return GT_TIERS[tier] ?? "\u2014";
+}
+
+const SI_SUFFIXES = ["", "k", "M", "G", "T", "P", "E"];
+
+/**
+ * `8.2G` / `950` / `1.23e+23` - SI-scaled, one decimal, scientific past exa. Takes the decimal strings
+ * `/gt/power` sends for stored/capacity too: `Number()` loses precision past 2^53, which is irrelevant
+ * at one displayed decimal.
+ */
+function formatSI(value: string | number): string {
+    const n = typeof value === "string" ? Number(value) : value;
+    if (!Number.isFinite(n)) return "\u2014";
+    const abs = Math.abs(n);
+    if (abs < 1000) return String(Math.round(n));
+    let exp = Math.floor(Math.log10(abs) / 3);
+    // 999,960 must read "1M", not "1000k".
+    if (Number((abs / 1000 ** exp).toFixed(1)) >= 1000) exp++;
+    if (exp >= SI_SUFFIXES.length) return n.toExponential(2);
+    const scaled = Number((n / 1000 ** exp).toFixed(1));
+    return `${scaled}${SI_SUFFIXES[exp]}`;
+}
+
+/** `"8.2G EU"` - an EU amount (LSC stored/capacity, wireless network). */
+export function formatEU(value: string | number): string {
+    return `${formatSI(value)} EU`;
+}
+
+/** `"8.5k EU/t"`. */
+export function formatEUt(perTick: number): string {
+    return `${formatSI(perTick)} EU/t`;
+}
+
+/** `"500 L"` / `"4.2 kL"` / `"1.5 ML"` - fluid amounts arrive in L (mB). */
+export function formatLiters(liters: number, mode: "full" | "compact" = "full"): string {
+    const abs = Math.abs(liters);
+    if (abs >= 1_000_000) return `${formatNumber(Number((liters / 1_000_000).toFixed(2)), mode)} ML`;
+    if (abs >= 1000) return `${formatNumber(Number((liters / 1000).toFixed(2)), mode)} kL`;
+    return `${formatNumber(Math.round(liters), mode)} L`;
 }

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 
 import { skipSpecialFormat } from "../api/format.ts";
-import type { StatsRange } from "../api/types.ts";
+import type { GTRange, StatsRange } from "../api/types.ts";
 
 import {
     createJob,
@@ -25,6 +25,19 @@ import {
     toJobData,
     trackedItemNames,
 } from "./fixtures.ts";
+import {
+    findMockMachine,
+    hasMockPowerSource,
+    MOCK_POWER_MAX_RANGE,
+    MOCK_PRODUCTION_MAX_RANGE,
+    mockGTMachines,
+    mockGTPower,
+    mockGTPowerHistory,
+    mockGTProduction,
+    mockGTProductionHistory,
+    parseGTRange,
+    parsePoints,
+} from "./gtFixtures.ts";
 
 const STATS_RANGES = new Set<StatsRange>(["15m", "1h", "6h", "24h", "7d", "30d", "1y", "all", "custom"]);
 const MAX_HISTORY_POINTS = 500;
@@ -45,6 +58,20 @@ function normalizeIconName(raw: string): string {
 }
 
 let iconIndex: Map<string, string> | undefined;
+
+/**
+ * GregTech hub mode: `"1"` (default) = a server with GT, `"0"` = without one (sections hidden, every
+ * `/gt/*` answers NOT_AVAILABLE), `"na"` = GT went away after the page loaded (sections shown, endpoints
+ * NOT_AVAILABLE - the empty states). Env `MOCK_GT` sets the default; a `?gt=` on the page URL overrides it
+ * for that tab, read back off API calls' Referer.
+ */
+type GTMode = "1" | "0" | "na";
+
+function gtMode(pageUrl: string | undefined): GTMode {
+    const fromPage = pageUrl ? new URL(pageUrl, "http://localhost").searchParams.get("gt") : null;
+    const raw = fromPage ?? process.env.MOCK_GT ?? "1";
+    return raw === "0" || raw === "na" ? raw : "1";
+}
 
 /** Stands in for `CoreData`'s per-principal blob map - a single slot is fine since the mock server only
  *  ever serves one (dev) principal. */
@@ -127,6 +154,56 @@ async function handleLoginPost(req: IncomingMessage, res: ServerResponse): Promi
     res.end();
 }
 
+/** `/gt/*` - mirrors the `GetGT*` request classes' params, defaults and error statuses. */
+function handleGT(url: URL, mode: GTMode, res: ServerResponse, next: () => void): void {
+    const params = url.searchParams;
+    if (mode !== "1" || params.get("fail") === "NOT_AVAILABLE") return respond(res, "NOT_AVAILABLE", null);
+    const now = Date.now();
+    const range = (fallback: GTRange, max: number) =>
+        parseGTRange(params.get("range"), params.get("minutes"), fallback, max);
+
+    switch (url.pathname) {
+        case "/gt/machines":
+            return ok(res, mockGTMachines(now));
+        case "/gt/machine": {
+            const id = params.get("id");
+            if (!id) return respond(res, "NO_PARAM", ["id"]);
+            const span = range("24h", MOCK_PRODUCTION_MAX_RANGE);
+            if (span === null) return respond(res, "BAD_PARAM", null);
+            const machine = findMockMachine(id, now);
+            if (!machine) return respond(res, "NOT_FOUND", null);
+            return ok(res, { machine, production: mockGTProduction(span, "item", id, now) });
+        }
+        case "/gt/power":
+            return ok(res, { sources: mockGTPower(now) });
+        case "/gt/powerhistory": {
+            const source = params.get("source");
+            if (!source) return respond(res, "NO_PARAM", ["source"]);
+            const span = range("24h", MOCK_POWER_MAX_RANGE);
+            const points = parsePoints(params.get("points"));
+            if (span === null || points === null) return respond(res, "BAD_PARAM", null);
+            if (!hasMockPowerSource(source)) return respond(res, "NOT_FOUND", null);
+            return ok(res, mockGTPowerHistory(source, span, points, now));
+        }
+        case "/gt/production": {
+            const span = range("24h", MOCK_PRODUCTION_MAX_RANGE);
+            const groupBy = params.get("groupBy") ?? "item";
+            if (span === null || (groupBy !== "item" && groupBy !== "machine")) {
+                return respond(res, "BAD_PARAM", null);
+            }
+            return ok(res, mockGTProduction(span, groupBy, params.get("machine"), now));
+        }
+        case "/gt/productionhistory": {
+            const span = range("7d", MOCK_PRODUCTION_MAX_RANGE);
+            const points = parsePoints(params.get("points"));
+            if (span === null || points === null) return respond(res, "BAD_PARAM", null);
+            return ok(res, mockGTProductionHistory(params.get("item"), params.get("machine"), span, points, now));
+        }
+        default:
+            next();
+    }
+}
+
 /**
  * Fakes the Java HTTP API (see REDESIGN_MILESTONES.md's endpoint table) for `npm run dev`, so the UI
  * can be built without a running Minecraft server. Not wired into `npm run build`.
@@ -145,7 +222,8 @@ export function mockApiPlugin(): Plugin {
                 .replace("_REPLACE_ME_IS_ADMIN", "true")
                 .replace("_REPLACE_ME_VERSION_OUTDATED", "false")
                 .replace("_REPLACE_ME_IS_PUBLIC_MODE", isPublicMode ? "true" : "false")
-                .replace("_REPLACE_ME_HAS_ITEM_ICONS", loadIconIndex().size > 0 ? "true" : "false");
+                .replace("_REPLACE_ME_HAS_ITEM_ICONS", loadIconIndex().size > 0 ? "true" : "false")
+                .replace("_REPLACE_ME_HAS_GT", gtMode(ctx.originalUrl) === "0" ? "false" : "true");
         },
         configureServer(server) {
             server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
@@ -159,6 +237,11 @@ export function mockApiPlugin(): Plugin {
                 }
 
                 for (const grid of mockGrids) settleCompletedJobs(grid);
+
+                if (url.pathname.startsWith("/gt/")) {
+                    handleGT(url, gtMode(req.headers.referer), res, next);
+                    return;
+                }
 
                 switch (url.pathname) {
                     case "/grids": {

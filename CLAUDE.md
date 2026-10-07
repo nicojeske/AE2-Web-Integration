@@ -124,9 +124,9 @@ file per entry, with **no support for multiple entries** — this is why the bui
 (`vite.config.ts` branches on `mode`) instead of one multi-input build, and why it must never require
 `AE2Controller.WebHandler` to serve more than one static resource per request. The emitted `webpage.html`
 must preserve the `_REPLACE_ME_USERNAME` / `_REPLACE_ME_IS_ADMIN` / `_REPLACE_ME_VERSION_OUTDATED` /
-`_REPLACE_ME_IS_PUBLIC_MODE` / `_REPLACE_ME_HAS_ITEM_ICONS` placeholders verbatim (`login.html` only ever
-carries `_REPLACE_ME_IS_PUBLIC_MODE`, since it's always served logged out) — `AE2Controller.WebHandler`
-substitutes them with plain string replacement, not templating.
+`_REPLACE_ME_IS_PUBLIC_MODE` / `_REPLACE_ME_HAS_ITEM_ICONS` / `_REPLACE_ME_HAS_GT` placeholders verbatim
+(`login.html` only ever carries `_REPLACE_ME_IS_PUBLIC_MODE`, since it's always served logged out) —
+`AE2Controller.WebHandler` substitutes them with plain string replacement, not templating.
 
 Layout: `src/api/` (typed endpoint client, `{status,data}` envelope, `REFRESH_REQUIRED` single-retry
 wrapper, formatting helpers), `src/state/` (Preact context stores — network selection, items, prefs, toasts),

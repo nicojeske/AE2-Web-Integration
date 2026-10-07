@@ -135,7 +135,7 @@
 
     // Serves the same self-contained webpage.html the mod itself serves (AE2Controller.WebHandler) -
     // `web/`'s build copies it here alongside login.html (see web/vite.config.ts), substituting the
-    // same five placeholders by plain string replacement. username/isAdmin/isOutdated already live in
+    // same six placeholders by plain string replacement. username/isAdmin/isOutdated already live in
     // cookies set at login above, so - unlike the mod, which reads them off the live WebPrincipal -
     // this only ever needs to read them back.
     $webpage = file_get_contents("webpage.html");
@@ -144,5 +144,8 @@
     $webpage = str_replace("_REPLACE_ME_VERSION_OUTDATED", $_COOKIE['isOutdated'] == '1' ? "true" : "false", $webpage);
     $webpage = str_replace("_REPLACE_ME_IS_PUBLIC_MODE", $AE2_IS_PUBLIC_MODE ? "true" : "false", $webpage);
     $webpage = str_replace("_REPLACE_ME_HAS_ITEM_ICONS", $AE2_HAS_ITEM_ICONS ? "true" : "false", $webpage);
+    // The GregTech pages stay off through this proxy: its ?API= passthrough could forward the gt/* GETs,
+    // but that path is untested. Must still be replaced - the token is a bare JS literal in webpage.html.
+    $webpage = str_replace("_REPLACE_ME_HAS_GT", "false", $webpage);
     echo $webpage;
 ?>

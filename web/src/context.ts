@@ -5,6 +5,8 @@ export interface Ae2Context {
     isPublicMode: boolean;
     /** Whether AE2Controller has a non-empty ItemIconIndex - real item icons vs. placeholder tiles. */
     hasItemIcons: boolean;
+    /** `GTEngine.isAvailable()` - a GregTech provider is registered and `gt_enabled`. Gates the GT sections. */
+    hasGT: boolean;
 }
 
 declare global {

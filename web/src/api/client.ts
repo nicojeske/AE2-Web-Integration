@@ -5,6 +5,13 @@ import type {
     Envelope,
     GridSettingsResult,
     GridSummary,
+    GTMachineDetail,
+    GTMachines,
+    GTPower,
+    GTPowerHistory,
+    GTProduction,
+    GTProductionHistory,
+    GTRange,
     ItemHistoryResult,
     JobData,
     OrderResult,
@@ -180,6 +187,61 @@ export function getPrefs(): Promise<PrefsResult> {
 /** `blob` is opaque to the server - whatever `state/prefs.tsx` last serialized. */
 export function setPrefs(blob: string): Promise<PrefsResult> {
     return apiRequest("prefs", { method: "POST", body: blob });
+}
+
+// GregTech hub (docs/gt-hub/phase-1-core.md §5). Like `/prefs` these aren't grid-scoped, so no `grid`
+// param and no `withGridRefresh` - they read GTEngine's stores, not GridAccessSessions. A server without
+// a GT provider answers every one of them `NOT_AVAILABLE` (see `isGTNotAvailable`).
+
+/** `minutes` only travels with `range === "custom"`, same as `getItemHistory`. */
+function gtRange(range: GTRange, minutes?: number) {
+    return { range, minutes: range === "custom" ? minutes : undefined };
+}
+
+export function getGTMachines(): Promise<GTMachines> {
+    return apiGet("gt/machines");
+}
+
+export function getGTMachine(id: string, range: GTRange, minutes?: number): Promise<GTMachineDetail> {
+    return apiGet(`gt/machine${query({ id, ...gtRange(range, minutes) })}`);
+}
+
+export function getGTPower(): Promise<GTPower> {
+    return apiGet("gt/power");
+}
+
+export function getGTPowerHistory(
+    source: string,
+    range: GTRange,
+    points: number,
+    minutes?: number,
+): Promise<GTPowerHistory> {
+    return apiGet(`gt/powerhistory${query({ source, points, ...gtRange(range, minutes) })}`);
+}
+
+export function getGTProduction(
+    range: GTRange,
+    groupBy: "item" | "machine",
+    machine?: string,
+    minutes?: number,
+): Promise<GTProduction> {
+    return apiGet(`gt/production${query({ groupBy, machine, ...gtRange(range, minutes) })}`);
+}
+
+export function getGTProductionHistory(opts: {
+    item?: string;
+    machine?: string;
+    range: GTRange;
+    points: number;
+    minutes?: number;
+}): Promise<GTProductionHistory> {
+    const { item, machine, range, points, minutes } = opts;
+    return apiGet(`gt/productionhistory${query({ item, machine, points, ...gtRange(range, minutes) })}`);
+}
+
+/** The server has no GregTech provider (or `gt_enabled=false`) - an empty state, never an error toast. */
+export function isGTNotAvailable(e: unknown): boolean {
+    return e instanceof ApiError && e.status === "NOT_AVAILABLE";
 }
 
 export function logout(): void {
