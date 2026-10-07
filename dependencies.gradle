@@ -39,6 +39,8 @@ dependencies {
     shadowImplementation(project(path: ':core', configuration: 'default')) {
         transitive = false
     }
+    // Core's history database driver: core is shaded without its dependencies, so pgjdbc is named here.
+    shadowImplementation("org.postgresql:postgresql:42.7.13")
 
     api("com.github.GTNewHorizons:GTNHLib:0.11.39:dev")
     api("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-999-GTNH:dev")
@@ -48,4 +50,8 @@ dependencies {
 
 tasks.named("shadowJar").configure {
     dependsOn(project(":core").tasks.named("jar"))
+    // pgjdbc loads parts of itself by class name, which minimization cannot see.
+    minimize {
+        exclude(dependency("org.postgresql:postgresql:.*"))
+    }
 }
