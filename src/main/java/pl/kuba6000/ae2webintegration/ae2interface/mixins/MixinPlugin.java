@@ -60,7 +60,22 @@ public class MixinPlugin implements IMixinConfigPlugin {
 
         LOG.info("MIXING INTO AE2 LETS GOOOOOOOOOOOOOOOOOOOOOOOOO");
 
+        // GregTech is optional. Its jar is an FML coremod, so like AE2 it is already on the launch classpath here,
+        // but mod discovery has not run yet: look for the classes rather than asking Loader.
+        if (hasClass("gregtech/api/metatileentity/implementations/MTEMultiBlockBase.class")) {
+            mixins.add("GT.MTEMultiBlockBaseProductionMixin");
+            if (hasClass("tectech/thing/metaTileEntity/multi/base/TTMultiblockBase.class")) {
+                mixins.add("GT.TTMultiblockBaseProductionMixin");
+            }
+            LOG.info("GregTech found, adding production mixins");
+        }
+
         return mixins;
+    }
+
+    private static boolean hasClass(String resource) {
+        return MixinPlugin.class.getClassLoader()
+            .getResource(resource) != null;
     }
 
     @Override

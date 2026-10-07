@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 import com.mojang.authlib.GameProfile;
 
 import appeng.me.cache.SecurityCache;
+import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
@@ -16,6 +17,7 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.event.FMLServerStoppedEvent;
 import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import pl.kuba6000.ae2webintegration.Tags;
+import pl.kuba6000.ae2webintegration.ae2interface.gt.GTCompat;
 import pl.kuba6000.ae2webintegration.ae2interface.implementations.AE;
 import pl.kuba6000.ae2webintegration.ae2interface.proxy.CommonProxy;
 import pl.kuba6000.ae2webintegration.core.api.IAEWebInterface;
@@ -47,6 +49,9 @@ public class AE2WebIntegration {
         proxy.init(event);
         IAEWebInterface.getInstance()
             .initAEInterface(AE.instance);
+        if (Loader.isModLoaded("gregtech")) {
+            GTCompat.init();
+        }
     }
 
     @Mod.EventHandler
