@@ -36,7 +36,7 @@ public class GetGTProduction extends GTRequest {
         public long to;
         /**
          * Span {@code perHour} is computed over: the requested range, shortened when recording started inside
-         * it, so a fresh install does not under-report its rates.
+         * it so a fresh install does not under-report its rates, but never below five minutes.
          */
         public long spanMillis;
         public long trackingSince;
@@ -44,6 +44,12 @@ public class GetGTProduction extends GTRequest {
         public String groupBy;
         public List<JSON_GTProductionEntry> rows = new ArrayList<>();
     }
+
+    /**
+     * Floor for {@link JSON_GTProduction#spanMillis}, so the first recipe after recording starts does not read
+     * as millions per hour. Under-reports for the first five minutes instead, which settles on its own.
+     */
+    static final long MIN_RATE_SPAN_MILLIS = TimeUnit.MINUTES.toMillis(5);
 
     @Override
     protected void handleGT(Map<String, String> getParams, WebPrincipal principal) {
@@ -73,7 +79,7 @@ public class GetGTProduction extends GTRequest {
         result.to = toMillis;
         result.trackingSince = GTProductionLog.trackingSinceMillis();
         long effectiveFrom = result.trackingSince > 0 ? Math.max(fromMillis, result.trackingSince) : fromMillis;
-        result.spanMillis = Math.max(1L, toMillis - effectiveFrom);
+        result.spanMillis = Math.max(MIN_RATE_SPAN_MILLIS, toMillis - effectiveFrom);
         double hours = result.spanMillis / (double) TimeUnit.HOURS.toMillis(1);
 
         boolean byItem = groupBy.equals("item");

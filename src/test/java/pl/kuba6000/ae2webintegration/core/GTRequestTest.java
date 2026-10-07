@@ -347,4 +347,27 @@ class GTRequestTest {
                 .getAsLong());
         assertFalse(carolPoints.size() == 0);
     }
+
+    @Test
+    void perHourUsesTheTrackedSpanButNeverLessThanFiveMinutes() {
+        scanThreeOwners();
+        long now = System.currentTimeMillis();
+        GTProductionLog.record(GTMachineSnapshot.idOf(0, 1, 64, 0), "EBF", ALICE, "a", "A", 60, false, now);
+
+        JsonObject data = run(new GetGTProduction(), ALICE_ID, "range=24h").getAsJsonObject("data");
+
+        assertEquals(
+            5 * 60_000L,
+            data.get("spanMillis")
+                .getAsLong(),
+            "recording just started");
+        assertEquals(
+            720.0,
+            data.getAsJsonArray("rows")
+                .get(0)
+                .getAsJsonObject()
+                .get("perHour")
+                .getAsDouble(),
+            1e-9);
+    }
 }
