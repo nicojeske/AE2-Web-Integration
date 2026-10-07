@@ -24,7 +24,7 @@ import pl.kuba6000.ae2webintegration.core.api.IAEWebInterface;
     modid = AE2WebIntegration.MODID,
     version = Tags.VERSION,
     name = "AE2 Web Integration",
-    dependencies = "required-after:appliedenergistics2",
+    dependencies = "required-after:appliedenergistics2;after:gregtech",
     acceptedMinecraftVersions = "[1.7.10]",
     acceptableRemoteVersions = "*")
 public class AE2WebIntegration {
