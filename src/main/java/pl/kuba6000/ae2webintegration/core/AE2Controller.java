@@ -43,6 +43,12 @@ import pl.kuba6000.ae2webintegration.core.ae2request.async.GetTrackingHistory;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.GridSettings;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.IAsyncRequest;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.TrackedItems;
+import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTMachine;
+import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTMachines;
+import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTPower;
+import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTPowerHistory;
+import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTProduction;
+import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTProductionHistory;
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.CancelCPU;
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.GetCPU;
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.GetCPUList;
@@ -55,6 +61,7 @@ import pl.kuba6000.ae2webintegration.core.api.IServerPlatform;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.config.CoreData;
+import pl.kuba6000.ae2webintegration.core.gt.GTEngine;
 import pl.kuba6000.ae2webintegration.core.icons.ItemIconIndex;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAE;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
@@ -308,6 +315,12 @@ public class AE2Controller {
                 newServer.createContext("/gridsettings", new ASyncRequestHandler(GridSettings.class));
                 newServer.createContext("/itemhistory", new ASyncRequestHandler(GetItemHistory.class));
                 newServer.createContext("/trackeditems", new ASyncRequestHandler(TrackedItems.class));
+                newServer.createContext("/gt/machines", new ASyncRequestHandler(GetGTMachines.class));
+                newServer.createContext("/gt/machine", new ASyncRequestHandler(GetGTMachine.class));
+                newServer.createContext("/gt/power", new ASyncRequestHandler(GetGTPower.class));
+                newServer.createContext("/gt/powerhistory", new ASyncRequestHandler(GetGTPowerHistory.class));
+                newServer.createContext("/gt/production", new ASyncRequestHandler(GetGTProduction.class));
+                newServer.createContext("/gt/productionhistory", new ASyncRequestHandler(GetGTProductionHistory.class));
                 newServer.createContext("/icon", new IconHandler());
                 newServer.createContext("/prefs", new PlayerPrefsHandler());
                 newServer.createContext("/auth", new AuthHandler());
@@ -1127,6 +1140,7 @@ public class AE2Controller {
                 "_REPLACE_ME_VERSION_OUTDATED",
                 Config.CHECK_FOR_UPDATES() && VersionChecker.isOutdated() ? "true" : "false");
             response = response.replace("_REPLACE_ME_HAS_ITEM_ICONS", itemIconIndex.isEnabled() ? "true" : "false");
+            response = response.replace("_REPLACE_ME_HAS_GT", GTEngine.isAvailable() ? "true" : "false");
             RequestContext context = requestContext.get();
             if (context != null) {
                 response = response.replace("_REPLACE_ME_USERNAME", context.principal.getUsername());

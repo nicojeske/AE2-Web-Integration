@@ -96,6 +96,39 @@ public class Config {
         return ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue.get();
     }
 
+    // GregTech
+    public static boolean GT_ENABLED() {
+        return ConfigBootstrap.gtEnabledValue.get();
+    }
+
+    public static int GT_SCAN_INTERVAL_SECONDS() {
+        return ConfigBootstrap.gtScanIntervalSecondsValue.get();
+    }
+
+    public static int GT_POWER_SAMPLE_INTERVAL_SECONDS() {
+        return ConfigBootstrap.gtPowerSampleIntervalSecondsValue.get();
+    }
+
+    public static int GT_POWER_FINE_RETENTION_HOURS() {
+        return ConfigBootstrap.gtPowerFineRetentionHoursValue.get();
+    }
+
+    public static int GT_POWER_HOURLY_RETENTION_DAYS() {
+        return ConfigBootstrap.gtPowerHourlyRetentionDaysValue.get();
+    }
+
+    public static int GT_PRODUCTION_HOURLY_RETENTION_DAYS() {
+        return ConfigBootstrap.gtProductionHourlyRetentionDaysValue.get();
+    }
+
+    public static int GT_PRODUCTION_DAILY_RETENTION_DAYS() {
+        return ConfigBootstrap.gtProductionDailyRetentionDaysValue.get();
+    }
+
+    public static int GT_MACHINE_FORGET_DAYS() {
+        return ConfigBootstrap.gtMachineForgetDaysValue.get();
+    }
+
     // --- Directory / file setup ---
 
     public static void init(File configDirectory) {

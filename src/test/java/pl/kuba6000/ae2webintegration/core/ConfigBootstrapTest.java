@@ -34,6 +34,14 @@ class ConfigBootstrapTest {
         ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 30;
         ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 365;
         ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue = () -> 24;
+        ConfigBootstrap.gtEnabledValue = () -> true;
+        ConfigBootstrap.gtScanIntervalSecondsValue = () -> 10;
+        ConfigBootstrap.gtPowerSampleIntervalSecondsValue = () -> 30;
+        ConfigBootstrap.gtPowerFineRetentionHoursValue = () -> 24;
+        ConfigBootstrap.gtPowerHourlyRetentionDaysValue = () -> 30;
+        ConfigBootstrap.gtProductionHourlyRetentionDaysValue = () -> 7;
+        ConfigBootstrap.gtProductionDailyRetentionDaysValue = () -> 90;
+        ConfigBootstrap.gtMachineForgetDaysValue = () -> 7;
     }
 
     @Test
@@ -41,8 +49,8 @@ class ConfigBootstrapTest {
         RecordingConfigBuilder builder = new RecordingConfigBuilder();
         ConfigBootstrap.init(builder);
 
-        // Should have exactly 17 config key definitions
-        assertEquals(17, builder.calls.size(), "expected exactly 17 config key definitions");
+        // Should have exactly 25 config key definitions
+        assertEquals(25, builder.calls.size(), "expected exactly 25 config key definitions");
 
         // Verify all expected keys with their types
         assertContainsCall("int", "port", builder.calls);
@@ -62,6 +70,14 @@ class ConfigBootstrapTest {
         assertContainsCall("int", "statistics_fine_retention_days", builder.calls);
         assertContainsCall("int", "statistics_hourly_retention_days", builder.calls);
         assertContainsCall("int", "statistics_max_tracked_items_per_grid", builder.calls);
+        assertContainsCall("boolean", "gt_enabled", builder.calls);
+        assertContainsCall("int", "gt_scan_interval_seconds", builder.calls);
+        assertContainsCall("int", "gt_power_sample_interval_seconds", builder.calls);
+        assertContainsCall("int", "gt_power_fine_retention_hours", builder.calls);
+        assertContainsCall("int", "gt_power_hourly_retention_days", builder.calls);
+        assertContainsCall("int", "gt_production_hourly_retention_days", builder.calls);
+        assertContainsCall("int", "gt_production_daily_retention_days", builder.calls);
+        assertContainsCall("int", "gt_machine_forget_days", builder.calls);
     }
 
     @Test
@@ -120,6 +136,44 @@ class ConfigBootstrapTest {
                     assertEquals(24, call.defValue, "statistics_max_tracked_items_per_grid default");
                     assertEquals(1, call.min, "statistics_max_tracked_items_per_grid min");
                     assertEquals(128, call.max, "statistics_max_tracked_items_per_grid max");
+                    break;
+                case "gt_scan_interval_seconds":
+                    assertEquals(10, call.defValue, "gt_scan_interval_seconds default");
+                    assertEquals(2, call.min, "gt_scan_interval_seconds min");
+                    assertEquals(300, call.max, "gt_scan_interval_seconds max");
+                    break;
+                case "gt_power_sample_interval_seconds":
+                    assertEquals(30, call.defValue, "gt_power_sample_interval_seconds default");
+                    assertEquals(10, call.min, "gt_power_sample_interval_seconds min");
+                    assertEquals(3600, call.max, "gt_power_sample_interval_seconds max");
+                    break;
+                case "gt_power_fine_retention_hours":
+                    assertEquals(24, call.defValue, "gt_power_fine_retention_hours default");
+                    assertEquals(1, call.min, "gt_power_fine_retention_hours min");
+                    assertEquals(168, call.max, "gt_power_fine_retention_hours max");
+                    break;
+                case "gt_power_hourly_retention_days":
+                    assertEquals(30, call.defValue, "gt_power_hourly_retention_days default");
+                    assertEquals(1, call.min, "gt_power_hourly_retention_days min");
+                    assertEquals(365, call.max, "gt_power_hourly_retention_days max");
+                    break;
+                case "gt_production_hourly_retention_days":
+                    assertEquals(7, call.defValue, "gt_production_hourly_retention_days default");
+                    assertEquals(1, call.min, "gt_production_hourly_retention_days min");
+                    assertEquals(30, call.max, "gt_production_hourly_retention_days max");
+                    break;
+                case "gt_production_daily_retention_days":
+                    assertEquals(90, call.defValue, "gt_production_daily_retention_days default");
+                    assertEquals(1, call.min, "gt_production_daily_retention_days min");
+                    assertEquals(3650, call.max, "gt_production_daily_retention_days max");
+                    break;
+                case "gt_machine_forget_days":
+                    assertEquals(7, call.defValue, "gt_machine_forget_days default");
+                    assertEquals(1, call.min, "gt_machine_forget_days min");
+                    assertEquals(365, call.max, "gt_machine_forget_days max");
+                    break;
+                case "gt_enabled":
+                    assertEquals(true, call.defValue, "gt_enabled default");
                     break;
                 case "password":
                     // Password should be a non-empty random string

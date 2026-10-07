@@ -44,6 +44,17 @@ public class ConfigBootstrap {
     public static IConfigValue<Integer> statisticsHourlyRetentionDaysValue = () -> 365;
     public static IConfigValue<Integer> statisticsMaxTrackedItemsPerGridValue = () -> 24;
 
+    // --- GregTech ---
+
+    public static IConfigValue<Boolean> gtEnabledValue = () -> true;
+    public static IConfigValue<Integer> gtScanIntervalSecondsValue = () -> 10;
+    public static IConfigValue<Integer> gtPowerSampleIntervalSecondsValue = () -> 30;
+    public static IConfigValue<Integer> gtPowerFineRetentionHoursValue = () -> 24;
+    public static IConfigValue<Integer> gtPowerHourlyRetentionDaysValue = () -> 30;
+    public static IConfigValue<Integer> gtProductionHourlyRetentionDaysValue = () -> 7;
+    public static IConfigValue<Integer> gtProductionDailyRetentionDaysValue = () -> 90;
+    public static IConfigValue<Integer> gtMachineForgetDaysValue = () -> 7;
+
     private ConfigBootstrap() {}
 
     /**
@@ -142,6 +153,55 @@ public class ConfigBootstrap {
             1,
             128,
             "Maximum number of items a single grid may track statistics history for");
+
+        gtEnabledValue = builder.defineBoolean(
+            "gt_enabled",
+            true,
+            "Enable the GregTech pages (machines, power, production). Only has an effect on versions with"
+                + " GregTech installed");
+        gtScanIntervalSecondsValue = builder.defineInt(
+            "gt_scan_interval_seconds",
+            10,
+            2,
+            300,
+            "How often, in seconds, to scan loaded GregTech multiblocks and power sources");
+        gtPowerSampleIntervalSecondsValue = builder.defineInt(
+            "gt_power_sample_interval_seconds",
+            30,
+            10,
+            3600,
+            "How often, in seconds, to record a power history sample (rounded up to whole scans)");
+        gtPowerFineRetentionHoursValue = builder.defineInt(
+            "gt_power_fine_retention_hours",
+            24,
+            1,
+            168,
+            "How many hours of full-resolution power history to keep per power source");
+        gtPowerHourlyRetentionDaysValue = builder.defineInt(
+            "gt_power_hourly_retention_days",
+            30,
+            1,
+            365,
+            "How many days of hourly power history to keep per power source");
+        gtProductionHourlyRetentionDaysValue = builder.defineInt(
+            "gt_production_hourly_retention_days",
+            7,
+            1,
+            30,
+            "How many days of hourly production totals to keep per machine and item");
+        gtProductionDailyRetentionDaysValue = builder.defineInt(
+            "gt_production_daily_retention_days",
+            90,
+            1,
+            3650,
+            "How many days of daily production totals to keep per machine and item");
+        gtMachineForgetDaysValue = builder.defineInt(
+            "gt_machine_forget_days",
+            7,
+            1,
+            365,
+            "Forget a machine that has not been seen in a scan (chunk unloaded or machine removed) for this"
+                + " many days");
     }
 
 }

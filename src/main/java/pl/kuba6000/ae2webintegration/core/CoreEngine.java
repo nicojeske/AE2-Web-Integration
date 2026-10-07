@@ -15,6 +15,7 @@ import pl.kuba6000.ae2webintegration.core.api.IServerPlatform;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.config.CoreData;
+import pl.kuba6000.ae2webintegration.core.gt.GTEngine;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAESecurityGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
@@ -71,6 +72,7 @@ public class CoreEngine {
         CoreData.loadData();
         GridData.loadData();
         ItemHistoryStore.loadData();
+        GTEngine.loadData();
     }
 
     public static void onServerStarted() {
@@ -89,6 +91,7 @@ public class CoreEngine {
         drainRequests(System::nanoTime);
         runPlanMaintenance(System.nanoTime());
         runHistorySampling(System.nanoTime(), System.currentTimeMillis());
+        GTEngine.onServerTick();
     }
 
     /** Called from the platform's player-login event, which already runs on the server thread. */
@@ -251,6 +254,7 @@ public class CoreEngine {
         GridAccessSessions.clear();
         // Blocking here is fine - this runs during a deliberate shutdown, not inside the tick budget.
         ItemHistoryStore.saveNow();
+        GTEngine.onServerStopping();
     }
 
     public static synchronized void onServerStopped() {
@@ -263,6 +267,7 @@ public class CoreEngine {
         resetPlanMaintenance();
         ItemHistoryStore.clearRuntimeState();
         resetHistorySampling();
+        GTEngine.onServerStopped();
     }
 
     public static String getModVersion() {
