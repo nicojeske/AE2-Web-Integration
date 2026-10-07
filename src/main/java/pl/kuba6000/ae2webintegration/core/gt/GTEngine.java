@@ -46,7 +46,7 @@ public final class GTEngine {
 
     public static void registerProvider(IGTProvider gtProvider) {
         provider = gtProvider;
-        LOG.info("GregTech provider registered, /gt endpoints enabled");
+        LOG.info("GregTech provider registered, /api/gt endpoints enabled");
     }
 
     /** Whether the GregTech pages should be offered at all: a provider exists and the config allows it. */
