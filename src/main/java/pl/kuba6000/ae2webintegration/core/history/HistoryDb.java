@@ -42,7 +42,6 @@ public final class HistoryDb {
 
     public static final long NO_SAMPLE = -1L;
 
-    private static final Driver DRIVER = new org.postgresql.Driver();
     private static final long PRUNE_INTERVAL_MILLIS = TimeUnit.MINUTES.toMillis(10);
     private static final int READ_TIMEOUT_SECONDS = 10;
 
@@ -123,6 +122,15 @@ public final class HistoryDb {
         return writer.flush(timeoutMillis);
     }
 
+    /**
+     * Loads pgjdbc only once a database is actually configured, so a build that does not bundle the driver
+     * still starts fine with history in JSON files.
+     */
+    private static final class DriverHolder {
+
+        static final Driver DRIVER = new org.postgresql.Driver();
+    }
+
     Connection connect() throws SQLException {
         Properties props = new Properties();
         if (!user.isEmpty()) {
@@ -136,7 +144,7 @@ public final class HistoryDb {
         props.setProperty("socketTimeout", "120");
         props.setProperty("tcpKeepAlive", "true");
         // Instantiated directly rather than through DriverManager, so a relocated (shaded) driver still works.
-        Connection connection = DRIVER.connect(url, props);
+        Connection connection = DriverHolder.DRIVER.connect(url, props);
         if (connection == null) {
             throw new SQLException("Not a PostgreSQL JDBC URL");
         }
