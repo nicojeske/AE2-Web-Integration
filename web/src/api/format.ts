@@ -227,6 +227,25 @@ export function formatEUt(perTick: number): string {
     return `${formatSI(perTick)} EU/t`;
 }
 
+/**
+ * `"3.7A IV"` - an EU/t rate as amps at the highest tier it reaches (tier n is 8·4^n EU/t), magnitude
+ * only. Under 8 EU/t it stays at ULV with fractional amps; past MAX the amp count just keeps growing.
+ */
+export function formatAmps(perTick: number): string {
+    const abs = Math.abs(perTick);
+    if (!Number.isFinite(abs)) return "—";
+    let tier = 0;
+    while (tier < GT_TIERS.length - 1 && abs >= 8 * 4 ** (tier + 1)) tier++;
+    const amps = Number((abs / (8 * 4 ** tier)).toFixed(1));
+    return `${amps}A ${GT_TIERS[tier]}`;
+}
+
+/** `"3.7A IV · 30k EU/t"` - magnitude only, like `formatAmps`. */
+export function formatEUtTier(perTick: number): string {
+    const abs = Math.abs(perTick);
+    return abs === 0 ? formatEUt(0) : `${formatAmps(abs)} · ${formatEUt(abs)}`;
+}
+
 /** `"500 L"` / `"4.2 kL"` / `"1.5 ML"` - fluid amounts arrive in L (mB). */
 export function formatLiters(liters: number, mode: "full" | "compact" = "full"): string {
     const abs = Math.abs(liters);

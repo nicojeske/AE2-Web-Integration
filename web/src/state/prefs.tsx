@@ -12,6 +12,7 @@ const NOTIFY_KEY = "ae2.notifyEnabled";
 const BROWSER_FILTERS_KEY = "ae2.browserFilters";
 const STATS_VIEWS_KEY = "ae2.statsViews";
 const MACHINE_FILTERS_KEY = "ae2.machineFilters";
+const MAIN_POWER_SOURCE_KEY = "ae2.mainPowerSource";
 const SETTINGS_KEY = "ae2.settings";
 const SCHEMA_KEY = "ae2.schema";
 
@@ -169,6 +170,8 @@ interface SyncedPrefs {
     browserFilters: BrowserFilters;
     statsViews: StatsView[];
     machineFilters: MachineFilters;
+    /** The Power tab's pinned main LSC (a `/gt/power` source id) - `null` picks the largest one. */
+    mainPowerSource: string | null;
 }
 
 function serializeSyncedPrefs(p: Omit<SyncedPrefs, "schemaVersion">): string {
@@ -188,6 +191,7 @@ function parseSyncedPrefs(raw: string): SyncedPrefs | null {
             browserFilters: { ...DEFAULT_BROWSER_FILTERS, ...parsed.browserFilters },
             statsViews: parsed.statsViews ?? [],
             machineFilters: { ...DEFAULT_MACHINE_FILTERS, ...parsed.machineFilters },
+            mainPowerSource: typeof parsed.mainPowerSource === "string" ? parsed.mainPowerSource : null,
         };
     } catch {
         return null;
@@ -212,6 +216,8 @@ export interface PrefsContextValue {
     setBrowserFilters: (update: (current: BrowserFilters) => BrowserFilters) => void;
     machineFilters: MachineFilters;
     setMachineFilters: (update: (current: MachineFilters) => MachineFilters) => void;
+    mainPowerSource: string | null;
+    setMainPowerSource: (id: string | null) => void;
     statsViews: StatsView[];
     addStatsView: (view: Omit<StatsView, "id">) => void;
     removeStatsView: (id: string) => void;
@@ -233,6 +239,9 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         ...DEFAULT_MACHINE_FILTERS,
         ...readJSON(MACHINE_FILTERS_KEY, {}),
     }));
+    const [mainPowerSource, setMainPowerSourceState] = useState<string | null>(() =>
+        readJSON<string | null>(MAIN_POWER_SOURCE_KEY, null),
+    );
     // Spread over the defaults (not a bare `readJSON` fallback) so a settings blob saved before a future
     // field existed still picks up that field's default instead of `undefined`.
     const [settings, setSettingsState] = useState<Settings>(() => ({
@@ -258,7 +267,14 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 if (cancelled) return;
                 if (blob === null) {
                     await apiSetPrefs(
-                        serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews, machineFilters }),
+                        serializeSyncedPrefs({
+                            favorites,
+                            thresholds,
+                            browserFilters,
+                            statsViews,
+                            machineFilters,
+                            mainPowerSource,
+                        }),
                     );
                     return;
                 }
@@ -274,6 +290,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 writeJSON(STATS_VIEWS_KEY, parsed.statsViews);
                 setMachineFiltersState(parsed.machineFilters);
                 writeJSON(MACHINE_FILTERS_KEY, parsed.machineFilters);
+                setMainPowerSourceState(parsed.mainPowerSource);
+                writeJSON(MAIN_POWER_SOURCE_KEY, parsed.mainPowerSource);
             } catch {
                 // Offline, or no /prefs on this server yet - stay on localStorage alone.
             } finally {
@@ -297,11 +315,18 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         if (!hasHydratedRef.current) return;
         const timer = setTimeout(() => {
             void apiSetPrefs(
-                serializeSyncedPrefs({ favorites, thresholds, browserFilters, statsViews, machineFilters }),
+                serializeSyncedPrefs({
+                    favorites,
+                    thresholds,
+                    browserFilters,
+                    statsViews,
+                    machineFilters,
+                    mainPowerSource,
+                }),
             ).catch(() => {});
         }, PREFS_PUSH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [favorites, thresholds, browserFilters, statsViews, machineFilters]);
+    }, [favorites, thresholds, browserFilters, statsViews, machineFilters, mainPowerSource]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
@@ -367,6 +392,11 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
+    const setMainPowerSource = useCallback((id: string | null) => {
+        writeJSON(MAIN_POWER_SOURCE_KEY, id);
+        setMainPowerSourceState(id);
+    }, []);
+
     // `id` is a string, not a bare `Date.now()` - two saves in the same millisecond would collide.
     const addStatsView = useCallback((view: Omit<StatsView, "id">) => {
         setStatsViews((current) => {
@@ -407,6 +437,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setBrowserFilters,
             machineFilters,
             setMachineFilters,
+            mainPowerSource,
+            setMainPowerSource,
             statsViews,
             addStatsView,
             removeStatsView,
@@ -426,6 +458,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setBrowserFilters,
             machineFilters,
             setMachineFilters,
+            mainPowerSource,
+            setMainPowerSource,
             statsViews,
             addStatsView,
             removeStatsView,
