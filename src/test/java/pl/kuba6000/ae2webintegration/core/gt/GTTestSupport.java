@@ -9,7 +9,7 @@ import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTScanResult;
 import pl.kuba6000.ae2webintegration.core.api.gt.IGTProvider;
-import pl.kuba6000.ae2webintegration.core.config.ConfigBootstrap;
+import pl.kuba6000.ae2webintegration.core.config.Config;
 
 /**
  * Shared fakes for the GregTech tests, public so request-level tests in the {@code core} package can reach
@@ -42,14 +42,14 @@ public final class GTTestSupport {
     }
 
     public static void resetConfig() {
-        ConfigBootstrap.gtEnabledValue = () -> true;
-        ConfigBootstrap.gtScanIntervalSecondsValue = () -> 10;
-        ConfigBootstrap.gtPowerSampleIntervalSecondsValue = () -> 30;
-        ConfigBootstrap.gtPowerFineRetentionHoursValue = () -> 24;
-        ConfigBootstrap.gtPowerHourlyRetentionDaysValue = () -> 30;
-        ConfigBootstrap.gtProductionHourlyRetentionDaysValue = () -> 7;
-        ConfigBootstrap.gtProductionDailyRetentionDaysValue = () -> 90;
-        ConfigBootstrap.gtMachineForgetDaysValue = () -> 7;
+        Config.INSTANCE.gregtech.enabled = true;
+        Config.INSTANCE.gregtech.scanIntervalSeconds = 10;
+        Config.INSTANCE.gregtech.powerSampleIntervalSeconds = 30;
+        Config.INSTANCE.gregtech.powerFineRetentionHours = 24;
+        Config.INSTANCE.gregtech.powerHourlyRetentionDays = 30;
+        Config.INSTANCE.gregtech.productionHourlyRetentionDays = 7;
+        Config.INSTANCE.gregtech.productionDailyRetentionDays = 90;
+        Config.INSTANCE.gregtech.machineForgetDays = 7;
     }
 
     /** Registers {@code provider} and runs one scan at {@code nowMillis}, as the server tick would. */

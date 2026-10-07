@@ -21,7 +21,6 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
 import pl.kuba6000.ae2webintegration.core.config.Config;
-import pl.kuba6000.ae2webintegration.core.config.ConfigBootstrap;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport.Flavor;
 
@@ -44,17 +43,17 @@ class ItemHistoryDbTest {
     @BeforeEach
     void setUp() {
         Config.init(configRoot);
-        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 60; // 1h fine buckets
-        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 1; // 24 fine buckets
-        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 10;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 60; // 1h fine buckets
+        Config.INSTANCE.statistics.fineRetentionDays = 1; // 24 fine buckets
+        Config.INSTANCE.statistics.hourlyRetentionDays = 10;
     }
 
     @AfterEach
     void tearDown() {
         HistoryDbTestSupport.stop();
-        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 5;
-        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 30;
-        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 365;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 5;
+        Config.INSTANCE.statistics.fineRetentionDays = 30;
+        Config.INSTANCE.statistics.hourlyRetentionDays = 365;
     }
 
     private static Set<String> tracked() {
@@ -62,7 +61,7 @@ class ItemHistoryDbTest {
     }
 
     /** Twelve hourly samples with value changes, an item missing from storage and a three-hour outage. */
-    private static void sampleScenario(long gridKey) {
+    private static void sampleScenario(String gridKey) {
         long[] iron = { 5, 5, 6, 6, 6, -1, -1, -1, 6, 9, 9, 9 };
         for (int h = 0; h < iron.length; h++) {
             if (iron[h] < 0) {
@@ -78,7 +77,7 @@ class ItemHistoryDbTest {
         }
     }
 
-    private static List<String> readScenario(long gridKey) {
+    private static List<String> readScenario(String gridKey) {
         List<String> answers = new ArrayList<>();
         List<String> items = Arrays.asList(IRON, GOLD, "minecraft:never_tracked");
         long end = START + 11 * HOUR + 60_000L;
@@ -108,7 +107,7 @@ class ItemHistoryDbTest {
     @ParameterizedTest
     @EnumSource(Flavor.class)
     void theDatabaseAnswersExactlyLikeTheInMemoryRings(Flavor flavor) {
-        long memoryGrid = nextGridKey++;
+        String memoryGrid = Long.toString(nextGridKey++);
         sampleScenario(memoryGrid);
         List<String> expected = readScenario(memoryGrid);
         // Guards the comparison itself: gaps, changes and the late-appearing item are really in there.
@@ -119,7 +118,7 @@ class ItemHistoryDbTest {
             expected.get(0));
 
         HistoryDbTestSupport.start(flavor);
-        long dbGrid = nextGridKey++;
+        String dbGrid = Long.toString(nextGridKey++);
         sampleScenario(dbGrid);
         flush();
 
@@ -129,13 +128,13 @@ class ItemHistoryDbTest {
     @ParameterizedTest
     @EnumSource(Flavor.class)
     void pruneToDropsUntrackedItemsLikeTheRingsDo(Flavor flavor) {
-        long memoryGrid = nextGridKey++;
+        String memoryGrid = Long.toString(nextGridKey++);
         sampleScenario(memoryGrid);
         ItemHistoryStore.pruneTo(memoryGrid, Collections.singleton(IRON));
         List<String> expected = readScenario(memoryGrid);
 
         HistoryDbTestSupport.start(flavor);
-        long dbGrid = nextGridKey++;
+        String dbGrid = Long.toString(nextGridKey++);
         sampleScenario(dbGrid);
         ItemHistoryStore.pruneTo(dbGrid, Collections.singleton(IRON));
         flush();
@@ -146,7 +145,7 @@ class ItemHistoryDbTest {
     @ParameterizedTest
     @EnumSource(Flavor.class)
     void theJsonFileIsImportedOnceAndKeptUnderANewName(Flavor flavor) {
-        long gridKey = nextGridKey++;
+        String gridKey = Long.toString(nextGridKey++);
         sampleScenario(gridKey);
         List<String> expected = readScenario(gridKey);
         ItemHistoryStore.saveNow();

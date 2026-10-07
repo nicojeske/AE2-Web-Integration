@@ -24,34 +24,34 @@ class ConfigTest {
 
     @AfterEach
     void tearDown() {
-        ConfigBootstrap.itemIconDirectoryValue = () -> "";
+        Config.INSTANCE.general.itemIconDirectory = "";
     }
 
     @Test
     void emptyValueIsDisabled() {
-        ConfigBootstrap.itemIconDirectoryValue = () -> "";
-        assertNull(Config.ITEM_ICON_DIRECTORY());
+        Config.INSTANCE.general.itemIconDirectory = "";
+        assertNull(Config.itemIconDirectory());
     }
 
     @Test
     void blankValueIsDisabled() {
-        ConfigBootstrap.itemIconDirectoryValue = () -> "   ";
-        assertNull(Config.ITEM_ICON_DIRECTORY());
+        Config.INSTANCE.general.itemIconDirectory = "   ";
+        assertNull(Config.itemIconDirectory());
     }
 
     @Test
     void absolutePathIsUsedAsIs() {
         File absolute = new File(configRoot, "elsewhere/icons").getAbsoluteFile();
-        ConfigBootstrap.itemIconDirectoryValue = absolute::getPath;
-        assertEquals(absolute, Config.ITEM_ICON_DIRECTORY());
+        Config.INSTANCE.general.itemIconDirectory = absolute.getPath();
+        assertEquals(absolute, Config.itemIconDirectory());
     }
 
     @Test
     void relativePathResolvesAgainstConfigDirectory() {
-        ConfigBootstrap.itemIconDirectoryValue = () -> "item_icons";
-        assertEquals(new File(Config.getConfigDirectory(), "item_icons"), Config.ITEM_ICON_DIRECTORY());
+        Config.INSTANCE.general.itemIconDirectory = "item_icons";
+        assertEquals(new File(Config.getConfigDirectory(), "item_icons"), Config.itemIconDirectory());
         assertTrue(
-            Config.ITEM_ICON_DIRECTORY()
+            Config.itemIconDirectory()
                 .getPath()
                 .startsWith(configRoot.getPath()));
     }

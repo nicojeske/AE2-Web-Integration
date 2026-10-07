@@ -1,5 +1,8 @@
 package pl.kuba6000.ae2webintegration.core;
 
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -10,21 +13,31 @@ import java.util.function.LongSupplier;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import pl.kuba6000.ae2webintegration.core.api.IServerPlatform;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.config.CoreData;
+import pl.kuba6000.ae2webintegration.core.grid.GridData;
+import pl.kuba6000.ae2webintegration.core.grid.GridFilter;
+import pl.kuba6000.ae2webintegration.core.grid.GridPersistentData;
+import pl.kuba6000.ae2webintegration.core.grid.GridSettingsData;
 import pl.kuba6000.ae2webintegration.core.gt.GTEngine;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
+import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
+import pl.kuba6000.ae2webintegration.core.identity.GridIdentityRegistry;
+import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
-import pl.kuba6000.ae2webintegration.core.interfaces.service.IAESecurityGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
 import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
 import pl.kuba6000.ae2webintegration.core.tracking.ItemHistoryStore;
+import pl.kuba6000.ae2webintegration.core.utils.ReleaseManifest;
 import pl.kuba6000.ae2webintegration.core.utils.VersionChecker;
 
 public class CoreEngine {
+
+    public static final GridIdentityRegistry GRID_IDENTITIES = new GridIdentityRegistry();
 
     private static final Logger LOG = LogManager.getLogger("ae2webintegration");
 
@@ -35,7 +48,7 @@ public class CoreEngine {
      * cost of a request varies by orders of magnitude - {@code /items} on a large network against
      * {@code /gettracking} - so no count can bound the time.
      */
-    static final long DRAIN_BUDGET_NANOS = 5_000_000L;
+    static final long DRAIN_BUDGET_NANOS = TimeUnit.MILLISECONDS.toNanos(5);
     static final long PLAN_SWEEP_INTERVAL_NANOS = TimeUnit.MINUTES.toNanos(1);
     static final int PLAN_SWEEP_GRIDS_PER_TICK = 8;
 
@@ -50,7 +63,7 @@ public class CoreEngine {
      */
     static final long HISTORY_FLUSH_INTERVAL_NANOS = TimeUnit.MINUTES.toNanos(15);
 
-    private static Iterator<Long> historySampleCursor;
+    private static Iterator<StableKey> historySampleCursor;
     private static long historySamplePassMillis;
     private static long nextHistorySampleNanos;
     private static boolean historySampleScheduled;
@@ -60,18 +73,22 @@ public class CoreEngine {
 
     // Populated by the interface layer from the buildscript-generated mod version.
     private static volatile String modVersion;
+    private static String versionIdentifier;
+    private static volatile @Nullable VersionChecker versionChecker;
+    private static boolean serverRunning;
 
     public static void init(IServerPlatform serverPlatform, String modVersion, String versionIdentifier) {
-        VersionChecker.setVersionIdentifier(versionIdentifier);
+        serverRunning = false;
+        stopVersionChecker();
+        CoreEngine.versionIdentifier = versionIdentifier;
         AE2Controller.serverPlatform = serverPlatform;
-        Config.init(serverPlatform.getConfigDirectory());
+        Config.init(serverPlatform.getConfigDirectory(), serverPlatform::getLegacyConfig);
         CoreEngine.modVersion = modVersion;
         loadData();
     }
 
     private static void loadData() {
         CoreData.loadData();
-        GridData.loadData();
         // Before the history stores load: with a database configured they import their JSON files into it.
         HistoryDb.start();
         ItemHistoryStore.loadData();
@@ -79,10 +96,16 @@ public class CoreEngine {
     }
 
     public static void onServerStarted() {
+        try {
+            CoreEngine.GRID_IDENTITIES.initialize(AE2Controller.serverPlatform.getWorldDirectory());
+        } catch (IOException e) {
+            LOG.error("Failed to load grid identities; grid requests remain unavailable", e);
+        }
+        serverRunning = true;
         AE2Controller.init();
         StartupHandler.logOpenAdminAccessWarning();
-        StartupHandler.logOutdatedWarning();
-        StartupHandler.handleDiscordIntegration();
+        maintainVersionChecker();
+        StartupHandler.handleNotificationIntegration();
     }
 
     /**
@@ -95,6 +118,38 @@ public class CoreEngine {
         runPlanMaintenance(System.nanoTime());
         runHistorySampling(System.nanoTime(), System.currentTimeMillis());
         GTEngine.onServerTick();
+        maintainVersionChecker();
+    }
+
+    private static void maintainVersionChecker() {
+        if (!serverRunning) return;
+        if (!Config.INSTANCE.general.checkForUpdates) {
+            stopVersionChecker();
+        } else if (versionChecker == null && modVersion != null) {
+            try {
+                VersionChecker checker = new VersionChecker(
+                    new URL("https://raw.githubusercontent.com/nicojeske/AE2-Web-Integration/version/"),
+                    modVersion,
+                    versionIdentifier);
+                versionChecker = checker;
+                checker.checkForUpdates();
+            } catch (MalformedURLException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
+    private static void stopVersionChecker() {
+        VersionChecker checker = versionChecker;
+        if (checker != null) {
+            checker.close();
+            versionChecker = null;
+        }
+    }
+
+    public static @Nullable ReleaseManifest.Release getAvailableUpdate() {
+        VersionChecker checker = versionChecker;
+        return checker == null ? null : checker.getAvailableUpdate();
     }
 
     /** Called from the platform's player-login event, which already runs on the server thread. */
@@ -115,10 +170,11 @@ public class CoreEngine {
                 // server. A runaway handler ending in StackOverflowError should not cost the world, and an
                 // OutOfMemoryError resurfaces at the next allocation regardless.
                 LOG.error(
-                    "Server-thread task " + task.getClass()
-                        .getSimpleName() + " failed",
+                    "Server-thread task {} failed",
+                    task.getClass()
+                        .getSimpleName(),
                     t);
-                task.failIfPending("INTERNAL_ERROR");
+                task.failIfPending(ApiStatus.INTERNAL_ERROR);
             }
             // Checked after handling, never before, so a request costlier than the whole budget still runs
             // and can never starve the queue.
@@ -172,7 +228,8 @@ public class CoreEngine {
         if (!historySampleCursor.hasNext()) {
             historySampleCursor = null;
             historySampleScheduled = true;
-            nextHistorySampleNanos = nowNanos + TimeUnit.MINUTES.toNanos(Config.STATISTICS_SAMPLE_INTERVAL_MINUTES());
+            nextHistorySampleNanos = nowNanos
+                + TimeUnit.MINUTES.toNanos(Config.INSTANCE.statistics.sampleIntervalMinutes);
         }
 
         runHistoryFlushMaintenance(nowNanos);
@@ -187,60 +244,56 @@ public class CoreEngine {
         nextHistoryFlushNanos = nowNanos + HISTORY_FLUSH_INTERVAL_NANOS;
     }
 
-    private static List<Long> trackedGridKeysSnapshot() {
-        List<Long> keys = new ArrayList<>();
-        if (AE2Controller.AE2Interface == null) {
+    private static List<StableKey> trackedGridKeysSnapshot() {
+        List<StableKey> keys = new ArrayList<>();
+        if (AE2Controller.AE2Interface == null || !GRID_IDENTITIES.isInitialized()) {
             return keys;
         }
         for (IAEGrid grid : AE2Controller.AE2Interface.web$getGrids()) {
-            IAESecurityGrid security = GridFilter.usableSecurity(grid);
-            if (security == null) {
+            if (!GridFilter.isUsable(grid)) {
                 continue;
             }
-            long gridKey = security.web$getSecurityKey();
-            if (gridKey == -1) {
-                continue;
-            }
-            GridData data = GridData.find(gridKey);
-            if (data == null || data.getTrackedItems()
+            StableKey key = GRID_IDENTITIES.getKey(grid);
+            GridSettingsData settings = key == null ? null : settingsOf(key);
+            if (settings == null || settings.getTrackedItems()
                 .isEmpty()) {
                 continue;
             }
-            keys.add(gridKey);
+            keys.add(key);
         }
         return keys;
     }
 
-    private static void sampleOneGrid(long gridKey, long nowMillis) {
-        if (AE2Controller.AE2Interface == null) {
-            return;
-        }
-        GridData data = GridData.find(gridKey);
-        if (data == null) {
-            return;
-        }
-        Set<String> tracked = data.getTrackedItems();
-        if (tracked.isEmpty()) {
-            return;
-        }
-        for (IAEGrid grid : AE2Controller.AE2Interface.web$getGrids()) {
-            IAESecurityGrid security = GridFilter.usableSecurity(grid);
-            if (security == null || security.web$getSecurityKey() != gridKey) {
-                continue;
-            }
-            IAEStorageGrid storageGrid = grid.web$getStorageGrid();
-            if (storageGrid == null) {
-                return;
-            }
-            Map<String, String> observedNames = ItemHistoryStore
-                .sample(gridKey, tracked, storageGrid.web$getStorageList(), nowMillis);
-            if (data.updateTrackedItemNames(observedNames)) {
-                GridData.saveChanges();
-            }
-            return;
-        }
+    private static @Nullable GridSettingsData settingsOf(StableKey key) {
+        GridPersistentData data = GRID_IDENTITIES.getPersistentData(key);
+        return data == null ? null : data.getSettings();
+    }
+
+    private static void sampleOneGrid(StableKey gridKey, long nowMillis) {
+        GridSettingsData settings = settingsOf(gridKey);
+        IAEGrid grid = GRID_IDENTITIES.getGrid(gridKey);
         // Grid went offline or unattachable between the pass snapshot and this tick - skip, the next pass
         // will pick it back up if it comes back.
+        if (settings == null || !GridFilter.isUsable(grid)) {
+            return;
+        }
+        Set<String> tracked = settings.getTrackedItems();
+        IAEStorageGrid storageGrid = grid.web$getStorageGrid();
+        if (tracked.isEmpty() || storageGrid == null) {
+            return;
+        }
+        Map<String, String> observedNames = ItemHistoryStore
+            .sample(gridKey.toString(), tracked, storageGrid.web$getStorageList(), nowMillis);
+        settings.updateTrackedItemNames(observedNames);
+        try {
+            GRID_IDENTITIES.saveIfDirty();
+        } catch (IOException | IllegalStateException e) {
+            LOG.warn("Could not save tracked item names", e);
+        }
+    }
+
+    static void resetHistorySamplingForTest() {
+        resetHistorySampling();
     }
 
     private static synchronized void resetHistorySampling() {
@@ -252,9 +305,11 @@ public class CoreEngine {
     }
 
     public static void onServerStopping() {
+        serverRunning = false;
+        stopVersionChecker();
         AE2Controller.stopHTTPServer();
         // Authorization must not survive into the next world loaded in this JVM.
-        GridAccessSessions.clear();
+        GRID_IDENTITIES.clear();
         // Blocking here is fine - this runs during a deliberate shutdown, not inside the tick budget.
         ItemHistoryStore.saveNow();
         GTEngine.onServerStopping();
@@ -265,12 +320,14 @@ public class CoreEngine {
     }
 
     public static synchronized void onServerStopped() {
+        serverRunning = false;
+        stopVersionChecker();
         // Defensive when startup failed partway or a platform omits the earlier stopping callback.
         AE2Controller.stopHTTPServer();
         AE2Controller.clearWorldState();
-        GridAccessSessions.clear();
         AE2JobTracker.clearActiveJobs();
         GridData.clearRuntimeState();
+        CoreEngine.GRID_IDENTITIES.clear();
         resetPlanMaintenance();
         ItemHistoryStore.clearRuntimeState();
         resetHistorySampling();

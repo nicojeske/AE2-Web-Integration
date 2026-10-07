@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * One multiblock controller at the moment of a scan. Filled in by the provider, except the fields marked
- * as set by core. Also the wire shape of {@code /gt/machines}, so field names are part of the HTTP contract.
+ * as set by core. Also the wire shape of {@code /api/gt/machines}, so field names are part of the HTTP contract.
  */
 public class GTMachineSnapshot {
 

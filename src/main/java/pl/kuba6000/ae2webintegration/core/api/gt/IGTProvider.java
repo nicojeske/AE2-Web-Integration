@@ -7,7 +7,7 @@ package pl.kuba6000.ae2webintegration.core.api.gt;
  * <p>
  * Core never touches GregTech itself. It calls {@link #scan} on the server thread at the configured
  * interval and keeps everything else - last-seen machines, power history, production totals, visibility -
- * on its side. A branch without GregTech simply never registers a provider, and every {@code /gt/*}
+ * on its side. A branch without GregTech simply never registers a provider, and every {@code /api/gt/*}
  * endpoint answers {@code NOT_AVAILABLE}.
  */
 public interface IGTProvider {

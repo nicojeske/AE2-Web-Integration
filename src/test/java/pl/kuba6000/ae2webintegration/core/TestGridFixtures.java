@@ -1,48 +1,109 @@
 package pl.kuba6000.ae2webintegration.core;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.jetbrains.annotations.NotNull;
+
+import com.google.gson.JsonObject;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpContext;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpPrincipal;
 
 import pl.kuba6000.ae2webintegration.core.api.AEApi.AEControllerState;
+import pl.kuba6000.ae2webintegration.core.api.DimensionalCoords;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
+import pl.kuba6000.ae2webintegration.core.grid.GridAccessSource;
+import pl.kuba6000.ae2webintegration.core.grid.GridPersistentData;
+import pl.kuba6000.ae2webintegration.core.identity.GridIdentityRegistry;
+import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAE;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEMeInventoryItem;
-import pl.kuba6000.ae2webintegration.core.interfaces.IAEPlayerData;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAECraftingGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEPathingGrid;
-import pl.kuba6000.ae2webintegration.core.interfaces.service.IAESecurityGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
+import pl.kuba6000.ae2webintegration.core.utils.HTTPUtils;
 
 /**
  * Shared fakes for grid/authorization tests. Deliberately one copy rather than the per-test-class
  * duplication used elsewhere in this source set - these fakes are used by three test classes.
  */
+@SuppressWarnings({ "PMD.AvoidMagicNumbers", "UnstableApiUsage" })
 final class TestGridFixtures {
 
     private TestGridFixtures() {}
 
     static final int OWNER_ID = 7;
 
-    /** An online grid with available security, owned by {@link #OWNER_ID}. */
+    /** An online grid with a controller source owned by {@link #OWNER_ID}. */
     static TestGrid grid(long securityKey, int... alsoPermitted) {
-        return new TestGrid(securityKey, true, false, AEControllerState.CONTROLLER_ONLINE, alsoPermitted);
+        TestGrid grid = new TestGrid(securityKey, false, AEControllerState.CONTROLLER_ONLINE, alsoPermitted);
+        CoreEngine.GRID_IDENTITIES.controllerValidated(grid);
+        return grid;
+    }
+
+    static StableKey key(long value) {
+        return StableKey.create(sink -> sink.putLong(value));
+    }
+
+    static TestGrid grid(StableKey key, int... alsoPermitted) {
+        TestGrid grid = new TestGrid(key, false, AEControllerState.CONTROLLER_ONLINE, alsoPermitted);
+        CoreEngine.GRID_IDENTITIES.controllerValidated(grid);
+        return grid;
+    }
+
+    static boolean isTracked(GridIdentityRegistry registry, StableKey key) {
+        GridPersistentData data = registry.getPersistentData(key);
+        return data != null && data.getSettings()
+            .isTracked();
+    }
+
+    @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter") // The registry is the shared persistence
+                                                                         // monitor.
+    static void setTracked(GridIdentityRegistry registry, StableKey key, boolean tracked) throws IOException {
+        synchronized (registry) {
+            GridPersistentData data = registry.getPersistentData(key);
+            assertNotNull(data);
+            data.getSettings()
+                .setTracked(tracked);
+            registry.saveIfDirty();
+        }
+    }
+
+    static void track(IAEGrid grid) {
+        try {
+            CoreEngine.GRID_IDENTITIES.controllerValidated(grid);
+            StableKey key = CoreEngine.GRID_IDENTITIES.getKey(grid);
+            assertNotNull(key);
+            TestGridFixtures.setTracked(CoreEngine.GRID_IDENTITIES, key, true);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    static StableKey resolvedKey(IAEGrid grid) {
+        CoreEngine.GRID_IDENTITIES.controllerValidated(grid);
+        return CoreEngine.GRID_IDENTITIES.getKey(grid);
     }
 
     static TestAE ae(IAEGrid... grids) {
@@ -68,34 +129,67 @@ final class TestGridFixtures {
     }
 
     static AE2Controller.RequestContext context(WebPrincipal principal, String query) {
-        return new AE2Controller.RequestContext(new TestExchange(query), principal);
+        TestExchange exchange = new TestExchange(query);
+        Map<String, String> parameters = HTTPUtils.parseQueryString(
+            exchange.getRequestURI()
+                .getRawQuery());
+        Map<String, String> path = new HashMap<>();
+        if (parameters.containsKey("grid")) path.put("gridKey", parameters.get("grid"));
+        if (parameters.containsKey("cpu")) path.put("cpuKey", parameters.get("cpu"));
+        if (parameters.containsKey("id")) {
+            path.put("planId", parameters.get("id"));
+            path.put("entryId", parameters.get("id"));
+        }
+        JsonObject body = new JsonObject();
+        if (parameters.containsKey("itemKey")) body.addProperty("itemKey", parameters.get("itemKey"));
+        if (parameters.containsKey("quantity")) {
+            String quantity = parameters.get("quantity");
+            try {
+                body.addProperty("quantity", Long.parseLong(quantity));
+            } catch (NumberFormatException e) {
+                body.addProperty("quantity", quantity);
+            }
+        }
+        if (parameters.containsKey("submit") && parameters.containsKey("cpu")) {
+            body.addProperty("cpuKey", parameters.get("cpu"));
+        }
+        if (parameters.containsKey("track")) body.addProperty(
+            "isTracked",
+            parameters.get("track")
+                .equals("1"));
+        return new AE2Controller.RequestContext(exchange, principal, path, body);
     }
 
-    static class TestGrid implements IAEGrid, IAESecurityGrid, IAEPathingGrid {
+    static class TestGrid implements IAEGrid, IAEPathingGrid {
 
-        private final long securityKey;
-        private boolean securityAvailable;
+        private final DimensionalCoords controllerPosition;
+        private final Map<UUID, List<GridAccessSource>> sources = new HashMap<>();
         private boolean booting;
         private AEControllerState controllerState;
-        private final Set<Integer> permitted = new HashSet<>();
-        boolean securityGridPresent = true;
         boolean pathingGridPresent = true;
         private IAEStorageGrid storageGrid;
 
-        TestGrid(long securityKey, boolean securityAvailable, boolean booting, AEControllerState state,
-            int... alsoPermitted) {
-            this.securityKey = securityKey;
-            this.securityAvailable = securityAvailable;
-            this.booting = booting;
-            this.controllerState = state;
-            for (int id : alsoPermitted) {
-                permitted.add(id);
-            }
+        TestGrid(long securityKey, boolean booting, AEControllerState state, int... alsoPermitted) {
+            this(new DimensionalCoords("world", (int) securityKey, 0, 0), booting, state, alsoPermitted);
         }
 
-        TestGrid securityUnavailable() {
-            this.securityAvailable = false;
-            return this;
+        TestGrid(StableKey identity, boolean booting, AEControllerState state, int... alsoPermitted) {
+            this(new DimensionalCoords(identity.toString(), 0, 0, 0), booting, state, alsoPermitted);
+        }
+
+        TestGrid(DimensionalCoords position, boolean booting, AEControllerState state, int... alsoPermitted) {
+            this.controllerPosition = position;
+            this.booting = booting;
+            this.controllerState = state;
+            sources.put(
+                playerIdentity(OWNER_ID).uuid,
+                new ArrayList<>(
+                    Collections.singletonList(
+                        new GridAccessSource(playerIdentity(OWNER_ID), "controller", position(), null, "node_owner"))));
+            for (int id : alsoPermitted) {
+                sources.computeIfAbsent(playerIdentity(id).uuid, ignored -> new ArrayList<>())
+                    .add(new GridAccessSource(playerIdentity(id), "terminal", position(), null, "node_owner"));
+            }
         }
 
         TestGrid booting() {
@@ -108,8 +202,8 @@ final class TestGridFixtures {
             return this;
         }
 
-        TestGrid withoutSecurityGrid() {
-            this.securityGridPresent = false;
+        TestGrid controllerState(AEControllerState state) {
+            this.controllerState = state;
             return this;
         }
 
@@ -118,10 +212,41 @@ final class TestGridFixtures {
             return this;
         }
 
+        DimensionalCoords position() {
+            return controllerPosition;
+        }
+
         /** Stocks this grid with the given itemid/amount stacks, for tests reading its storage list. */
         TestGrid withStorage(TestStack... stacks) {
             this.storageGrid = new TestStorageGrid(new TestStackList(stacks));
             return this;
+        }
+
+        TestGrid withoutSources() {
+            sources.clear();
+            return this;
+        }
+
+        @Override
+        public @NotNull Set<DimensionalCoords> web$getControllers() {
+            return controllerState == AEControllerState.NO_CONTROLLER ? Collections.emptySet()
+                : Collections.singleton(position());
+        }
+
+        @Override
+        public @NotNull Map<UUID, List<GridAccessSource>> web$getPermissions() {
+            return sources;
+        }
+
+        @Override
+        public boolean web$hasAccess(@NotNull UUID playerId) {
+            return sources.containsKey(playerId) && !sources.get(playerId)
+                .isEmpty();
+        }
+
+        @Override
+        public PlayerIdentity web$getRepresentativeOwner() {
+            return playerIdentity(OWNER_ID);
         }
 
         // --- IAEGrid ---
@@ -140,16 +265,6 @@ final class TestGridFixtures {
             return storageGrid;
         }
 
-        @Override
-        public IAESecurityGrid web$getSecurityGrid() {
-            return securityGridPresent ? this : null;
-        }
-
-        @Override
-        public Object web$getPlayerSource() {
-            return null;
-        }
-
         // --- IAEPathingGrid ---
         @Override
         public boolean web$isNetworkBooting() {
@@ -161,34 +276,9 @@ final class TestGridFixtures {
             return controllerState;
         }
 
-        // --- IAESecurityGrid ---
-        @Override
-        public boolean web$isAvailable() {
-            return securityAvailable;
-        }
-
-        @Override
-        public long web$getSecurityKey() {
-            return securityKey;
-        }
-
-        @Override
-        public int web$getOwner() {
-            return OWNER_ID;
-        }
-
-        @Override
-        public PlayerIdentity web$getOwnerProfile() {
-            return new PlayerIdentity(UUID.nameUUIDFromBytes("owner".getBytes()), "Owner");
-        }
-
-        @Override
-        public boolean web$hasPermissions(int playerId) {
-            return playerId == OWNER_ID || permitted.contains(playerId);
-        }
     }
 
-    static class TestAE implements IAE, IAEPlayerData {
+    static class TestAE implements IAE {
 
         private final List<IAEGrid> grids;
 
@@ -211,81 +301,54 @@ final class TestGridFixtures {
             return null;
         }
 
-        @Override
-        public IAEPlayerData web$getPlayerData() {
-            return this;
-        }
-
-        @Override
-        public PlayerIdentity web$getPlayerProfile(int playerId) {
-            return playerIdentity(playerId);
-        }
-
-        @Override
-        public int web$getPlayerId(PlayerIdentity identity) {
-            if (identity != null && identity.name != null && identity.name.startsWith("Player")) {
-                try {
-                    return Integer.parseInt(identity.name.substring("Player".length()));
-                } catch (NumberFormatException ignored) {
-                    return -1;
-                }
-            }
-            return -1;
-        }
     }
 
-    static class TestKey implements IAEKey {
-
-        final String itemid;
-
-        TestKey(String itemid) {
-            this.itemid = itemid;
-        }
-
-        @Override
-        public String web$getItemID() {
-            return itemid;
-        }
-
-        @Override
-        public String web$getDisplayName() {
-            return itemid;
-        }
-
-        @Override
-        public boolean web$isCraftable(IAEGrid grid) {
-            return false;
-        }
-
-        @Override
-        public boolean web$isSameType(IAEKey other) {
-            return other instanceof TestKey && itemid.equals(((TestKey) other).itemid);
-        }
-    }
-
+    /** Minimal {@link HttpExchange} carrying only a query string; everything else is unused by tests. */
     static class TestStack implements IAEGenericStack {
 
-        private final TestKey key;
+        private final IAEKey key;
         private final long amount;
 
         TestStack(String itemid, long amount) {
-            this.key = new TestKey(itemid);
+            StableKey identity = StableKey.create(sink -> StableKey.writeText(sink, itemid));
+            this.key = new IAEKey() {
+
+                @Override
+                public @NotNull StableKey web$getKey() {
+                    return identity;
+                }
+
+                @Override
+                public @NotNull IAEKey web$copyIdentity() {
+                    return this;
+                }
+
+                @Override
+                public @NotNull String web$getItemID() {
+                    return itemid;
+                }
+
+                @Override
+                public @NotNull String web$getDisplayName() {
+                    return itemid;
+                }
+
+                @Override
+                public boolean web$isCraftable(IAEGrid grid) {
+                    return false;
+                }
+            };
             this.amount = amount;
         }
 
         @Override
-        public IAEKey web$what() {
+        public @NotNull IAEKey web$what() {
             return key;
         }
 
         @Override
         public long web$amount() {
             return amount;
-        }
-
-        @Override
-        public IAEGenericStack web$copy() {
-            return this;
         }
     }
 
@@ -302,7 +365,8 @@ final class TestGridFixtures {
             long total = 0;
             for (IAEGenericStack stack : stacks) {
                 if (stack.web$what()
-                    .web$isSameType(key)) {
+                    .web$getKey()
+                    .equals(key.web$getKey())) {
                     total += stack.web$amount();
                 }
             }
@@ -334,7 +398,6 @@ final class TestGridFixtures {
         }
     }
 
-    /** Minimal {@link HttpExchange} carrying only a query string; everything else is unused by tests. */
     static class TestExchange extends HttpExchange {
 
         private final URI uri;
@@ -393,7 +456,7 @@ final class TestGridFixtures {
 
         @Override
         public int getResponseCode() {
-            return 200;
+            return HttpURLConnection.HTTP_OK;
         }
 
         @Override

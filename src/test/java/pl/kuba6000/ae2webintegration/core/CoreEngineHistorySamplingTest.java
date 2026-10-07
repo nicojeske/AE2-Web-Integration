@@ -21,24 +21,35 @@ import pl.kuba6000.ae2webintegration.core.tracking.ItemHistoryStore;
  * map are both static for the whole test JVM, and unlike {@code isTracked}, a grid's tracked-item set
  * would otherwise silently carry over between test methods.
  */
-class CoreEngineHistorySamplingTest {
+class CoreEngineHistorySamplingTest extends GridTestScope {
 
     private static final String ITEM = "minecraft:iron_ingot";
 
     @BeforeEach
     void setUp() {
-        CoreEngine.onServerStopped();
+        ItemHistoryStore.clearRuntimeState();
+        CoreEngine.resetHistorySamplingForTest();
         AE2Controller.AE2Interface = TestGridFixtures.ae();
     }
 
-    private static TestGridFixtures.TestGrid trackedGrid(long gridKey, long storedAmount) {
-        GridData.getOrCreate(gridKey)
-            .setTrackedItems(Arrays.asList(ITEM));
-        return TestGridFixtures.grid(gridKey)
-            .withStorage(new TestGridFixtures.TestStack(ITEM, storedAmount));
+    /** The stable key the registry assigned to the grid at {@code position}. */
+    private static String keyOf(TestGridFixtures.TestGrid grid) {
+        return TestGridFixtures.resolvedKey(grid)
+            .toString();
     }
 
-    private static long sampledValue(long gridKey, long nowMillis) {
+    private static TestGridFixtures.TestGrid trackedGrid(long position, long storedAmount) {
+        TestGridFixtures.TestGrid grid = TestGridFixtures.grid(position)
+            .withStorage(new TestGridFixtures.TestStack(ITEM, storedAmount));
+        synchronized (CoreEngine.GRID_IDENTITIES) {
+            CoreEngine.GRID_IDENTITIES.getPersistentData(TestGridFixtures.resolvedKey(grid))
+                .getSettings()
+                .setTrackedItems(Arrays.asList(ITEM));
+        }
+        return grid;
+    }
+
+    private static long sampledValue(String gridKey, long nowMillis) {
         JSON_ItemHistory result = ItemHistoryStore.readSeries(gridKey, Arrays.asList(ITEM), nowMillis, nowMillis, 1);
         long[] points = result.series.get(0).points;
         return points[points.length - 1];
@@ -46,13 +57,12 @@ class CoreEngineHistorySamplingTest {
 
     @Test
     void onePassSamplesExactlyOneGridPerTick() {
-        long gridA = 980_101L, gridB = 980_102L, gridC = 980_103L;
-        TestGridFixtures.TestGrid a = trackedGrid(gridA, 10L);
-        TestGridFixtures.TestGrid b = trackedGrid(gridB, 20L);
-        TestGridFixtures.TestGrid c = trackedGrid(gridC, 30L);
+        TestGridFixtures.TestGrid a = trackedGrid(980_101L, 10L);
+        TestGridFixtures.TestGrid b = trackedGrid(980_102L, 20L);
+        TestGridFixtures.TestGrid c = trackedGrid(980_103L, 30L);
         AE2Controller.AE2Interface = TestGridFixtures.ae(a, b, c);
         long nowMillis = 1_000_000L;
-        long[] keys = { gridA, gridB, gridC };
+        String[] keys = { keyOf(a), keyOf(b), keyOf(c) };
 
         CoreEngine.runHistorySampling(0L, nowMillis);
         assertEquals(1, countSampled(keys, nowMillis), "exactly one grid must be sampled per tick");
@@ -64,9 +74,9 @@ class CoreEngineHistorySamplingTest {
         assertEquals(3, countSampled(keys, nowMillis));
     }
 
-    private static long countSampled(long[] gridKeys, long nowMillis) {
+    private static long countSampled(String[] gridKeys, long nowMillis) {
         long count = 0;
-        for (long gridKey : gridKeys) {
+        for (String gridKey : gridKeys) {
             if (sampledValue(gridKey, nowMillis) != ItemHistoryStore.NO_SAMPLE) {
                 count++;
             }
@@ -76,11 +86,11 @@ class CoreEngineHistorySamplingTest {
 
     @Test
     void aGridWithNoTrackedItemsIsNeverSampled() {
-        long trackedKey = 980_201L, untrackedKey = 980_202L;
-        TestGridFixtures.TestGrid tracked = trackedGrid(trackedKey, 10L);
+        TestGridFixtures.TestGrid tracked = trackedGrid(980_201L, 10L);
         // Online, but nothing was ever tracked on it.
-        TestGridFixtures.TestGrid untracked = TestGridFixtures.grid(untrackedKey)
+        TestGridFixtures.TestGrid untracked = TestGridFixtures.grid(980_202L)
             .withStorage(new TestGridFixtures.TestStack(ITEM, 20L));
+        String trackedKey = keyOf(tracked), untrackedKey = keyOf(untracked);
         AE2Controller.AE2Interface = TestGridFixtures.ae(tracked, untracked);
 
         long nowMillis = 2_000_000L;
@@ -97,15 +107,16 @@ class CoreEngineHistorySamplingTest {
 
     @Test
     void aGridThatGoesOfflineMidPassIsSkippedWithoutFailingThePass() {
-        long gridA = 980_301L, gridB = 980_302L;
-        TestGridFixtures.TestGrid a = trackedGrid(gridA, 10L);
-        TestGridFixtures.TestGrid b = trackedGrid(gridB, 20L);
+        TestGridFixtures.TestGrid a = trackedGrid(980_301L, 10L);
+        TestGridFixtures.TestGrid b = trackedGrid(980_302L, 20L);
+        String gridA = keyOf(a), gridB = keyOf(b);
         AE2Controller.AE2Interface = TestGridFixtures.ae(a, b);
 
         long nowMillis = 3_000_000L;
         CoreEngine.runHistorySampling(0L, nowMillis); // samples one of the two grids
 
         // Grid B drops off the network between ticks of the same pass.
+        b.noController();
         AE2Controller.AE2Interface = TestGridFixtures.ae(a);
 
         assertDoesNotThrow(() -> CoreEngine.runHistorySampling(0L, nowMillis));
@@ -116,8 +127,8 @@ class CoreEngineHistorySamplingTest {
 
     @Test
     void anotherPassDoesNotStartUntilTheConfiguredIntervalElapses() {
-        long gridKey = 980_401L;
-        TestGridFixtures.TestGrid grid = trackedGrid(gridKey, 10L);
+        TestGridFixtures.TestGrid grid = trackedGrid(980_401L, 10L);
+        String gridKey = keyOf(grid);
         AE2Controller.AE2Interface = TestGridFixtures.ae(grid);
 
         long intervalNanos = TimeUnit.MINUTES.toNanos(5); // default statistics_sample_interval_minutes

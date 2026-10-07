@@ -16,7 +16,7 @@ import pl.kuba6000.ae2webintegration.core.config.Config;
  * <p>
  * The scan is the only part that touches live GregTech state, and it runs whole within one tick. It is a
  * single pass over loaded tile entities, so it is cheap, but it is still timed: the duration is exposed
- * on {@code /gt/machines} and a slow scan is logged.
+ * on {@code /api/gt/machines} and a slow scan is logged.
  */
 public final class GTEngine {
 
@@ -51,7 +51,7 @@ public final class GTEngine {
 
     /** Whether the GregTech pages should be offered at all: a provider exists and the config allows it. */
     public static boolean isAvailable() {
-        return provider != null && Config.GT_ENABLED();
+        return provider != null && Config.INSTANCE.gregtech.enabled;
     }
 
     public static long lastScanMillis() {
@@ -107,7 +107,7 @@ public final class GTEngine {
             return;
         }
         long elapsed = System.nanoTime() - started;
-        nextScanNanos = nowNanos + TimeUnit.SECONDS.toNanos(Config.GT_SCAN_INTERVAL_SECONDS());
+        nextScanNanos = nowNanos + TimeUnit.SECONDS.toNanos(Config.INSTANCE.gregtech.scanIntervalSeconds);
         if (result == null) {
             return;
         }
@@ -117,7 +117,8 @@ public final class GTEngine {
         GTPowerHistoryStore.updateLatest(result.powerSources, nowMillis);
         if (!powerSampleScheduled || nowNanos - nextPowerSampleNanos >= 0) {
             powerSampleScheduled = true;
-            nextPowerSampleNanos = nowNanos + TimeUnit.SECONDS.toNanos(Config.GT_POWER_SAMPLE_INTERVAL_SECONDS());
+            nextPowerSampleNanos = nowNanos
+                + TimeUnit.SECONDS.toNanos(Config.INSTANCE.gregtech.powerSampleIntervalSeconds);
             GTPowerHistoryStore.recordSample(result.powerSources, nowMillis);
         }
 

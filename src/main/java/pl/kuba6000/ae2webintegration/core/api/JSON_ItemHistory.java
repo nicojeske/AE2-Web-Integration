@@ -2,7 +2,7 @@ package pl.kuba6000.ae2webintegration.core.api;
 
 import java.util.ArrayList;
 
-/** Wire shape for {@code /itemhistory}. Built by {@code ItemHistoryStore.readSeries}. */
+/** Wire shape for {@code GET /api/grids/{gridKey}/item-history}. Built by {@code ItemHistoryStore.readSeries}. */
 public class JSON_ItemHistory {
 
     public static class JSON_ItemSeries {

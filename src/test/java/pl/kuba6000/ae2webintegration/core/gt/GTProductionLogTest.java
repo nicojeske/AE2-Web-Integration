@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import pl.kuba6000.ae2webintegration.core.config.Config;
-import pl.kuba6000.ae2webintegration.core.config.ConfigBootstrap;
 
 class GTProductionLogTest {
 
@@ -93,7 +92,7 @@ class GTProductionLogTest {
 
     @Test
     void rangesBeyondHourlyRetentionUseDailyBuckets() {
-        ConfigBootstrap.gtProductionHourlyRetentionDaysValue = () -> 1;
+        Config.INSTANCE.gregtech.productionHourlyRetentionDays = 1;
         record("m1", ALICE, "a", 3, NOW - 5 * DAY);
         record("m1", ALICE, "a", 4, NOW);
 
@@ -107,8 +106,8 @@ class GTProductionLogTest {
 
     @Test
     void pruneDropsExpiredBucketsAndEmptyMachines() {
-        ConfigBootstrap.gtProductionHourlyRetentionDaysValue = () -> 1;
-        ConfigBootstrap.gtProductionDailyRetentionDaysValue = () -> 2;
+        Config.INSTANCE.gregtech.productionHourlyRetentionDays = 1;
+        Config.INSTANCE.gregtech.productionDailyRetentionDays = 2;
         record("old", ALICE, "a", 3, NOW - 10 * DAY);
         record("new", ALICE, "a", 4, NOW);
 

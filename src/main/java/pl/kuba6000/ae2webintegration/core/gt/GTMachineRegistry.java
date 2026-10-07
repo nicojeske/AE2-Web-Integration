@@ -47,7 +47,7 @@ public final class GTMachineRegistry {
                 seen.add(stored.id);
             }
         }
-        long forgetBefore = nowMillis - TimeUnit.DAYS.toMillis(Config.GT_MACHINE_FORGET_DAYS());
+        long forgetBefore = nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.machineForgetDays);
         for (Map.Entry<String, GTMachineSnapshot> entry : machines.entrySet()) {
             if (seen.contains(entry.getKey())) {
                 continue;

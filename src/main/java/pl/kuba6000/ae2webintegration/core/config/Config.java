@@ -1,51 +1,225 @@
 package pl.kuba6000.ae2webintegration.core.config;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.electronwill.nightconfig.core.CommentedConfig;
+import com.electronwill.nightconfig.core.UnmodifiableConfig;
+import com.electronwill.nightconfig.core.conversion.ObjectConverter;
+import com.electronwill.nightconfig.core.conversion.Path;
+import com.electronwill.nightconfig.core.io.ParsingMode;
+import com.electronwill.nightconfig.toml.TomlFormat;
+import com.electronwill.nightconfig.toml.TomlParser;
+import com.electronwill.nightconfig.toml.TomlWriter;
+
+import pl.kuba6000.ae2webintegration.core.api.ILegacyConfigProvider;
+import pl.kuba6000.ae2webintegration.core.utils.AtomicFileWriter;
 
 public class Config {
 
-    // todo: migrate to JSON format
+    private static final Logger LOG = LogManager.getLogger("ae2webintegration");
+
+    private static final ObjectConverter CONVERTER = new ObjectConverter();
+
+    /** Replaced as a whole on init and reload. Fields of a published instance are read-only. */
+    public static volatile ConfigSettings INSTANCE = new ConfigSettings();
 
     private static File configDirectory;
 
-    // --- Delegating accessors (backed by ConfigBootstrap) ---
+    // --- Directory / file setup ---
 
-    // General
-    public static int AE_PORT() {
-        return ConfigBootstrap.aePortValue.get();
+    public static synchronized void init(File configDirectory) {
+        init(configDirectory, () -> null);
     }
 
-    public static String AE_PASSWORD() {
-        return ConfigBootstrap.aePasswordValue.get();
+    /** Imports legacy settings only when the TOML configuration does not exist. */
+    public static synchronized void init(File configDirectory, Supplier<ILegacyConfigProvider> legacyProvider) {
+        File directory = new File(configDirectory, "ae2webintegration");
+        File file = new File(directory, "config.toml");
+        try {
+            boolean wasMigrated = false;
+            ILegacyConfigProvider legacyReader = null;
+            CommentedConfig document;
+            if (file.exists()) {
+                document = read(file);
+            } else {
+                legacyReader = legacyProvider.get();
+                if (legacyReader != null && legacyReader.isAvailable()) {
+                    document = migrate(legacyReader);
+                    wasMigrated = true;
+                } else {
+                    document = newDocument();
+                    CONVERTER.toConfig(new ConfigSettings(), document);
+                }
+            }
+            publish(file, document);
+            if (wasMigrated) {
+                legacyReader.markAsMigrated();
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not load configuration: " + file, e);
+        }
+        Config.configDirectory = directory;
     }
 
-    public static String TRUSTED_PROXIES() {
-        return ConfigBootstrap.trustedProxiesValue.get();
+    /** Loads a complete configuration before replacing the settings visible to request threads. */
+    public static synchronized void reload() {
+        File file = getConfigFile("config.toml");
+        try {
+            publish(file, read(file));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not reload configuration: " + file, e);
+        }
     }
 
-    public static boolean ALLOW_NO_PASSWORD_ON_LOCALHOST() {
-        return ConfigBootstrap.allowNoPasswordOnLocalhostValue.get();
+    private static CommentedConfig newDocument() {
+        return CommentedConfig.of(LinkedHashMap::new, TomlFormat.instance());
     }
 
-    public static boolean AE_PUBLIC_MODE() {
-        return ConfigBootstrap.aePublicModeValue.get();
+    private static CommentedConfig read(File file) throws IOException {
+        CommentedConfig document = newDocument();
+        try (Reader reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
+            new TomlParser().parse(reader, document, ParsingMode.REPLACE);
+        }
+        return document;
     }
 
-    public static int AE_MAX_REQUESTS_BEFORE_LOGGED_IN_PER_MINUTE() {
-        return ConfigBootstrap.aeMaxRequestsBeforeLoggedInPerMinuteValue.get();
+    @Deprecated
+    private static final Map<String, String> LEGACY_KEYS = new LinkedHashMap<>();
+
+    static {
+        LEGACY_KEYS.put("port", "general.port");
+        LEGACY_KEYS.put("password", "general.password");
+        LEGACY_KEYS.put("allow_no_password_on_localhost", "general.allow_no_password_on_localhost");
+        LEGACY_KEYS.put("trusted_proxies", "general.trusted_proxies");
+        LEGACY_KEYS.put("public_mode", "general.public_mode");
+        LEGACY_KEYS.put("max_requests_before_logged_in_per_minute", "general.max_requests_before_logged_in_per_minute");
+        LEGACY_KEYS.put("check_for_updates", "general.check_for_updates");
+        LEGACY_KEYS.put("discord_webhook", "discord.webhook");
+        LEGACY_KEYS.put("discord_role_id", "discord.role_id");
+        LEGACY_KEYS.put("discord_minimum_crafting_duration_seconds", "notifications.minimum_crafting_duration_seconds");
+        LEGACY_KEYS.put("discord_minimum_crafting_amount", "notifications.minimum_crafting_amount");
+        LEGACY_KEYS.put("track_machine_crafting", "tracking.track_machine_crafting");
     }
 
-    public static boolean CHECK_FOR_UPDATES() {
-        return ConfigBootstrap.checkForUpdatesValue.get();
+    @Deprecated
+    private static CommentedConfig migrate(ILegacyConfigProvider legacy) {
+        LOG.info("LEGACY CONFIG MIGRATION INIT");
+        CommentedConfig document = newDocument();
+        CONVERTER.toConfig(new ConfigSettings(), document);
+        for (Map.Entry<String, String> entry : LEGACY_KEYS.entrySet()) {
+            Object value = legacy.get(entry.getKey());
+            if (value == null) {
+                continue;
+            }
+            document.set(entry.getValue(), value);
+            LOG.info("Mapped {} to {}", entry.getKey(), entry.getValue());
+        }
+        return document;
+    }
+
+    private static void publish(File file, CommentedConfig document) throws IOException {
+        ConfigSettings loaded = new ConfigSettings();
+        CommentedConfig defaults = newDocument();
+        CONVERTER.toConfig(loaded, defaults);
+        fillDefaults(document, defaults);
+        CONVERTER.toObject(document, loaded);
+        loaded.validate();
+        addComments(document, loaded);
+        TomlWriter serializer = new TomlWriter();
+        serializer.setIndent("");
+        serializer.setWriteStringLiteralPredicate(Config::useLiteralString);
+        disableMultilineStrings(serializer);
+        AtomicFileWriter.write(file, writer -> serializer.write(document, writer));
+        INSTANCE = loaded;
+    }
+
+    private static boolean useLiteralString(String value) {
+        boolean literal = true;
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            switch (character) {
+                case '\'', '\b', '\f', '\n', '\r', '\t' -> literal = false;
+                default -> {
+                    // 3.6.4 emits these raw instead of escaping them, making its next read fail.
+                    if (character < ' ' || character == '\u007f') {
+                        throw new IllegalArgumentException("Unsupported control character in TOML configuration");
+                    }
+                }
+            }
+        }
+        return literal;
+    }
+
+    private static void disableMultilineStrings(TomlWriter serializer) {
+        // Newer NightConfig normalizes line endings in multiline strings, changing stored passwords.
+        try {
+            TomlWriter.class.getMethod("setWriteStringMultilinePredicate", Predicate.class)
+                .invoke(serializer, (Predicate<String>) value -> false);
+        } catch (NoSuchMethodException ignored) {
+            // 3.6.4 always writes escaped single-line strings and has no multiline setting.
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Could not configure lossless TOML string writing", e);
+        }
+    }
+
+    private static void fillDefaults(CommentedConfig document, UnmodifiableConfig defaults) {
+        for (UnmodifiableConfig.Entry entry : defaults.entrySet()) {
+            String key = entry.getKey();
+            Object defaultValue = entry.getValue();
+            if (!document.contains(key)) {
+                document.set(key, defaultValue);
+            } else if (defaultValue instanceof UnmodifiableConfig section) {
+                Object value = document.get(key);
+                if (!(value instanceof CommentedConfig existing)) {
+                    throw new IllegalArgumentException("Expected a configuration table: " + key);
+                }
+                fillDefaults(existing, section);
+            }
+        }
+    }
+
+    private static void addComments(CommentedConfig document, Object model) {
+        for (Field field : model.getClass()
+            .getDeclaredFields()) {
+            Path path = field.getAnnotation(Path.class);
+            String key = path == null ? field.getName() : path.value();
+            Comment comment = field.getAnnotation(Comment.class);
+            if (comment != null && document.getComment(key) == null) {
+                document.setComment(key, " " + String.join("\n ", comment.value()));
+            }
+            if (document.get(key) instanceof CommentedConfig section) {
+                try {
+                    addComments(section, field.get(model));
+                } catch (IllegalAccessException e) {
+                    throw new IllegalStateException("Cannot read configuration descriptions", e);
+                }
+            }
+        }
+    }
+
+    public static File getConfigDirectory() {
+        return configDirectory;
     }
 
     /**
-     * Directory to look up item icon PNGs in, or {@code null} when unconfigured (icons disabled). An
-     * absolute path is used as-is; a relative one is resolved against the config directory, matching how
-     * {@link #getConfigFile(String)} anchors the other data files.
+     * Directory to look up item icon PNGs in, or {@code null} when unconfigured (icons disabled). An absolute
+     * path is used as-is; a relative one is resolved against the config directory, like the other data files.
      */
-    public static File ITEM_ICON_DIRECTORY() {
-        String path = ConfigBootstrap.itemIconDirectoryValue.get();
+    public static File itemIconDirectory() {
+        String path = INSTANCE.general.itemIconDirectory;
         if (path == null || path.trim()
             .isEmpty()) {
             return null;
@@ -57,56 +231,17 @@ public class Config {
         return new File(configDirectory, path.trim());
     }
 
-    // Discord
-    public static String DISCORD_WEBHOOK() {
-        return ConfigBootstrap.discordWebhookValue.get();
-    }
-
-    public static String DISCORD_ROLE_ID() {
-        return ConfigBootstrap.discordRoleIdValue.get();
-    }
-
-    public static int DISCORD_MINIMUM_CRAFTING_DURATION_SECONDS() {
-        return ConfigBootstrap.discordMinimumCraftingDurationSecondsValue.get();
-    }
-
-    public static int DISCORD_MINIMUM_CRAFTING_AMOUNT() {
-        return ConfigBootstrap.discordMinimumCraftingAmountValue.get();
-    }
-
-    // Tracking
-    public static boolean TRACKING_TRACK_MACHINE_CRAFTING() {
-        return ConfigBootstrap.trackingTrackMachineCraftingValue.get();
-    }
-
-    // Statistics
-    public static int STATISTICS_SAMPLE_INTERVAL_MINUTES() {
-        return ConfigBootstrap.statisticsSampleIntervalMinutesValue.get();
-    }
-
-    public static int STATISTICS_FINE_RETENTION_DAYS() {
-        return ConfigBootstrap.statisticsFineRetentionDaysValue.get();
-    }
-
-    public static int STATISTICS_HOURLY_RETENTION_DAYS() {
-        return ConfigBootstrap.statisticsHourlyRetentionDaysValue.get();
-    }
-
-    public static int STATISTICS_MAX_TRACKED_ITEMS_PER_GRID() {
-        return ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue.get();
-    }
-
     // History database: environment variables win, so a Kubernetes secret never has to land in the config file.
-    public static String HISTORY_JDBC_URL() {
-        return envOr("AE2WEB_HISTORY_JDBC_URL", ConfigBootstrap.historyJdbcUrlValue.get());
+    public static String historyJdbcUrl() {
+        return envOr("AE2WEB_HISTORY_JDBC_URL", INSTANCE.history.jdbcUrl);
     }
 
-    public static String HISTORY_DB_USER() {
-        return envOr("AE2WEB_HISTORY_DB_USER", ConfigBootstrap.historyDbUserValue.get());
+    public static String historyDbUser() {
+        return envOr("AE2WEB_HISTORY_DB_USER", INSTANCE.history.dbUser);
     }
 
-    public static String HISTORY_DB_PASSWORD() {
-        return envOr("AE2WEB_HISTORY_DB_PASSWORD", ConfigBootstrap.historyDbPasswordValue.get());
+    public static String historyDbPassword() {
+        return envOr("AE2WEB_HISTORY_DB_PASSWORD", INSTANCE.history.dbPassword);
     }
 
     private static String envOr(String variable, String configured) {
@@ -116,52 +251,6 @@ public class Config {
             return env.trim();
         }
         return configured == null ? "" : configured.trim();
-    }
-
-    // GregTech
-    public static boolean GT_ENABLED() {
-        return ConfigBootstrap.gtEnabledValue.get();
-    }
-
-    public static int GT_SCAN_INTERVAL_SECONDS() {
-        return ConfigBootstrap.gtScanIntervalSecondsValue.get();
-    }
-
-    public static int GT_POWER_SAMPLE_INTERVAL_SECONDS() {
-        return ConfigBootstrap.gtPowerSampleIntervalSecondsValue.get();
-    }
-
-    public static int GT_POWER_FINE_RETENTION_HOURS() {
-        return ConfigBootstrap.gtPowerFineRetentionHoursValue.get();
-    }
-
-    public static int GT_POWER_HOURLY_RETENTION_DAYS() {
-        return ConfigBootstrap.gtPowerHourlyRetentionDaysValue.get();
-    }
-
-    public static int GT_PRODUCTION_HOURLY_RETENTION_DAYS() {
-        return ConfigBootstrap.gtProductionHourlyRetentionDaysValue.get();
-    }
-
-    public static int GT_PRODUCTION_DAILY_RETENTION_DAYS() {
-        return ConfigBootstrap.gtProductionDailyRetentionDaysValue.get();
-    }
-
-    public static int GT_MACHINE_FORGET_DAYS() {
-        return ConfigBootstrap.gtMachineForgetDaysValue.get();
-    }
-
-    // --- Directory / file setup ---
-
-    public static void init(File configDirectory) {
-        Config.configDirectory = new File(configDirectory, "ae2webintegration");
-        if (!Config.configDirectory.exists()) {
-            Config.configDirectory.mkdirs();
-        }
-    }
-
-    public static File getConfigDirectory() {
-        return configDirectory;
     }
 
     public static File getConfigFile(String fileName) {

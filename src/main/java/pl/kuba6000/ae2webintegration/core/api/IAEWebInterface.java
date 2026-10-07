@@ -18,7 +18,7 @@ public interface IAEWebInterface {
 
     /**
      * Enables the GregTech pages. Called once at mod init by a branch that has GregTech; never calling it
-     * leaves every {@code /gt/*} endpoint answering {@code NOT_AVAILABLE}.
+     * leaves every {@code /api/gt/*} endpoint answering {@code NOT_AVAILABLE}.
      */
     void registerGTProvider(IGTProvider provider);
 

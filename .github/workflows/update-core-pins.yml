@@ -26,7 +26,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        branch: [ 1.7.10, 1.12.2, 1.20.1, 1.21.1 ]
+        # The fork only maintains 1.7.10; bumping the other branches would pin them to a core they were never
+        # adapted to.
+        branch: [ 1.7.10 ]
     env:
       BOT_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
       BOT_NAME: "github-actions[bot]"

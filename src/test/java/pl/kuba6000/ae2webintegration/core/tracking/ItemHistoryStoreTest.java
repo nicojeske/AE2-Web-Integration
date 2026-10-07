@@ -17,7 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
-import pl.kuba6000.ae2webintegration.core.config.ConfigBootstrap;
+import pl.kuba6000.ae2webintegration.core.config.Config;
 
 /**
  * {@link ItemHistoryStore.RingSeries} mechanics (wraparound, gaps, overwrite) tested directly, plus
@@ -31,10 +31,10 @@ class ItemHistoryStoreTest {
     @BeforeEach
     @AfterEach
     void resetConfigToDefaults() {
-        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 5;
-        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 30;
-        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 365;
-        ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue = () -> 24;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 5;
+        Config.INSTANCE.statistics.fineRetentionDays = 30;
+        Config.INSTANCE.statistics.hourlyRetentionDays = 365;
+        Config.INSTANCE.statistics.maxTrackedItemsPerGrid = 24;
     }
 
     // --- RingSeries mechanics ---
@@ -107,7 +107,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void severalStacksSharingAnItemidAreSummed() {
-        long gridKey = 950_101L;
+        String gridKey = "950101";
         long now = 10_000_000L;
         ItemHistoryStore.sample(
             gridKey,
@@ -124,7 +124,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void aTrackedItemAbsentFromStorageRecordsZeroNotAGap() {
-        long gridKey = 950_102L;
+        String gridKey = "950102";
         long now = 20_000_000L;
         ItemHistoryStore.sample(gridKey, oneItem("minecraft:diamond"), TrackingTestFakes.stackList(), now);
 
@@ -134,7 +134,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void sampleReturnsTheDisplayNameObservedForEachTrackedItemInStorage() {
-        long gridKey = 950_150L;
+        String gridKey = "950150";
         long now = 15_000_000L;
         Map<String, String> observed = ItemHistoryStore.sample(
             gridKey,
@@ -146,7 +146,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void sampleOmitsATrackedItemThatIsAbsentFromStorageFromTheReturnedNames() {
-        long gridKey = 950_151L;
+        String gridKey = "950151";
         long now = 16_000_000L;
         Map<String, String> observed = ItemHistoryStore
             .sample(gridKey, oneItem("minecraft:diamond"), TrackingTestFakes.stackList(), now);
@@ -155,7 +155,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void sampleNeverReturnsANameForAnUntrackedItemEvenIfPresentInStorage() {
-        long gridKey = 950_152L;
+        String gridKey = "950152";
         long now = 17_000_000L;
         Map<String, String> observed = ItemHistoryStore.sample(
             gridKey,
@@ -167,7 +167,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void anUntrackedItemInStorageIsNotRecorded() {
-        long gridKey = 950_103L;
+        String gridKey = "950103";
         long now = 30_000_000L;
         ItemHistoryStore.sample(
             gridKey,
@@ -184,7 +184,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void samplingWithNoTrackedItemsIsANoOp() {
-        long gridKey = 950_104L;
+        String gridKey = "950104";
         long now = 40_000_000L;
         ItemHistoryStore.sample(gridKey, Collections.emptySet(), TrackingTestFakes.stackList(), now);
 
@@ -195,7 +195,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void pruneToDropsSeriesForItemsNoLongerTracked() {
-        long gridKey = 950_105L;
+        String gridKey = "950105";
         long now = 50_000_000L;
         Set<String> tracked = new LinkedHashSet<>(Arrays.asList("minecraft:iron_ingot", "minecraft:gold_ingot"));
         ItemHistoryStore.sample(
@@ -216,7 +216,7 @@ class ItemHistoryStoreTest {
 
     @Test
     void theHourlyTierKeepsOnlyTheLastSampleWithinEachHourNotAnAverage() {
-        long gridKey = 950_106L;
+        String gridKey = "950106";
         Set<String> tracked = oneItem("minecraft:iron_ingot");
         long hourStart = 100 * TimeUnit.HOURS.toMillis(1);
         ItemHistoryStore.sample(

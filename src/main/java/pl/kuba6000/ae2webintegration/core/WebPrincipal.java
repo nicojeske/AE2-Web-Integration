@@ -1,8 +1,10 @@
 package pl.kuba6000.ae2webintegration.core;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import java.util.UUID;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 
@@ -18,71 +20,78 @@ public final class WebPrincipal {
     private enum Kind {
         PLAYER,
         ADMIN,
-        LOCALHOST
+        LOCALHOST,
+        ANONYMOUS
     }
 
     private static final WebPrincipal ADMIN = new WebPrincipal(Kind.ADMIN, null, "Admin");
     private static final WebPrincipal LOCALHOST = new WebPrincipal(Kind.LOCALHOST, null, "localhost");
+    private static final WebPrincipal ANONYMOUS = new WebPrincipal(Kind.ANONYMOUS, null, "");
 
     /**
-     * Storage key for ADMIN/LOCALHOST in any map keyed by player UUID (currently just synced prefs -
-     * {@link PlayerPrefsHandler}) - both share this one key since they share the single admin account
-     * concept in single-admin-password mode, and neither has a player identity of its own to key by.
+     * Storage key for ADMIN/LOCALHOST in any map keyed by player UUID (currently just synced prefs) - both
+     * share this one key since they share the single admin account concept, and neither has a player
+     * identity of its own to key by.
      */
     private static final UUID ADMIN_PREFS_UUID = UUID
         .nameUUIDFromBytes("AE2-WEB-INTEGRATION-ADMIN-PREFS".getBytes(StandardCharsets.UTF_8));
 
-    private final Kind kind;
-    private final PlayerIdentity playerIdentity;
-    private final String username;
+    private final @NotNull Kind kind;
+    // PLAYER principals are constructed only by forPlayer, which always supplies an identity.
+    private final @Nullable PlayerIdentity playerIdentity;
+    private final @NotNull String username;
 
-    private WebPrincipal(Kind kind, PlayerIdentity playerIdentity, String username) {
+    private WebPrincipal(@NotNull Kind kind, @Nullable PlayerIdentity playerIdentity, @NotNull String username) {
         this.kind = kind;
         this.playerIdentity = playerIdentity;
         this.username = username;
     }
 
-    public static WebPrincipal forPlayer(PlayerIdentity identity) {
-        Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(identity.uuid, "identity.uuid");
-        Objects.requireNonNull(identity.name, "identity.name");
+    public static @NotNull WebPrincipal forPlayer(@NotNull PlayerIdentity identity) {
         return new WebPrincipal(Kind.PLAYER, identity, identity.name);
     }
 
-    public static WebPrincipal admin() {
+    public static @NotNull WebPrincipal admin() {
         return ADMIN;
     }
 
-    public static WebPrincipal localhost() {
+    public static @NotNull WebPrincipal localhost() {
         return LOCALHOST;
     }
 
     public boolean isAdmin() {
-        return kind != Kind.PLAYER;
+        return kind == Kind.ADMIN || kind == Kind.LOCALHOST;
     }
 
-    public PlayerIdentity getPlayerIdentity() {
+    public static @NotNull WebPrincipal anonymous() {
+        return ANONYMOUS;
+    }
+
+    public @Nullable PlayerIdentity getPlayerIdentity() {
         return playerIdentity;
     }
 
-    public String getUsername() {
+    public @NotNull String getUsername() {
         return username;
     }
 
     /** @see #ADMIN_PREFS_UUID */
-    public UUID prefsKey() {
+    @SuppressWarnings("DataFlowIssue") // forPlayer() guarantees a non-null identity for PLAYER.
+    public @NotNull UUID prefsKey() {
         return kind == Kind.PLAYER ? playerIdentity.uuid : ADMIN_PREFS_UUID;
     }
 
     @Override
-    public boolean equals(Object object) {
+    // forPlayer() guarantees a non-null identity for PLAYER; IDEA cannot infer this field invariant.
+    // The kind checks below restrict identity access to two PLAYER principals.
+    @SuppressWarnings("DataFlowIssue")
+    public boolean equals(@Nullable Object object) {
         if (this == object) {
             return true;
         }
-        if (!(object instanceof WebPrincipal)) {
+        if (!(object instanceof WebPrincipal other)) {
             return false;
         }
-        WebPrincipal other = (WebPrincipal) object;
         if (kind != other.kind) {
             return false;
         }
@@ -90,6 +99,9 @@ public final class WebPrincipal {
     }
 
     @Override
+    // forPlayer() guarantees a non-null identity for PLAYER; IDEA cannot infer this field invariant.
+    // Only the PLAYER branch reads the identity.
+    @SuppressWarnings({ "PMD.AvoidMagicNumbers", "DataFlowIssue" }) // Conventional hash-combining multiplier.
     public int hashCode() {
         return kind == Kind.PLAYER ? 31 * kind.hashCode() + playerIdentity.uuid.hashCode() : kind.hashCode();
     }

@@ -40,7 +40,7 @@ import pl.kuba6000.ae2webintegration.core.utils.GSONUtils;
  * {@code CoreEngine.onServerTick()} and persisted to its own file, separate from {@code griddata.json}.
  * <p>
  * Only ever touches stored data through {@link #sample} (called on the server thread with a live
- * {@link IStackList}) and {@link #readSeries} (called from the {@code /itemhistory} async request on an
+ * {@link IStackList}) and {@link #readSeries} (called from the {@code GetItemHistory} async request on an
  * HTTP worker thread) - it never reaches into AE2 itself.
  */
 public final class ItemHistoryStore {
@@ -73,7 +73,7 @@ public final class ItemHistoryStore {
         final ConcurrentHashMap<String, ItemSeries> items = new ConcurrentHashMap<>();
     }
 
-    private static volatile ConcurrentHashMap<Long, GridHistory> gridHistories = new ConcurrentHashMap<>();
+    private static volatile ConcurrentHashMap<String, GridHistory> gridHistories = new ConcurrentHashMap<>();
 
     private static final AtomicBoolean dirty = new AtomicBoolean(false);
 
@@ -86,7 +86,7 @@ public final class ItemHistoryStore {
      * display name observed for each tracked item still in storage this sample (empty map if none),
      * so a caller can remember a tracked item's name from the last time it was actually seen.
      */
-    public static Map<String, String> sample(long gridKey, Set<String> tracked, IStackList storage, long nowMillis) {
+    public static Map<String, String> sample(String gridKey, Set<String> tracked, IStackList storage, long nowMillis) {
         if (tracked.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -113,7 +113,7 @@ public final class ItemHistoryStore {
 
         HistoryDb db = HistoryDb.get();
         if (db != null) {
-            String scope = Long.toString(gridKey);
+            String scope = gridKey;
             long fineStart = fineBucket * fineBucketMillis;
             long hourlyStart = hourlyBucket * HOURLY_BUCKET_MILLIS;
             for (String itemid : tracked) {
@@ -142,11 +142,11 @@ public final class ItemHistoryStore {
     }
 
     /** Drops any series for items that are no longer tracked, e.g. after {@code TrackedItems} removes one. */
-    public static void pruneTo(long gridKey, Set<String> tracked) {
+    public static void pruneTo(String gridKey, Set<String> tracked) {
         HistoryDb db = HistoryDb.get();
         if (db != null) {
-            db.retainKeys(HistoryTable.ITEM_FINE, Long.toString(gridKey), tracked);
-            db.retainKeys(HistoryTable.ITEM_HOURLY, Long.toString(gridKey), tracked);
+            db.retainKeys(HistoryTable.ITEM_FINE, gridKey, tracked);
+            db.retainKeys(HistoryTable.ITEM_HOURLY, gridKey, tracked);
             return;
         }
         GridHistory history = gridHistories.get(gridKey);
@@ -162,12 +162,12 @@ public final class ItemHistoryStore {
     // --- Reading ---
 
     /**
-     * Builds the {@code /itemhistory} response: one tier is picked for the whole request by comparing the
+     * Builds the {@code GetItemHistory} response: one tier is picked for the whole request by comparing the
      * requested span against the fine tier's retention, then downsampled if needed by taking the newest
      * non-gap value in each output window - never averaged, so no floating point and no NaN-serialization
      * hazard (see {@code GSONUtils}'s known-unfixed leniency gap).
      */
-    public static JSON_ItemHistory readSeries(long gridKey, List<String> itemids, long fromMillis, long toMillis,
+    public static JSON_ItemHistory readSeries(String gridKey, List<String> itemids, long fromMillis, long toMillis,
         int maxPoints) {
         JSON_ItemHistory result = new JSON_ItemHistory();
         long fromClamped = Math.min(fromMillis, toMillis);
@@ -177,7 +177,7 @@ public final class ItemHistoryStore {
         boolean useFine = span <= fineSpanMillis;
         long tierBucketMillis = useFine ? fineBucketMillis() : HOURLY_BUCKET_MILLIS;
         result.resolution = useFine ? "fine" : "hourly";
-        result.limit = Config.STATISTICS_MAX_TRACKED_ITEMS_PER_GRID();
+        result.limit = Config.INSTANCE.statistics.maxTrackedItemsPerGrid;
 
         long fromBucket = Math.floorDiv(fromClamped, tierBucketMillis);
         long toBucket = Math.max(fromBucket, Math.floorDiv(toClamped, tierBucketMillis));
@@ -195,7 +195,7 @@ public final class ItemHistoryStore {
             if (db != null) {
                 long[] values = db.readGauge(
                     useFine ? HistoryTable.ITEM_FINE : HistoryTable.ITEM_HOURLY,
-                    Long.toString(gridKey),
+                    gridKey,
                     itemid,
                     fromBucket,
                     toBucket,
@@ -231,16 +231,16 @@ public final class ItemHistoryStore {
     }
 
     private static long fineBucketMillis() {
-        return TimeUnit.MINUTES.toMillis(Config.STATISTICS_SAMPLE_INTERVAL_MINUTES());
+        return TimeUnit.MINUTES.toMillis(Config.INSTANCE.statistics.sampleIntervalMinutes);
     }
 
     private static int fineCapacity() {
-        long totalMillis = TimeUnit.DAYS.toMillis(Config.STATISTICS_FINE_RETENTION_DAYS());
+        long totalMillis = TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.fineRetentionDays);
         return (int) Math.max(1, totalMillis / fineBucketMillis());
     }
 
     private static int hourlyCapacity() {
-        return Math.max(1, Config.STATISTICS_HOURLY_RETENTION_DAYS() * 24);
+        return Math.max(1, Config.INSTANCE.statistics.hourlyRetentionDays * 24);
     }
 
     // --- Ring buffer ---
@@ -377,12 +377,12 @@ public final class ItemHistoryStore {
     private static final class PersistedFile {
 
         int schemaVersion = SCHEMA_VERSION;
-        Map<Long, Map<String, PersistedItemSeries>> grids = new LinkedHashMap<>();
+        Map<String, Map<String, PersistedItemSeries>> grids = new LinkedHashMap<>();
     }
 
     private static PersistedFile buildSnapshot() {
         PersistedFile file = new PersistedFile();
-        for (Map.Entry<Long, GridHistory> gridEntry : gridHistories.entrySet()) {
+        for (Map.Entry<String, GridHistory> gridEntry : gridHistories.entrySet()) {
             Map<String, PersistedItemSeries> items = new LinkedHashMap<>();
             for (Map.Entry<String, ItemSeries> itemEntry : gridEntry.getValue().items.entrySet()) {
                 ItemSeries series = itemEntry.getValue();
@@ -427,11 +427,11 @@ public final class ItemHistoryStore {
             long now = System.currentTimeMillis();
             db.prune(
                 HistoryTable.ITEM_FINE,
-                now - TimeUnit.DAYS.toMillis(Config.STATISTICS_FINE_RETENTION_DAYS()),
+                now - TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.fineRetentionDays),
                 now);
             db.prune(
                 HistoryTable.ITEM_HOURLY,
-                now - TimeUnit.DAYS.toMillis(Config.STATISTICS_HOURLY_RETENTION_DAYS()),
+                now - TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.hourlyRetentionDays),
                 now);
             return;
         }
@@ -500,7 +500,7 @@ public final class ItemHistoryStore {
             LOG.info("Item history file not found, starting with empty history.");
             return;
         }
-        ConcurrentHashMap<Long, GridHistory> loaded = readFile(file);
+        ConcurrentHashMap<String, GridHistory> loaded = readFile(file);
         if (loaded == null) {
             return;
         }
@@ -513,7 +513,7 @@ public final class ItemHistoryStore {
     }
 
     /** Parses the JSON history file against the current config, or {@code null} if it cannot be read. */
-    private static ConcurrentHashMap<Long, GridHistory> readFile(File file) {
+    private static ConcurrentHashMap<String, GridHistory> readFile(File file) {
         Gson gson = GSONUtils.GSON_BUILDER.create();
         try (Reader reader = Files.newReader(file, StandardCharsets.UTF_8)) {
             PersistedFile loaded = gson.fromJson(reader, PersistedFile.class);
@@ -530,9 +530,9 @@ public final class ItemHistoryStore {
             long fineBucketMillis = fineBucketMillis();
             int fineCapacity = fineCapacity();
             int hourlyCapacity = hourlyCapacity();
-            ConcurrentHashMap<Long, GridHistory> rebuilt = new ConcurrentHashMap<>();
+            ConcurrentHashMap<String, GridHistory> rebuilt = new ConcurrentHashMap<>();
             if (loaded.grids != null) {
-                for (Map.Entry<Long, Map<String, PersistedItemSeries>> gridEntry : loaded.grids.entrySet()) {
+                for (Map.Entry<String, Map<String, PersistedItemSeries>> gridEntry : loaded.grids.entrySet()) {
                     GridHistory history = new GridHistory();
                     if (gridEntry.getValue() != null) {
                         for (Map.Entry<String, PersistedItemSeries> itemEntry : gridEntry.getValue()
@@ -563,10 +563,10 @@ public final class ItemHistoryStore {
      * and the buckets any item of a grid was sampled in become that grid's coverage. The file is renamed once
      * the import committed, and kept, so switching back to JSON storage is a rename away.
      */
-    private static void importInto(HistoryDb db, Map<Long, GridHistory> grids, File file) {
+    private static void importInto(HistoryDb db, Map<String, GridHistory> grids, File file) {
         HistoryDb.Import rows = new HistoryDb.Import();
-        for (Map.Entry<Long, GridHistory> gridEntry : grids.entrySet()) {
-            String scope = Long.toString(gridEntry.getKey());
+        for (Map.Entry<String, GridHistory> gridEntry : grids.entrySet()) {
+            String scope = gridEntry.getKey();
             Map<HistoryTable, TreeSet<Long>> sampled = new HashMap<>();
             for (Map.Entry<String, ItemSeries> itemEntry : gridEntry.getValue().items.entrySet()) {
                 importRing(rows, HistoryTable.ITEM_FINE, scope, itemEntry.getKey(), itemEntry.getValue().fine, sampled);

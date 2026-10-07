@@ -18,17 +18,17 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import pl.kuba6000.ae2webintegration.core.ae2request.async.IAsyncRequest;
-import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTMachine;
-import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTMachines;
-import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTPower;
-import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTPowerHistory;
-import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTProduction;
-import pl.kuba6000.ae2webintegration.core.ae2request.async.gt.GetGTProductionHistory;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.gt.GTProductionLog;
 import pl.kuba6000.ae2webintegration.core.gt.GTTestSupport;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachine;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachines;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPower;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPowerHistory;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProduction;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProductionHistory;
 
 /**
  * The {@code /gt/*} endpoints at the request-handler level, the way {@code ItemHistoryRequestTest} drives
@@ -61,7 +61,21 @@ class GTRequestTest {
     }
 
     private static <T extends IAsyncRequest> JsonObject run(T request, int userId, String query) {
-        request.handle(TestGridFixtures.context(userId, query));
+        // The machine and power source ids are path parameters on the real routes.
+        java.util.Map<String, String> path = new java.util.HashMap<>();
+        StringBuilder rest = new StringBuilder();
+        for (String pair : query.split("&")) {
+            if (pair.startsWith("id=")) path.put("machineId", pair.substring(3));
+            else if (pair.startsWith("source=")) path.put("sourceId", pair.substring(7));
+            else if (!pair.isEmpty()) rest.append(rest.length() == 0 ? "" : "&")
+                .append(pair);
+        }
+        request.handle(
+            new AE2Controller.RequestContext(
+                new TestGridFixtures.TestExchange(rest.toString()),
+                TestGridFixtures.principal(userId),
+                path,
+                null));
         return new JsonParser().parse(request.getJSON())
             .getAsJsonObject();
     }
@@ -166,7 +180,7 @@ class GTRequestTest {
 
         assertStatus("NOT_FOUND", run(new GetGTMachine(), ALICE_ID, "id=" + carolsMachine));
         assertStatus("NOT_FOUND", run(new GetGTMachine(), ALICE_ID, "id=0:999:0:0"));
-        assertStatus("NO_PARAM", run(new GetGTMachine(), ALICE_ID, ""));
+        assertStatus("BAD_PARAM", run(new GetGTMachine(), ALICE_ID, ""));
 
         JsonObject own = run(new GetGTMachine(), CAROL_ID, "id=" + carolsMachine);
         assertStatus("OK", own);
@@ -246,7 +260,7 @@ class GTRequestTest {
 
         assertStatus("OK", run(new GetGTPowerHistory(), ALICE_ID, "source=" + id + "&range=1h"));
         assertStatus("NOT_FOUND", run(new GetGTPowerHistory(), CAROL_ID, "source=" + id));
-        assertStatus("NO_PARAM", run(new GetGTPowerHistory(), ALICE_ID, ""));
+        assertStatus("BAD_PARAM", run(new GetGTPowerHistory(), ALICE_ID, ""));
         assertStatus("BAD_PARAM", run(new GetGTPowerHistory(), ALICE_ID, "source=" + id + "&range=forever"));
         assertStatus("BAD_PARAM", run(new GetGTPowerHistory(), ALICE_ID, "source=" + id + "&points=0"));
     }

@@ -15,7 +15,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
 import pl.kuba6000.ae2webintegration.core.config.Config;
-import pl.kuba6000.ae2webintegration.core.config.ConfigBootstrap;
 
 /**
  * {@code itemhistory.json} round trip, failure handling, and the load-time capacity/bucket-size
@@ -33,23 +32,23 @@ class ItemHistoryPersistenceTest {
     @BeforeEach
     void setUp() {
         Config.init(configRoot);
-        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 60; // 1h fine buckets
-        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 1; // 24 fine buckets
-        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 10; // 240 hourly buckets
-        ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue = () -> 24;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 60; // 1h fine buckets
+        Config.INSTANCE.statistics.fineRetentionDays = 1; // 24 fine buckets
+        Config.INSTANCE.statistics.hourlyRetentionDays = 10; // 240 hourly buckets
+        Config.INSTANCE.statistics.maxTrackedItemsPerGrid = 24;
     }
 
     @AfterEach
     void resetConfigToDefaults() {
-        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 5;
-        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 30;
-        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 365;
-        ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue = () -> 24;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 5;
+        Config.INSTANCE.statistics.fineRetentionDays = 30;
+        Config.INSTANCE.statistics.hourlyRetentionDays = 365;
+        Config.INSTANCE.statistics.maxTrackedItemsPerGrid = 24;
     }
 
     @Test
     void roundTripThroughSaveNowThenLoadDataPreservesSampledValues() {
-        long gridKey = 970_001L;
+        String gridKey = "970001";
         long now = 5 * HOUR;
         ItemHistoryStore
             .sample(gridKey, oneItem(), TrackingTestFakes.stackList(TrackingTestFakes.stack(ITEM, 42L)), now);
@@ -65,7 +64,7 @@ class ItemHistoryPersistenceTest {
 
     @Test
     void aMalformedFileIsNotOverwrittenAndMemoryIsKept() throws Exception {
-        long gridKey = 970_002L;
+        String gridKey = "970002";
         long now = 6 * HOUR;
         ItemHistoryStore
             .sample(gridKey, oneItem(), TrackingTestFakes.stackList(TrackingTestFakes.stack(ITEM, 7L)), now);
@@ -83,7 +82,7 @@ class ItemHistoryPersistenceTest {
 
     @Test
     void aRetentionDecreaseOnLoadKeepsOnlyTheNewestSamples() throws Exception {
-        long gridKey = 970_003L;
+        String gridKey = "970003";
         long oldCapacity = 48;
         long newestBucket = 47; // no wraparound below, so values[i] lands at bucket i directly
         StringBuilder values = new StringBuilder();
@@ -116,7 +115,7 @@ class ItemHistoryPersistenceTest {
 
     @Test
     void aSampleIntervalChangeOnLoadDiscardsFineDataButKeepsHourly() throws Exception {
-        long gridKey = 970_004L;
+        String gridKey = "970004";
         long mismatchedBucketMillis = HOUR / 2; // persisted at 30 min, now configured for 60 min
         // Fine: bucket size no longer matches - must be discarded rather than resized.
         // Hourly: HOURLY_BUCKET_MILLIS is fixed, so this snapshot's bucket size always matches - a plain

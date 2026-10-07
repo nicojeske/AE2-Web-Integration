@@ -6,7 +6,7 @@ import java.util.UUID;
 /**
  * One energy store at the moment of a scan. Amounts are {@link BigInteger} because GregTech's wireless
  * network and large Lapotronic Supercapacitors overflow a {@code long}. Never serialized as-is: the
- * {@code /gt/power} response turns them into decimal strings, since JSON numbers lose precision past 2^53
+ * {@code /api/gt/power} response turns them into decimal strings, since JSON numbers lose precision past 2^53
  * in a browser.
  */
 public class GTPowerSourceSnapshot {

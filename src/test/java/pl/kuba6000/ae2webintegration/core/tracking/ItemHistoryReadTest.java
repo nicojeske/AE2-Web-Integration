@@ -13,7 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
-import pl.kuba6000.ae2webintegration.core.config.ConfigBootstrap;
+import pl.kuba6000.ae2webintegration.core.config.Config;
 
 /**
  * {@link ItemHistoryStore#readSeries} at the tier-selection / downsampling / bucket-arithmetic level.
@@ -27,18 +27,18 @@ class ItemHistoryReadTest {
 
     @BeforeEach
     void smallFineTier() {
-        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 60; // 1h fine buckets
-        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 1; // 24 fine buckets
-        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 10; // 240 hourly buckets
-        ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue = () -> 24;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 60; // 1h fine buckets
+        Config.INSTANCE.statistics.fineRetentionDays = 1; // 24 fine buckets
+        Config.INSTANCE.statistics.hourlyRetentionDays = 10; // 240 hourly buckets
+        Config.INSTANCE.statistics.maxTrackedItemsPerGrid = 24;
     }
 
     @AfterEach
     void resetConfigToDefaults() {
-        ConfigBootstrap.statisticsSampleIntervalMinutesValue = () -> 5;
-        ConfigBootstrap.statisticsFineRetentionDaysValue = () -> 30;
-        ConfigBootstrap.statisticsHourlyRetentionDaysValue = () -> 365;
-        ConfigBootstrap.statisticsMaxTrackedItemsPerGridValue = () -> 24;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 5;
+        Config.INSTANCE.statistics.fineRetentionDays = 30;
+        Config.INSTANCE.statistics.hourlyRetentionDays = 365;
+        Config.INSTANCE.statistics.maxTrackedItemsPerGrid = 24;
     }
 
     private static Set<String> oneItem() {
@@ -47,7 +47,7 @@ class ItemHistoryReadTest {
 
     @Test
     void spanWithinFineRetentionUsesFineResolution() {
-        long gridKey = 960_001L;
+        String gridKey = "960001";
         long now = 1_000_000_000L;
         ItemHistoryStore
             .sample(gridKey, oneItem(), TrackingTestFakes.stackList(TrackingTestFakes.stack(ITEM, 1L)), now);
@@ -59,7 +59,7 @@ class ItemHistoryReadTest {
 
     @Test
     void spanBeyondFineRetentionUsesHourlyResolution() {
-        long gridKey = 960_002L;
+        String gridKey = "960002";
         long now = 1_000_000_000L;
         ItemHistoryStore
             .sample(gridKey, oneItem(), TrackingTestFakes.stackList(TrackingTestFakes.stack(ITEM, 1L)), now);
@@ -71,7 +71,7 @@ class ItemHistoryReadTest {
 
     @Test
     void downsampleTakesTheNewestNonGapValueInEachWindow() {
-        long gridKey = 960_003L;
+        String gridKey = "960003";
         Set<String> tracked = oneItem();
         long start = 10 * BUCKET_MILLIS; // bucket-aligned
         for (int i = 0; i < 12; i++) {
@@ -93,7 +93,7 @@ class ItemHistoryReadTest {
 
     @Test
     void aWindowWithNoSamplesAnywhereStaysAGap() {
-        long gridKey = 960_004L; // never sampled at all
+        String gridKey = "960004"; // never sampled at all
         JSON_ItemHistory result = ItemHistoryStore.readSeries(gridKey, Arrays.asList(ITEM), 0L, 5 * BUCKET_MILLIS, 2);
         for (long point : result.series.get(0).points) {
             assertEquals(ItemHistoryStore.NO_SAMPLE, point);
@@ -102,7 +102,7 @@ class ItemHistoryReadTest {
 
     @Test
     void resultFromToAndStepMillisMatchBucketArithmetic() {
-        long gridKey = 960_005L;
+        String gridKey = "960005";
         long fromMillis = 5 * BUCKET_MILLIS + 1234; // deliberately not bucket-aligned
         long toMillis = 9 * BUCKET_MILLIS + 999;
 

@@ -29,7 +29,7 @@ import pl.kuba6000.ae2webintegration.core.history.HistoryWriter.SeriesKey;
 
 /**
  * History storage in PostgreSQL (TimescaleDB when the extension is installed), used instead of the JSON
- * history files whenever {@code history_jdbc_url} is configured.
+ * history files whenever {@code history.jdbc_url} is configured.
  * <p>
  * Writes ({@link #putGauge}, {@link #addCounter}, {@link #markSampled}, ...) come from the server thread and
  * only enqueue for {@link HistoryWriter}. Reads run on the calling HTTP worker over a separate connection,
@@ -76,9 +76,9 @@ public final class HistoryDb {
         return active;
     }
 
-    /** Starts the backend if {@code history_jdbc_url} is set. Never blocks on the database itself. */
+    /** Starts the backend if {@code history.jdbc_url} is set. Never blocks on the database itself. */
     public static synchronized void start() {
-        String configuredUrl = Config.HISTORY_JDBC_URL();
+        String configuredUrl = Config.historyJdbcUrl();
         if (configuredUrl.isEmpty()) {
             return;
         }
@@ -89,12 +89,12 @@ public final class HistoryDb {
             }
             stop();
         }
-        start(configuredUrl, Config.HISTORY_DB_USER(), Config.HISTORY_DB_PASSWORD());
+        start(configuredUrl, Config.historyDbUser(), Config.historyDbPassword());
     }
 
     static synchronized HistoryDb start(String url, String user, String password) {
         if (!url.startsWith("jdbc:postgresql:")) {
-            LOG.error("history_jdbc_url must be a jdbc:postgresql:// URL, keeping history in JSON files");
+            LOG.error("history.jdbc_url must be a jdbc:postgresql:// URL, keeping history in JSON files");
             return null;
         }
         HistoryDb db = new HistoryDb(url, user, password);

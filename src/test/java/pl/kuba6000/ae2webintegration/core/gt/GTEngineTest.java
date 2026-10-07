@@ -19,7 +19,6 @@ import org.junit.jupiter.api.io.TempDir;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.config.Config;
-import pl.kuba6000.ae2webintegration.core.config.ConfigBootstrap;
 
 class GTEngineTest {
 
@@ -53,7 +52,7 @@ class GTEngineTest {
         GTEngine.registerProvider(provider);
         assertTrue(GTEngine.isAvailable());
 
-        ConfigBootstrap.gtEnabledValue = () -> false;
+        Config.INSTANCE.gregtech.enabled = false;
         assertFalse(GTEngine.isAvailable());
         GTEngine.onServerTick(0, NOW);
         assertEquals(0, provider.scans, "disabled means no scans either");

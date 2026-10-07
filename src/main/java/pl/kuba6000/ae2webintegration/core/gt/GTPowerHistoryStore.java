@@ -161,17 +161,18 @@ public final class GTPowerHistoryStore {
         if (db != null) {
             db.prune(
                 HistoryTable.POWER_FINE,
-                nowMillis - TimeUnit.HOURS.toMillis(Config.GT_POWER_FINE_RETENTION_HOURS()),
+                nowMillis - TimeUnit.HOURS.toMillis(Config.INSTANCE.gregtech.powerFineRetentionHours),
                 nowMillis);
             db.prune(
                 HistoryTable.POWER_HOURLY,
-                nowMillis - TimeUnit.DAYS.toMillis(Config.GT_POWER_HOURLY_RETENTION_DAYS()),
+                nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.powerHourlyRetentionDays),
                 nowMillis);
         }
-        long minFine = Math
-            .floorDiv(nowMillis - TimeUnit.HOURS.toMillis(Config.GT_POWER_FINE_RETENTION_HOURS()), fineBucketMillis());
+        long minFine = Math.floorDiv(
+            nowMillis - TimeUnit.HOURS.toMillis(Config.INSTANCE.gregtech.powerFineRetentionHours),
+            fineBucketMillis());
         long minHourly = Math.floorDiv(
-            nowMillis - TimeUnit.DAYS.toMillis(Config.GT_POWER_HOURLY_RETENTION_DAYS()),
+            nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.powerHourlyRetentionDays),
             HOURLY_BUCKET_MILLIS);
         for (Map.Entry<String, SourceHistory> entry : histories.entrySet()) {
             SourceHistory h = entry.getValue();
@@ -235,7 +236,7 @@ public final class GTPowerHistoryStore {
         }
     }
 
-    /** Wire shape for {@code /gt/powerhistory}. -1 = no sample in that window. */
+    /** Wire shape for {@code /api/gt/power/{sourceId}/history}. -1 = no sample in that window. */
     public static final class Series {
 
         public String source;
@@ -252,7 +253,8 @@ public final class GTPowerHistoryStore {
     public static Series read(String sourceId, long fromMillis, long toMillis, int maxPoints) {
         long fromClamped = Math.min(fromMillis, toMillis);
         long toClamped = Math.max(fromMillis, toMillis);
-        boolean useFine = toClamped - fromClamped <= TimeUnit.HOURS.toMillis(Config.GT_POWER_FINE_RETENTION_HOURS());
+        boolean useFine = toClamped - fromClamped
+            <= TimeUnit.HOURS.toMillis(Config.INSTANCE.gregtech.powerFineRetentionHours);
         long tierBucketMillis = useFine ? fineBucketMillis() : HOURLY_BUCKET_MILLIS;
 
         long fromBucket = Math.floorDiv(fromClamped, tierBucketMillis);
@@ -309,7 +311,7 @@ public final class GTPowerHistoryStore {
     }
 
     private static long fineBucketMillis() {
-        return TimeUnit.SECONDS.toMillis(Config.GT_POWER_SAMPLE_INTERVAL_SECONDS());
+        return TimeUnit.SECONDS.toMillis(Config.INSTANCE.gregtech.powerSampleIntervalSeconds);
     }
 
     static long saturate(BigInteger value) {

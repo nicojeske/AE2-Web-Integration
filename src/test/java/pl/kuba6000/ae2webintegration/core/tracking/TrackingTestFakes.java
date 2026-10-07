@@ -3,6 +3,7 @@ package pl.kuba6000.ae2webintegration.core.tracking;
 import java.util.Arrays;
 import java.util.List;
 
+import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
@@ -26,7 +27,18 @@ final class TrackingTestFakes {
      * to tell "captured the display name" apart from "captured the itemid" in a name-capture test.
      */
     static IAEGenericStack stack(String itemid, long amount, String displayName) {
+        StableKey identity = StableKey.create(sink -> StableKey.writeText(sink, itemid));
         IAEKey key = new IAEKey() {
+
+            @Override
+            public StableKey web$getKey() {
+                return identity;
+            }
+
+            @Override
+            public IAEKey web$copyIdentity() {
+                return this;
+            }
 
             @Override
             public String web$getItemID() {
@@ -42,11 +54,6 @@ final class TrackingTestFakes {
             public boolean web$isCraftable(IAEGrid grid) {
                 return false;
             }
-
-            @Override
-            public boolean web$isSameType(IAEKey other) {
-                return other != null && itemid.equals(other.web$getItemID());
-            }
         };
         return new IAEGenericStack() {
 
@@ -58,11 +65,6 @@ final class TrackingTestFakes {
             @Override
             public long web$amount() {
                 return amount;
-            }
-
-            @Override
-            public IAEGenericStack web$copy() {
-                return this;
             }
         };
     }
@@ -76,7 +78,8 @@ final class TrackingTestFakes {
                 long total = 0;
                 for (IAEGenericStack stack : list) {
                     if (stack.web$what()
-                        .web$isSameType(key)) {
+                        .web$getKey()
+                        .equals(key.web$getKey())) {
                         total += stack.web$amount();
                     }
                 }

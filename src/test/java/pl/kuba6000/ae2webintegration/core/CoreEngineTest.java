@@ -8,6 +8,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import com.github.bsideup.jabel.Desugar;
+
+import pl.kuba6000.ae2webintegration.core.api.ILegacyConfigProvider;
 import pl.kuba6000.ae2webintegration.core.api.IServerPlatform;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 
@@ -18,7 +21,7 @@ class CoreEngineTest {
 
     @Test
     void initInitializesCoreConfigDirectoryFromPlatform() {
-        CoreEngine.init(new TestPlatform(configRoot), "test-version", "-forge-1.20.1");
+        CoreEngine.init(new TestPlatform(configRoot, false), "test-version", "-forge-1.20.1");
 
         assertEquals(new File(configRoot, "ae2webintegration"), Config.getConfigDirectory());
         assertEquals(
@@ -27,13 +30,19 @@ class CoreEngineTest {
         assertEquals("test-version", CoreEngine.getModVersion());
     }
 
-    private static class TestPlatform implements IServerPlatform {
+    @Test
+    void existingConfigStartsEvenWhenLegacyConfigCannotBeRead() {
+        Config.init(configRoot);
+        String password = Config.INSTANCE.general.password;
 
-        private final File configDirectory;
+        CoreEngine.init(new TestPlatform(configRoot, true), "test-version", "-forge-1.20.1");
 
-        TestPlatform(File configDirectory) {
-            this.configDirectory = configDirectory;
-        }
+        assertEquals(password, Config.INSTANCE.general.password);
+        assertEquals(new File(configRoot, "ae2webintegration"), Config.getConfigDirectory());
+    }
+
+    @Desugar
+    private record TestPlatform(File configDirectory, boolean unreadableLegacyConfig) implements IServerPlatform {
 
         @Override
         public UUID getOnlinePlayerUUID(String username) {
@@ -41,8 +50,19 @@ class CoreEngineTest {
         }
 
         @Override
+        public ILegacyConfigProvider getLegacyConfig() {
+            if (unreadableLegacyConfig) throw new IllegalArgumentException("Malformed legacy configuration");
+            return null;
+        }
+
+        @Override
         public File getConfigDirectory() {
             return configDirectory;
+        }
+
+        @Override
+        public File getWorldDirectory() {
+            return new File(configDirectory, "test-save");
         }
 
     }

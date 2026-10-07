@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-import org.apache.commons.lang3.tuple.Pair;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,21 +13,33 @@ import pl.kuba6000.ae2webintegration.core.api.ICommandBuilder;
 import pl.kuba6000.ae2webintegration.core.api.ICommandContext;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.commands.CommandBootstrap;
+import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.config.ConfigTestFixture;
 import pl.kuba6000.ae2webintegration.core.config.CoreDataTestFixture;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAE;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
-import pl.kuba6000.ae2webintegration.core.interfaces.IAEPlayerData;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 
 /** Tests for {@link CommandBootstrap} command tree definition. */
+@SuppressWarnings("PMD.AvoidMagicNumbers")
 class CommandBootstrapTest {
+
+    private ConfigTestFixture config;
 
     @BeforeEach
     void setUpPlayerLookup() {
+        config = new ConfigTestFixture();
+        config.set("general.port", ConfigTestFixture.unusedLoopbackPort());
         AE2Controller.AE2Interface = new TestAE();
         CoreDataTestFixture.reset();
+    }
+
+    @AfterEach
+    void tearDown() {
+        AE2Controller.stopHTTPServer();
+        config.close();
     }
 
     @Test
@@ -39,7 +51,7 @@ class CommandBootstrapTest {
         RecordingContext ctx = new RecordingContext();
         // Grant permission
         ctx.hasPermissionResult = true;
-        ctx.reloader = () -> {};
+        config.write("general.public_mode", false);
         ctx.playerIdentity = new PlayerIdentity(UUID.randomUUID(), "Player");
 
         // Invoke the captured reload handler
@@ -47,8 +59,9 @@ class CommandBootstrapTest {
 
         // Verify: should have checked permission(4)
         assertTrue(ctx.lastPermissionCheck >= 4, "should check permission level >= 4");
-        // Verify reload was triggered (reloader was run)
-        assertTrue(ctx.reloaderRan, "reloader should have been invoked");
+        // Reload applies the edited file through the command.
+        assertFalse(Config.INSTANCE.general.publicMode);
+        assertNull(ctx.lastError);
     }
 
     @Test
@@ -58,17 +71,18 @@ class CommandBootstrapTest {
 
         RecordingContext ctx = new RecordingContext();
         ctx.hasPermissionResult = false;
+        config.write("general.public_mode", false);
 
         builder.reloadHandler.accept(ctx);
 
         // Should send error when no permission
         assertNotNull(ctx.lastError, "should have sent error message");
-        // Verify reload was NOT triggered
-        assertFalse(ctx.reloaderRan, "reloader should NOT have been invoked");
+        // The denied command leaves the active settings unchanged.
+        assertTrue(Config.INSTANCE.general.publicMode);
     }
 
     @Test
-    void testAuthHandlerWithToken() {
+    void testAuthHandlerWithToken() throws Exception {
         RecordingBuilder builder = new RecordingBuilder();
         CommandBootstrap.init(builder);
 
@@ -76,18 +90,13 @@ class CommandBootstrapTest {
         ctx.args = new String[] { "auth", "my-test-token" };
         ctx.playerIdentity = new PlayerIdentity(UUID.randomUUID(), "Player");
 
-        // Put a registration in the awaiting map so registerPlayer succeeds
-        UUID uuid = ctx.playerIdentity.uuid;
-        AE2Controller.awaitingRegistration.put(uuid, Pair.of("my-test-token", "password-hash"));
-
-        try {
+        try (RegistrationTestFixture registrations = new RegistrationTestFixture()) {
+            String token = registrations.begin(ctx.playerIdentity, "test-password");
+            ctx.args = new String[] { "auth", token };
             builder.authHandler.accept(ctx);
-
-            // Should have read args[1] as token
-            // RegisterPlayer should have succeeded
             assertNull(ctx.lastError, "no error expected");
-        } finally {
-            AE2Controller.awaitingRegistration.remove(uuid);
+            builder.authHandler.accept(ctx);
+            assertNotNull(ctx.lastError, "confirmation tokens are consumed by the command");
         }
     }
 
@@ -162,8 +171,6 @@ class CommandBootstrapTest {
             return parent != null ? parent : this;
         }
 
-        @Override
-        public void register() {}
     }
 
     private static class TestAE implements IAE {
@@ -183,21 +190,6 @@ class CommandBootstrapTest {
             throw new UnsupportedOperationException();
         }
 
-        @Override
-        public IAEPlayerData web$getPlayerData() {
-            return new IAEPlayerData() {
-
-                @Override
-                public PlayerIdentity web$getPlayerProfile(int playerId) {
-                    return null;
-                }
-
-                @Override
-                public int web$getPlayerId(PlayerIdentity identity) {
-                    return 42;
-                }
-            };
-        }
     }
 
     // --- Recording ICommandContext stub ---
@@ -207,11 +199,8 @@ class CommandBootstrapTest {
         String[] args = new String[0];
         int lastPermissionCheck = -1;
         boolean hasPermissionResult = false;
-        String lastMessage;
         String lastError;
         PlayerIdentity playerIdentity;
-        Runnable reloader;
-        boolean reloaderRan;
 
         @Override
         public String[] getArgs() {
@@ -230,21 +219,12 @@ class CommandBootstrapTest {
         }
 
         @Override
-        public void sendMessage(String text) {
-            lastMessage = text;
-        }
+        public void sendMessage(String text) {}
 
         @Override
         public void sendError(String text) {
             lastError = text;
         }
 
-        @Override
-        public Runnable getReloader() {
-            return () -> {
-                reloaderRan = true;
-                if (reloader != null) reloader.run();
-            };
-        }
     }
 }

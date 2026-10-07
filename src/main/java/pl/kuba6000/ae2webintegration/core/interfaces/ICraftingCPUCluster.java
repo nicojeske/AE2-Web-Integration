@@ -1,10 +1,14 @@
 package pl.kuba6000.ae2webintegration.core.interfaces;
 
+import org.jetbrains.annotations.NotNull;
+
+import pl.kuba6000.ae2webintegration.core.identity.StableKey;
+
 public interface ICraftingCPUCluster {
 
-    void web$setInternalID(int id);
-
-    boolean web$hasCustomName();
+    /** Stable address within a saved world, independent of display name and current crafting job. */
+    @NotNull
+    StableKey web$getKey();
 
     String web$getName();
 

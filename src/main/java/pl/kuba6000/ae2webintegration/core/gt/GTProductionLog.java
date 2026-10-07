@@ -74,7 +74,7 @@ public final class GTProductionLog {
 
     public static void record(String machineId, String machineName, UUID owner, String stackId, String stackName,
         long amount, boolean fluid, long nowMillis) {
-        if (machineId == null || stackId == null || amount <= 0 || !Config.GT_ENABLED()) {
+        if (machineId == null || stackId == null || amount <= 0 || !Config.INSTANCE.gregtech.enabled) {
             return;
         }
         if (trackingSinceMillis == 0L) {
@@ -123,18 +123,20 @@ public final class GTProductionLog {
             // Machine and stack names are kept: they are small, and the database may still hold their rows.
             db.prune(
                 HistoryTable.PRODUCTION_HOURLY,
-                nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_HOURLY_RETENTION_DAYS()),
+                nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.productionHourlyRetentionDays),
                 nowMillis);
             db.prune(
                 HistoryTable.PRODUCTION_DAILY,
-                nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_DAILY_RETENTION_DAYS()),
+                nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.productionDailyRetentionDays),
                 nowMillis);
             return;
         }
-        long minHourly = Math
-            .floorDiv(nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_HOURLY_RETENTION_DAYS()), HOUR_MILLIS);
-        long minDaily = Math
-            .floorDiv(nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_DAILY_RETENTION_DAYS()), DAY_MILLIS);
+        long minHourly = Math.floorDiv(
+            nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.productionHourlyRetentionDays),
+            HOUR_MILLIS);
+        long minDaily = Math.floorDiv(
+            nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.productionDailyRetentionDays),
+            DAY_MILLIS);
         for (Map.Entry<String, MachineProduction> machineEntry : machines.entrySet()) {
             MachineProduction machine = machineEntry.getValue();
             for (Map.Entry<String, PairSeries> stackEntry : machine.stacks.entrySet()) {
@@ -179,7 +181,7 @@ public final class GTProductionLog {
 
     /** Whether a range starting at {@code fromMillis} can be answered from hourly buckets. */
     static boolean useHourly(long fromMillis, long nowMillis) {
-        return fromMillis >= nowMillis - TimeUnit.DAYS.toMillis(Config.GT_PRODUCTION_HOURLY_RETENTION_DAYS());
+        return fromMillis >= nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.productionHourlyRetentionDays);
     }
 
     /**
@@ -247,7 +249,7 @@ public final class GTProductionLog {
         return rows;
     }
 
-    /** Wire shape for {@code /gt/productionhistory}. Each point is the amount produced in that window. */
+    /** Wire shape for {@code /api/gt/production/history}. Each point is the amount produced in that window. */
     public static final class Series {
 
         public String stack;

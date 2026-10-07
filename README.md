@@ -42,6 +42,10 @@ If you only want to use the mod, download a version-specific JAR from
 [CurseForge](https://www.curseforge.com/minecraft/mc-mods/ae2-web-integration), or
 [Modrinth](https://modrinth.com/mod/ae2-web-integration). Do not try to install the `core` branch by itself.
 
+For development, run core checks with `./gradlew test spotlessCheck`. The two shipped web interfaces
+also have dependency-free behavioral checks: `node --test src/test/js/item-identity.test.cjs`
+(Node.js 18 or newer).
+
 ## Showcase on YouTube
 
 ### Main mod
@@ -84,8 +88,9 @@ password accordingly!
 - Track active and completed crafting jobs, including a per-item and per-interface crafting-time timeline
 - Favorite items with low-stock alerts and automatic re-crafting to a target stock level
 - Chart per-item stored-count history over time, with a compare view across several items
+- GregTech hub (GTNH 1.7.10): machine status, power storage and production statistics
 - Desktop notifications on job completion
-- Send crafting updates through a Discord webhook
+- Send crafting updates through a Discord webhook or ntfy
 
 ## Gallery
 
@@ -135,11 +140,10 @@ A proxy on the same machine is trusted automatically and does not need to be add
 running on another machine, set `trusted_proxies` to a comma-separated list of literal IPv4/IPv6 addresses or
 CIDR ranges. For example, in the TOML config:
 
-```text
-trusted_proxies = "192.168.1.10, 10.20.0.0/24, 2001:db8::10"
+```toml
+[general]
+trusted_proxies = '192.168.1.10, 10.20.0.0/24, 2001:db8::10'
 ```
-
-The same option is available in the Forge `.cfg` file on older versions.
 
 Hostnames are not accepted; use a literal address or CIDR range instead.
 
@@ -148,12 +152,20 @@ from right to left, skips configured trusted proxies, and uses the first untrust
 prevents a client from granting itself localhost access by sending a forged
 `X-Forwarded-For: 127.0.0.1` header directly.
 
+For HTTPS termination, preserve the public `Host` header (including any nonstandard port) and set
+`X-Forwarded-Proto` to the public protocol, `http` or `https`. The mod accepts this protocol header only
+from the same trusted proxies described above. It is used to validate the origin of browser login and
+registration forms when `Sec-Fetch-Site` is absent. The proxy must overwrite `X-Forwarded-Proto`, not
+forward an arbitrary client value or append a list. With multiple proxy hops, the last trusted proxy
+must supply the verified public protocol.
+
 Example Nginx configuration for a proxy running on the same machine:
 
 ```nginx
 location / {
     proxy_pass http://127.0.0.1:2324;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 }
@@ -174,12 +186,10 @@ By default, the panel is available at `http://your-server-ip-or-domain:2324/`. T
 2. Drop the mod into the server's `mods` folder. On multiplayer, it only belongs on the server. It also works in
    a single-player instance, although that is not its main use case.
 3. Start the server once to generate the config.
-4. Open `config/ae2webintegration/ae2webintegration.toml`, or
-   `config/ae2webintegration/ae2webintegration.cfg` on older Minecraft versions. Configure the port, admin
+4. Open `config/ae2webintegration/config.toml`. Configure the port, admin
    password, public mode, and other settings as needed.
 5. **Disable public mode if you are playing alone.**
-6. Reload the config with `/ae2webintegration reload`, or restart the server. On 1.21.1, NeoForge normally
-   notices file changes automatically, but the command can still force a full config and web server reload.
+6. Reload the config with `/ae2webintegration reload`, or restart the server.
 7. Allow the configured port through your firewall and router as needed, or route access through a reverse
    proxy.
 8. Visit `http://your-server-ip-or-domain:configured-port/` and log in with the `Admin` account and the password
@@ -195,13 +205,13 @@ By default, item statistics and GregTech power/production history are stored in 
 them in PostgreSQL instead. If the [TimescaleDB](https://www.timescale.com/) extension is installed in that
 database, the tables become compressed hypertables automatically. Plain PostgreSQL works too.
 
-Configure it in the mod config:
+Configure it in the `[history]` section of `config.toml`:
 
 | Key | Environment override | Meaning |
 |---|---|---|
-| `history_jdbc_url` | `AE2WEB_HISTORY_JDBC_URL` | e.g. `jdbc:postgresql://db-host:5432/ae2web`. Empty = JSON files. |
-| `history_db_user` | `AE2WEB_HISTORY_DB_USER` | Database user, unless the URL carries one. |
-| `history_db_password` | `AE2WEB_HISTORY_DB_PASSWORD` | Database password. Prefer the environment variable over writing it into the config. |
+| `jdbc_url` | `AE2WEB_HISTORY_JDBC_URL` | e.g. `jdbc:postgresql://db-host:5432/ae2web`. Empty = JSON files. |
+| `db_user` | `AE2WEB_HISTORY_DB_USER` | Database user, unless the URL carries one. |
+| `db_password` | `AE2WEB_HISTORY_DB_PASSWORD` | Database password. Prefer the environment variable over writing it into the config. |
 
 Things to know:
 
@@ -209,7 +219,7 @@ Things to know:
 - The mod creates its own tables. It does **not** install TimescaleDB itself: to get hypertables, run
   `CREATE EXTENSION IF NOT EXISTS timescaledb;` in that database as a superuser before the first start.
 - On the first start with a database, existing JSON history is imported once and the files are renamed to
-  `*.json.migrated`. To go back to JSON storage, clear `history_jdbc_url` and rename the files back.
+  `*.json.migrated`. To go back to JSON storage, clear `jdbc_url` and rename the files back.
 - If the database is unreachable, writes are queued and retried on a background thread, so the server tick is
   never blocked. Charts show no data until the database is back.
 
@@ -254,24 +264,45 @@ env:
 
 </details>
 
-## Discord integration
+## Notification services integration
 
-**Discord integration only works when public mode is disabled.**
+**Integrations only works when public mode is disabled.**
+
+Crafting completion notifications can be filtered with `minimum_crafting_duration_seconds` and
+`minimum_crafting_amount`. A notification must meet both configured minimums. Both values default to `0`,
+which keeps all crafting completion notifications enabled.
+Notifications are initialized ONLY for tracked grids
+
+#### Discord Integration
 
 Create a Discord webhook and set its URL as `discord_webhook` in the AE2 Web Integration config. You can also
 set `discord_role_id` if a role should be pinged on errors.
 
-Crafting completion notifications can be filtered with `discord_minimum_crafting_duration_seconds` and
-`discord_minimum_crafting_amount`. A notification must meet both configured minimums. Both values default to `0`,
-which keeps all crafting completion notifications enabled.
 
 <img width="467" height="224" alt="AE2 Web Integration Discord message" src="https://github.com/user-attachments/assets/f9f7635d-676c-40a3-8334-f7fa35e5867a" />
 
-## Custom website
+#### NTFY Integration
 
-If you already have a web server and want to host the panel there, you can! There is no complete API
-documentation yet, but the [`example_website`](./example_website) directory contains a ready-to-use simple PHP
+[ntfy](https://ntfy.sh/) sends the same crafting updates as a phone or desktop notification. Set `ntfy.host` to [ntfy.sh](https://ntfy.sh/) or to your own server, and set `ntfy.topic` to a topic you subscribed to in the app. A host without `http://` or `https://` is sent over HTTPS.
+
+Leave `ntfy.user` and `ntfy.password` empty when the topic is public. A private topic needs both. Setting only one of them turns ntfy off.
+
+`notifications.full_domain` is optional. When it is set, opening the notification goes to that address.
+
+## Custom website and Automation
+
+If you already have a web server and want to host the panel there, you can! The
+[`example_website`](./example_website) directory contains a ready-to-use simple PHP
 proxy. It forwards API calls from your web server to the AE2 Web Integration endpoint.
+
+If you want to use this mod as an API endpoint,
+website exposes the entire API at /api/ endpoint,
+documentation can be found here: https://ae2web.kuba6000.pl/docs/
+*NOTE: All requests should be sent to YOUR server, NOT ae2web.kuba6000.pl*
+
+You can also generate the entire documentation yourself,
+see the [OpenAPI generator guide](tools/openapi-doclet/README.md) for generating the API
+specification from endpoint annotations and Javadocs.
 
 ## Compatibility
 

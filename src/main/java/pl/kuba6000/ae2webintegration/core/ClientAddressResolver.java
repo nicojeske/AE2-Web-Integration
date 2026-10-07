@@ -4,6 +4,10 @@ import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import com.github.bsideup.jabel.Desugar;
 import com.google.common.net.InetAddresses;
 
 /**
@@ -16,35 +20,29 @@ import com.google.common.net.InetAddresses;
  * direct peer is a configured trusted proxy. That condition is the entire safety mechanism - do not
  * relax it.
  */
+@SuppressWarnings("UnstableApiUsage")
 public final class ClientAddressResolver {
 
     /** A configured trusted entry: an address plus how many leading bits of it are significant. */
-    private static final class Entry {
-
-        private final byte[] address;
-        private final int prefixBits;
-
-        private Entry(byte[] address, int prefixBits) {
-            this.address = address;
-            this.prefixBits = prefixBits;
-        }
+    @Desugar
+    private record Entry(byte[] address, int prefixBits) {
 
         boolean matches(byte[] candidate) {
             // Different families (4 vs 16 bytes) never match.
             if (candidate.length != address.length) {
                 return false;
             }
-            int fullBytes = prefixBits / 8;
+            int fullBytes = prefixBits / Byte.SIZE;
             for (int i = 0; i < fullBytes; i++) {
                 if (candidate[i] != address[i]) {
                     return false;
                 }
             }
-            int remainingBits = prefixBits % 8;
+            int remainingBits = prefixBits % Byte.SIZE;
             if (remainingBits == 0) {
                 return true;
             }
-            int mask = 0xFF << (8 - remainingBits);
+            int mask = 0xFF << (Byte.SIZE - remainingBits); // NOPMD - Unsigned byte mask for the CIDR prefix.
             return (candidate[fullBytes] & mask) == (address[fullBytes] & mask);
         }
     }
@@ -56,9 +54,9 @@ public final class ClientAddressResolver {
     }
 
     /**
-     * @param trustedProxies comma-separated addresses and/or CIDR blocks. Empty means nothing is trusted,
-     *                       so forwarding headers are ignored entirely. Hostnames are rejected rather
-     *                       than resolved, to keep config parsing free of DNS.
+     * @param trustedProxies comma-separated addresses and/or CIDR blocks. Empty trusts only connections
+     *                       from this machine. Hostnames are rejected rather than resolved, to keep
+     *                       config parsing free of DNS.
      */
     public static ClientAddressResolver fromConfig(String trustedProxies) {
         List<Entry> entries = new ArrayList<>();
@@ -95,7 +93,7 @@ public final class ClientAddressResolver {
         if (address == null) {
             return null;
         }
-        int maxBits = address.length * 8;
+        int maxBits = address.length * Byte.SIZE;
         if (prefixBits < 0) {
             prefixBits = maxBits;
         } else if (prefixBits > maxBits) {
@@ -136,12 +134,17 @@ public final class ClientAddressResolver {
      * nothing extra either - anything running on this host can already reach us over loopback.
      */
     private static boolean isSameMachine(InetAddress peer, InetAddress localAddress) {
-        return peer.isLoopbackAddress() || (localAddress != null && peer.equals(localAddress));
+        return peer.isLoopbackAddress() || peer.equals(localAddress);
+    }
+
+    /** Whether forwarding headers from this direct connection can be trusted. */
+    public boolean isTrustedProxy(@NotNull InetAddress peer, @Nullable InetAddress localAddress) {
+        return isTrusted(peer) || isSameMachine(peer, localAddress);
     }
 
     /**
      * @param peer         the address the TCP connection actually came from
-     * @param localAddress the address the connection arrived on, or {@code null} if unknown
+     * @param localAddress the local destination address, or {@code null} if unknown
      * @param forwardedFor {@code X-Forwarded-For} header values, or {@code null}
      * @param realIp       {@code X-Real-IP} header values, or {@code null}
      * @return the address to treat as the client. Falls back to {@code peer} whenever the headers cannot
@@ -149,7 +152,7 @@ public final class ClientAddressResolver {
      */
     public InetAddress resolve(InetAddress peer, InetAddress localAddress, List<String> forwardedFor,
         List<String> realIp) {
-        if (!isTrusted(peer) && !isSameMachine(peer, localAddress)) {
+        if (!isTrustedProxy(peer, localAddress)) {
             return peer;
         }
         InetAddress fromChain = firstUntrustedFromRight(forwardedFor);
