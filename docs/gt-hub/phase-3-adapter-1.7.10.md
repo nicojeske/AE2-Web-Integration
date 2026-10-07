@@ -272,14 +272,14 @@ interfaces are fine.
    - `config/ae2webintegration/gt*.json` appearing after about 15 minutes
 
 ## 9. Checklist / definition of done
-- [ ] Submodule URL points at the fork, and the pin includes Phase 1
-- [ ] Deps bumped (GTNHLib 0.11.52, AE2 rv3-beta-1080) and GT 5.09.54.205 compileOnly/runtime; `after:gregtech`
-- [ ] `GTStacks` shared with the AE2 item-ID logic
-- [ ] `GTStatusMapper` per §3, with a unit test for the mapping if testable without a world (plain booleans/enums in, status out)
-- [ ] `GTProvider` (machines, LSCs, wireless, teams), robust per machine
-- [ ] Mixin A (runMachine PUTFIELD), plus Mixin B (TecTech), loaded only with GT present
-- [ ] Optional removal hook
-- [ ] Registration guarded by `Loader.isModLoaded("gregtech")`
-- [ ] runServer test procedure §7 passed, including the no-GT run
-- [ ] Commits on `1.7.10`; update the README phase table
+- [x] Submodule URL points at the fork, and the pin includes Phase 1
+- [x] Deps bumped (GTNHLib 0.11.52, AE2 rv3-beta-1080) and GT 5.09.54.205 compileOnly/runtime; `after:gregtech`
+- [x] `GTStacks` shared with the AE2 item-ID logic
+- [x] `GTStatusMapper` per §3, with a unit test for the mapping if testable without a world (plain booleans/enums in, status out)
+- [x] `GTProvider` (machines, LSCs, wireless, teams), robust per machine
+- [x] Mixin A (runMachine PUTFIELD), plus Mixin B (TecTech), loaded only with GT present
+- [x] Optional removal hook
+- [x] Registration guarded by `Loader.isModLoaded("gregtech")`
+- [x] runServer test procedure §7 passed, including the no-GT run
+- [x] Commits on `1.7.10`; update the README phase table
 - [ ] Rollout §8 only after the user says go

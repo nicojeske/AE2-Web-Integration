@@ -41,6 +41,8 @@ Out of scope for v1: Discord alerts, remote on/off, quests, pollution.
   `IAEWebInterface.getInstance().registerGTProvider(...)`.
 - Without a provider, which is the case on the other branches, every `/gt/*` endpoint answers `NOT_AVAILABLE`,
   `_REPLACE_ME_HAS_GT` becomes `false`, and the UI hides the GT sections.
+- The three history stores keep JSON files by default. With `history_jdbc_url` set they use PostgreSQL
+  (TimescaleDB if installed) instead; see "History database (optional)" in the [main README](../../README.md).
 - Live GregTech state is only read during the scan, which runs on the server tick. HTTP handlers only ever read
   what the scan stored. This is the same split as the existing `IAsyncRequest` endpoints.
 
@@ -51,7 +53,8 @@ Out of scope for v1: Discord alerts, remote on/off, quests, pollution.
 | 0: version check | live server | (this file) | ✅ done |
 | 1: core: provider API, stores, endpoints, tests | `core` | [phase-1-core.md](phase-1-core.md) | ✅ done (`db97705`, `db584c0`) |
 | 2: web frontend: Machines, Power, Production views | `core` (`web/`) | [phase-2-frontend.md](phase-2-frontend.md) | ✅ done (`6ea72f7`, `8980264`) |
-| 3: 1.7.10 adapter: GT provider and production mixin | `1.7.10` | [phase-3-adapter-1.7.10.md](phase-3-adapter-1.7.10.md) | ⏳ todo |
+| 3: 1.7.10 adapter: GT provider and production mixin | `1.7.10` | [phase-3-adapter-1.7.10.md](phase-3-adapter-1.7.10.md) | ✅ done (`704ffcf`, `1ed5431`, `dad0fc4`, `c6fe031`, `d8b042f`) |
+| Rollout to the live server | live server | [phase-3 §8](phase-3-adapter-1.7.10.md#8-rollout-needs-the-users-explicit-go-ahead) | ⏸ pending, needs the user's go-ahead |
 
 Phases 2 and 3 are independent and can be done in either order. Phase 2 can be built and checked entirely
 against the Vite mock server, and Phase 3 against `/gt/*` JSON in a browser. Rollout to the live server

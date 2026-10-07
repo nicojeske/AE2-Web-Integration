@@ -188,6 +188,72 @@ By default, the panel is available at `http://your-server-ip-or-domain:2324/`. T
 In public mode, a player can create an account from the login page. After choosing a password, the page displays
 an `/ae2webintegration auth <token>` command. The player must run that command in game to finish registration.
 
+## History database (optional)
+
+By default, item statistics and GregTech power/production history are stored in JSON files next to the config
+(`itemhistory.json`, `gtpower.json`, `gtproduction.json`). For long retention or many tracked items you can store
+them in PostgreSQL instead. If the [TimescaleDB](https://www.timescale.com/) extension is installed in that
+database, the tables become compressed hypertables automatically. Plain PostgreSQL works too.
+
+Configure it in the mod config:
+
+| Key | Environment override | Meaning |
+|---|---|---|
+| `history_jdbc_url` | `AE2WEB_HISTORY_JDBC_URL` | e.g. `jdbc:postgresql://db-host:5432/ae2web`. Empty = JSON files. |
+| `history_db_user` | `AE2WEB_HISTORY_DB_USER` | Database user, unless the URL carries one. |
+| `history_db_password` | `AE2WEB_HISTORY_DB_PASSWORD` | Database password. Prefer the environment variable over writing it into the config. |
+
+Things to know:
+
+- The database is picked up at server start, so restart the server after changing these settings.
+- The mod creates its own tables. It does **not** install TimescaleDB itself: to get hypertables, run
+  `CREATE EXTENSION IF NOT EXISTS timescaledb;` in that database as a superuser before the first start.
+- On the first start with a database, existing JSON history is imported once and the files are renamed to
+  `*.json.migrated`. To go back to JSON storage, clear `history_jdbc_url` and rename the files back.
+- If the database is unreachable, writes are queued and retried on a background thread, so the server tick is
+  never blocked. Charts show no data until the database is back.
+
+<details>
+<summary>Example: Kubernetes with CloudNativePG</summary>
+
+A [CloudNativePG](https://cloudnative-pg.io/) cluster with TimescaleDB preloaded and the extension created at
+bootstrap. Use a PostgreSQL image that ships TimescaleDB:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ae2web-history
+spec:
+  instances: 1
+  imageName: <a PostgreSQL image with TimescaleDB>
+  postgresql:
+    shared_preload_libraries: [timescaledb]
+  bootstrap:
+    initdb:
+      database: ae2web
+      owner: ae2web
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS timescaledb;
+  storage:
+    size: 10Gi
+```
+
+Then point the Minecraft server at it. CloudNativePG creates the `ae2web-history-app` secret with the
+credentials, and `ae2web-history-rw` is the read-write service:
+
+```yaml
+env:
+  - name: AE2WEB_HISTORY_JDBC_URL
+    value: jdbc:postgresql://ae2web-history-rw:5432/ae2web
+  - name: AE2WEB_HISTORY_DB_USER
+    valueFrom: { secretKeyRef: { name: ae2web-history-app, key: username } }
+  - name: AE2WEB_HISTORY_DB_PASSWORD
+    valueFrom: { secretKeyRef: { name: ae2web-history-app, key: password } }
+```
+
+</details>
+
 ## Discord integration
 
 **Discord integration only works when public mode is disabled.**

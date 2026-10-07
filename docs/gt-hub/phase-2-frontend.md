@@ -199,4 +199,9 @@ Where the code differs from the plan above:
   inline ("Track & open"), since tracking uses one of the network's limited slots.
 - Phone width: the Production row actions move into the expanded row.
 - The terminal has no light theme, so "both themes" only applies to dark.
+- Power (`628048f`, after the phase): the main LSC (the largest by capacity, or one pinned with "Set as
+  main", stored in synced prefs as `mainPowerSource`) gets a full-width panel with its stored and net
+  charts always shown. The other sources keep the cards with a History toggle, and the totals row only
+  appears when there is no LSC. Rates read as amps at the highest tier reached plus raw EU/t
+  (`formatEUtTier`, e.g. "+3.7A IV · 30k EU/t"). Chart axes stay in EU/t.
 
