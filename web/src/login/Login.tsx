@@ -16,7 +16,7 @@ const STATUS_TEXT: Record<string, string> = {
  * Reads the redirect params WebHandler's native form POST handling (-> 302, not the JSON /api/auth
  * endpoints, which set no cookie) can land the browser on, then scrubs the URL so a reload doesn't re-show
  * a stale banner. A failure arrives as a bare status code (`?INVALID_USER`), a pending registration as
- * `?confirmregistration&token=`.
+ * `?confirmregistration&token=`. The PHP proxy shares this page and these redirects.
  */
 function readBanner(): Banner {
     const url = new URL(window.location.href);
@@ -26,7 +26,8 @@ function readBanner(): Banner {
         const token = params.get("token") ?? "";
         banner = { kind: "confirm-registration", command: `/ae2webintegration auth ${token}` };
     } else {
-        const status = [...params.keys()].find((key) => /^[A-Z_]+$/.test(key));
+        // example_website/index.php reports any other status as `?error=<STATUS>`.
+        const status = params.get("error") ?? [...params.keys()].find((key) => /^[A-Z_]+$/.test(key));
         if (status) {
             banner = { kind: "error", text: STATUS_TEXT[status] ?? `Sign-in failed (${status}).` };
         }

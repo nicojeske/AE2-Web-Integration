@@ -188,9 +188,9 @@ Where the code differs from the plan above:
   `views/gtModel.ts` + `views/gtCommon.tsx` (not `machinesModel.ts`), and all three views share one
   `views/gt.css`.
 - Mock toggles: `MOCK_GT=0|na`, or `?gt=0|na` on the page URL (read back off API calls' Referer), instead
-  of `?fail=` on the page. `?fail=NOT_AVAILABLE` still works on a direct `/gt/*` request.
+  of `?fail=` on the page. `?fail=NOT_AVAILABLE` still works on a direct `/api/gt/*` request.
 - Polling ignores Settings' auto-refresh: that setting is `autoRefreshItems` and only governs the
-  server-thread `/items` poll. `/gt/*` is async (no drain budget), so GT polls like Jobs does and only
+  server-thread `/items` poll. `/api/gt/*` is async (no drain budget), so GT polls like Jobs does and only
   pauses while the tab is hidden.
 - `formatDuration` (ms, not seconds) gained a days tier instead of a second helper.
 - Recipe progress is interpolated client-side between scans and wraps at the recipe length, so short

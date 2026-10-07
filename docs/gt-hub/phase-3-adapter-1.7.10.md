@@ -134,7 +134,7 @@ public GTScanResult scan(long nowMillis) {
   and `getEnergyOutputValues().avgLong()`.
 - **Cost**: one pass over `loadedTileEntityList` per dimension every 10 s. GTNH bases have tens of thousands
   of TEs, and `instanceof` filtering is microseconds per thousand. Core logs anything over 5 ms. Measure on
-  the real server (`scanMicros` in `/gt/machines`).
+  the real server (`scanMicros` in `/api/gt/machines`).
 - Uses `GameRegistry.findUniqueIdentifierFor` and `FluidStack.getFluid().getName()`, so the IDs match AE2's
   `AEStackMixin.web$getItemID()` exactly. **Reuse that logic in one helper** (`GTStacks`) rather than
   re-deriving it.
@@ -196,7 +196,7 @@ produce no items anyway.
 
 **Machine removal** (optional, nice to have): inject at `HEAD` of `MTEMultiBlockBase#onRemoval()` (verify
 the name ⚠; `IMetaTileEntity` has `onRemoval()`) and call `gtMachineRemoved(id)`. Without it, broken
-machines simply expire after `gt_machine_forget_days`.
+machines simply expire after `gregtech.machine_forget_days`.
 
 ### Mixin loading ⚠
 
@@ -235,21 +235,21 @@ interfaces are fine.
 1. `./gradlew build` on `1.7.10`, which also builds core through the submodule.
 2. `./gradlew runServer`, then in a creative test world (op yourself):
    - build an EBF with an LV/MV energy hatch, maintenance hatch, and in/out busses, plus an LSC
-   - open `http://localhost:2324/gt/machines` (localhost is admin) and confirm the EBF appears within 10 s
+   - open `http://localhost:2324/api/gt/machines` (localhost is admin) and confirm the EBF appears within 10 s
      with the right `type`, `voltageTier` and owner
    - break one casing → `STRUCTURE_INCOMPLETE`; restore it, then add a maintenance problem → `MAINTENANCE`
      with issue names
    - disable with a soft mallet → `DISABLED`; cut power mid-recipe → `NO_POWER` (`statusDetail` from
      `POWER_LOSS`); fill the output bus → `OUTPUT_FULL`
-   - run recipes, then check `/gt/production?range=1h` and confirm the totals match the items actually output
+   - run recipes, then check `/api/gt/production?range=1h` and confirm the totals match the items actually output
      (count them in the bus)
-   - `/gt/power`: check LSC stored, capacity and averages against the LSC GUI
+   - `/api/gt/power`: check LSC stored, capacity and averages against the LSC GUI
    - wireless: put EU in via a wireless dynamo (or `/gt` command if available) and confirm the `wireless:`
      source and that `netPerTick` shows up after two scans
    - move far away to unload the chunk, then confirm the machine shows `loaded:false` and keeps its last
      state
    - check `scanMicros` and the server log for the slow-scan warning
-3. With the GT jar removed from the dev run: the mod still loads, AE2 works, `/gt/machines` returns
+3. With the GT jar removed from the dev run: the mod still loads, AE2 works, `/api/gt/machines` returns
    `NOT_AVAILABLE`, and no `NoClassDefFoundError` appears in the log.
 
 ## 8. Rollout (needs the user's explicit go-ahead)
@@ -261,7 +261,7 @@ interfaces are fine.
 3. Copy it in:
    `kubectl -n gtnhts cp <jar> <pod>:/data/mods/`
    then remove `/data/mods/ae2webintegration-2.0.4-forge-1.7.10.jar`. The config file is kept, and new
-   `gt_*` keys get their defaults.
+   `[gregtech]` keys get their defaults.
 4. Restart: `kubectl -n gtnhts rollout restart deploy/gtnhts-minecraft`. Watch
    `kubectl -n gtnhts logs -f deploy/gtnhts-minecraft | grep -i 'ae2webintegration\|GregTech'` for
    "GregTech provider registered" and any mixin errors.

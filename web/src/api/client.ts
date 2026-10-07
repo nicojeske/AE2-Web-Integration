@@ -55,10 +55,9 @@ async function apiRequest<T>(method: Method, path: string, body?: unknown): Prom
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (res.status === 401) {
-        // The session token expired or was revoked elsewhere. A page navigation would land back on
-        // login.html for the same condition; do the same here instead of leaving the SPA stuck on a
-        // generic error toast. Never loops: login.html issues no API calls of its own.
-        window.location.href = ".";
+        // The session token expired or was revoked elsewhere: back to the login page instead of leaving
+        // the SPA stuck on a generic error toast. Never loops: login.html issues no API calls of its own.
+        clearBrowserSession();
         return new Promise<T>(() => {}); // navigation is about to tear this page down
     }
     let envelope: Envelope<T>;
@@ -244,12 +243,37 @@ export function isGTNotAvailable(e: unknown): boolean {
     return e instanceof ApiError && e.status === "NOT_AVAILABLE";
 }
 
-/** Revokes the session, then reloads: the server sees the now-invalid cookie and clears it. */
+let clearingSession = false;
+
+/**
+ * Drops the browser's session cookie and lands on the login page, via a same-origin form POST of
+ * `clearSession=true`. A plain reload is not enough behind `example_website/index.php`: it keeps serving
+ * the terminal for as long as its own cookie exists, and only expires it for this form. The mod's own
+ * server needs no form - it expires a cookie whose token is no longer valid on any page load - but treats
+ * the POST as one.
+ */
+function clearBrowserSession(): void {
+    if (clearingSession) return;
+    clearingSession = true;
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = ".";
+    form.hidden = true;
+    const field = document.createElement("input");
+    field.type = "hidden";
+    field.name = "clearSession";
+    field.value = "true";
+    form.appendChild(field);
+    document.body.appendChild(form);
+    form.submit();
+}
+
+/** Revokes the session server-side, then clears it in the browser. */
 export async function logout(): Promise<void> {
     try {
         await apiRequest("POST", "auth/logout");
     } finally {
-        window.location.href = ".";
+        clearBrowserSession();
     }
 }
 

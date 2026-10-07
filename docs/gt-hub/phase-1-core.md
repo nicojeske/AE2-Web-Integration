@@ -14,11 +14,11 @@ IAEWebInterface.getInstance().registerGTProvider(IGTProvider provider);
 IAEWebInterface.getInstance().recordGTProduction(String machineId, String machineName, UUID owner,
     String stackId, String stackName, long amount, boolean fluid);
 
-// Optional: when a controller is broken, so it disappears now instead of after gt_machine_forget_days.
+// Optional: when a controller is broken, so it disappears now instead of after gregtech.machine_forget_days.
 IAEWebInterface.getInstance().gtMachineRemoved(String machineId);
 
 public interface IGTProvider {
-    /** Server thread, from the tick, every gt_scan_interval_seconds. Never return null. */
+    /** Server thread, from the tick, every gregtech.scan_interval_seconds. Never return null. */
     GTScanResult scan(long nowMillis);
 }
 ```
@@ -74,16 +74,16 @@ items, and `fluid.getName()` for fluids. Fluid amounts are in mB (L).
 ## 2. Engine behaviour (`core/gt/GTEngine`)
 
 - Called from `CoreEngine.onServerTick()`. It does nothing unless a provider is registered **and**
-  `gt_enabled`.
-- Every `gt_scan_interval_seconds` it runs one `scan()` on the server thread and records the time it took.
-  The time appears as `scanMicros` in `/gt/machines`. A scan over 5 ms logs a warning, at most once every 10
+  `gregtech.enabled`.
+- Every `gregtech.scan_interval_seconds` it runs one `scan()` on the server thread and records the time it took.
+  The time appears as `scanMicros` in `/api/gt/machines`. A scan over 5 ms logs a warning, at most once every 10
   minutes. A throwing scan is caught (Throwable), logged, and retried after 1 minute.
 - After each scan:
   - teams are merged
   - the machine registry is updated: missing machines become `loaded:false` with their last state kept, and
-    are forgotten after `gt_machine_forget_days`
+    are forgotten after `gregtech.machine_forget_days`
   - power "latest" and the 5-minute exact rate window are updated
-  - every `gt_power_sample_interval_seconds` one power history point is recorded
+  - every `gregtech.power_sample_interval_seconds` one power history point is recorded
 - Every 15 minutes (first run 15 minutes after start) it prunes and saves dirty stores on the background
   writer. `onServerStopping` saves synchronously.
 
@@ -106,20 +106,20 @@ items, and `fluid.getName()` for fluids. Fluid amounts are in mB (L).
 
 ## 5. Endpoints
 
-All of them are `IAsyncRequest`s on the HTTP thread, use the usual `{status, data}` envelope, and need a
-login. They ignore `grid`.
+All of them are `@Endpoint` `IAsyncRequest`s under `/api/gt` (`http/endpoint/gt/`) on the HTTP thread, use
+the usual `{status, data}` envelope, and need a login. They have no `gridKey`. Machine and power-source ids
+are path segments; everything else is a query parameter.
 
 Common statuses:
-- `NOT_AVAILABLE`: no provider, or `gt_enabled=false`
+- `NOT_AVAILABLE`: no provider, or `gregtech.enabled = false`
 - `BAD_PARAM`
-- `NO_PARAM` (`data` lists the missing names)
 - `NOT_FOUND`
 
 `range` takes `15m 1h 6h 24h 7d 30d 90d all`, or `custom&minutes=N`. It is clamped to the retention of the
 relevant store. `points` defaults to 120 and is clamped to `[1,500]`. It is a **maximum**, since buckets are
 merged in whole steps.
 
-### `GET gt/machines`
+### `GET /api/gt/machines`
 
 Returns every visible machine, sorted loaded-first, then by status order, then name, then id. `summary`
 counts loaded machines only and always contains every status.
@@ -144,12 +144,12 @@ counts loaded machines only and always contains every status.
   ]}}
 ```
 
-### `GET gt/machine?id=<id>[&range=24h]`
+### `GET /api/gt/machines/{machineId}[?range=24h]`
 
 Returns `{machine: GTMachineSnapshot, production: <same shape as gt/production groupBy=item, limited to this
-machine>}`. Without `id` it answers `NO_PARAM`.
+machine>}`.
 
-### `GET gt/power`
+### `GET /api/gt/power`
 
 EU amounts are **decimal strings**, because they go past 2^53. `fill` is 0..1 and null without a capacity.
 `netPerTick` uses the source's averages when both are present. Otherwise it is the stored-EU change over the
@@ -169,9 +169,9 @@ latest scan. Sources are sorted by kind (LSC first), then name.
    "dim":null,"x":null,"y":null,"z":null,"sampledAt":1791395242588,"loaded":true}]}}
 ```
 
-### `GET gt/powerhistory?source=<id>[&range=24h][&points=120]`
+### `GET /api/gt/power/{sourceId}/history[?range=24h][&points=120]`
 
-The fine tier is used when the range is ≤ `gt_power_fine_retention_hours`, otherwise the hourly tier. Each
+The fine tier is used when the range is ≤ `gregtech.power_fine_retention_hours`, otherwise the hourly tier. Each
 point is the newest sample in its window. `-1` means no sample. Values are saturated at Long.MAX
 (9.22e18). Only sources currently in `gt/power` are served.
 
@@ -181,13 +181,13 @@ point is the newest sample in its window. `-1` means no sample. Values are satur
   "stored":[-1,-1,-1,8200000000],"avgIn":[-1,-1,-1,30000],"avgOut":[-1,-1,-1,21500]}}
 ```
 
-### `GET gt/production[?range=24h][&groupBy=item|machine][&machine=<id>]`
+### `GET /api/gt/production[?range=24h][&groupBy=item|machine][&machine=<id>]`
 
 Totals over the range, largest first. Each row has a `breakdown`: per machine when `groupBy=item`, per
 item when `groupBy=machine`.
 - `from` is the start of the first **whole** bucket counted, so a range starting mid-hour counts that whole
   hour.
-- `resolution` is `hourly` when the range fits in `gt_production_hourly_retention_days`, else `daily`.
+- `resolution` is `hourly` when the range fits in `gregtech.production_hourly_retention_days`, else `daily`.
 - `perHour = total / spanMillis`. Here `spanMillis` is the range, shortened to start at `trackingSince`
   when recording began inside it, but never less than 5 minutes.
 - `fluid` is always `false` on machine rows and machine breakdown entries.
@@ -202,7 +202,7 @@ item when `groupBy=machine`.
      {"key":"0:130:64:-340","name":"Vacuum Freezer","fluid":false,"total":12,"perHour":0.5,"breakdown":[]}]}]}}
 ```
 
-### `GET gt/productionhistory[?item=<stackId>][&machine=<id>][&range=7d][&points=120]`
+### `GET /api/gt/production/history[?item=<stackId>][&machine=<id>][&range=7d][&points=120]`
 
 Returns the amount produced per window (a **sum**, so `0` means nothing produced, never a gap), summed over
 the visible machines. Without `item`, every stack is summed, which only makes sense together with
@@ -219,18 +219,18 @@ the visible machines. Without `item`, every stack is summed, which only makes se
 ⚠ The placeholders in `webpage.html` are **bare JS literals**. Every server of that page must replace it,
 including `example_website/index.php` (Phase 2 adds that line). Otherwise the page throws a ReferenceError.
 
-## 7. Config keys (`ConfigBootstrap`, the platform config file)
+## 7. Config keys (`[gregtech]` in `config/ae2webintegration/config.toml`, `ConfigSettings.GregTech`)
 
 | key | default | range | meaning |
 |---|---|---|---|
-| `gt_enabled` | true | | master switch for the GT pages |
-| `gt_scan_interval_seconds` | 10 | 2–300 | scan cadence |
-| `gt_power_sample_interval_seconds` | 30 | 10–3600 | power history resolution (rounded up to whole scans) |
-| `gt_power_fine_retention_hours` | 24 | 1–168 | fine power history |
-| `gt_power_hourly_retention_days` | 30 | 1–365 | hourly power history |
-| `gt_production_hourly_retention_days` | 7 | 1–30 | hourly production buckets |
-| `gt_production_daily_retention_days` | 90 | 1–3650 | daily production buckets |
-| `gt_machine_forget_days` | 7 | 1–365 | drop machines unseen this long |
+| `gregtech.enabled` | true | | master switch for the GT pages |
+| `gregtech.scan_interval_seconds` | 10 | 2–300 | scan cadence |
+| `gregtech.power_sample_interval_seconds` | 30 | 10–3600 | power history resolution (rounded up to whole scans) |
+| `gregtech.power_fine_retention_hours` | 24 | 1–168 | fine power history |
+| `gregtech.power_hourly_retention_days` | 30 | 1–365 | hourly power history |
+| `gregtech.production_hourly_retention_days` | 7 | 1–30 | hourly production buckets |
+| `gregtech.production_daily_retention_days` | 90 | 1–3650 | daily production buckets |
+| `gregtech.machine_forget_days` | 7 | 1–365 | drop machines unseen this long |
 
 ## 8. Tests
 

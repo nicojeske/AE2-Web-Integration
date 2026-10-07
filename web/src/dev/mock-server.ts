@@ -155,6 +155,12 @@ async function handleLoginPost(req: IncomingMessage, res: ServerResponse): Promi
         res.end();
     };
 
+    if (body.get("clearSession") === "true") {
+        res.setHeader("Set-Cookie", "authenticationToken=; Path=/; Max-Age=0; HttpOnly");
+        redirect(".");
+        return;
+    }
+
     if (body.has("register") && body.has("password")) {
         const username = body.get("register") ?? "";
         if (username.trim().toLowerCase() === "offline") {

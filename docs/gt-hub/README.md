@@ -28,20 +28,20 @@ Out of scope for v1: Discord alerts, remote on/off, quests, pollution.
  1.7.10 branch (Forge, GT5u)                    core branch (pure Java 8)                         web/ (Preact)
  ┌──────────────────────────────┐   scan()      ┌────────────────────────────────────┐  JSON     ┌──────────────────┐
  │ GTProvider implements        │◀──────────────│ gt/GTEngine (server tick)          │──────────▶│ Machines view     │
- │   IGTProvider                │  every 10 s   │  ├ GTMachineRegistry  gtmachines.json│ /gt/*   │ Power view        │
+ │   IGTProvider                │  every 10 s   │  ├ GTMachineRegistry  gtmachines.json│/api/gt/*│ Power view        │
  │ walks loadedTileEntityList   │               │  ├ GTPowerHistoryStore gtpower.json │          │ Production view   │
  │ Mixin on MTEMultiBlockBase   │ recordGT-     │  ├ GTProductionLog gtproduction.json│          └──────────────────┘
  │   .runMachine (outputs)      │──Production──▶│  └ GTVisibility (owner / GT team)   │
- └──────────────────────────────┘               │ ae2request/async/gt/* (6 endpoints)│
+ └──────────────────────────────┘               │ http/endpoint/gt/* (6 endpoints)   │
                                                 └────────────────────────────────────┘
 ```
 
 - Core never imports Minecraft or GregTech. It defines `IGTProvider` plus DTOs (`core/api/gt/*`). The
   `1.7.10` branch implements the provider and registers it with
   `IAEWebInterface.getInstance().registerGTProvider(...)`.
-- Without a provider, which is the case on the other branches, every `/gt/*` endpoint answers `NOT_AVAILABLE`,
+- Without a provider, which is the case on the other branches, every `/api/gt/*` endpoint answers `NOT_AVAILABLE`,
   `_REPLACE_ME_HAS_GT` becomes `false`, and the UI hides the GT sections.
-- The three history stores keep JSON files by default. With `history_jdbc_url` set they use PostgreSQL
+- The three history stores keep JSON files by default. With `history.jdbc_url` set they use PostgreSQL
   (TimescaleDB if installed) instead; see "History database (optional)" in the [main README](../../README.md).
 - Live GregTech state is only read during the scan, which runs on the server tick. HTTP handlers only ever read
   what the scan stored. This is the same split as the existing `IAsyncRequest` endpoints.
@@ -57,7 +57,7 @@ Out of scope for v1: Discord alerts, remote on/off, quests, pollution.
 | Rollout to the live server | live server | [phase-3 §8](phase-3-adapter-1.7.10.md#8-rollout-needs-the-users-explicit-go-ahead) | ⏸ pending, needs the user's go-ahead |
 
 Phases 2 and 3 are independent and can be done in either order. Phase 2 can be built and checked entirely
-against the Vite mock server, and Phase 3 against `/gt/*` JSON in a browser. Rollout to the live server
+against the Vite mock server, and Phase 3 against `/api/gt/*` JSON in a browser. Rollout to the live server
 needs both.
 
 ## Starting a session on a phase

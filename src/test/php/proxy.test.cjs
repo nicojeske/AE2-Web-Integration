@@ -9,13 +9,17 @@ const { promisify } = require('node:util');
 const run = promisify(execFile);
 
 const php = process.env.PHP_BINARY || 'php';
+// The login page renders its form client-side, so its title is what tells it apart from the terminal.
+const LOGIN_PAGE = /<title>AE2 Terminal - Sign in<\/title>/;
 const available = spawnSync(php, ['-v'], { windowsHide: true }).status === 0;
 
 test('PHP proxy preserves explicit credentials and guards cookie mutations', { skip: !available }, async t => {
     const received = [];
+    const paths = [];
     let authFailure;
     const upstream = http.createServer((request, response) => {
         received.push(request.headers.authorization);
+        paths.push(request.url);
         response.setHeader('Content-Type', 'application/json');
         if (authFailure === 'NETWORK') { request.destroy(); return; }
         if (authFailure) {
@@ -43,8 +47,10 @@ test('PHP proxy preserves explicit credentials and guards cookie mutations', { s
     await fs.mkdir(path.join(directory, 'ae2'));
     await fs.copyFile(path.join(directory, 'index.php'), path.join(directory, 'ae2/index.php'));
     for (const mount of ['', 'ae2']) {
-        await fs.copyFile(path.resolve(__dirname, '../../../example_website/login.html'),
-            path.join(directory, mount, 'login.html'));
+        for (const page of ['login.html', 'webpage.html']) {
+            await fs.copyFile(path.resolve(__dirname, '../../../example_website', page),
+                path.join(directory, mount, page));
+        }
     }
     // Preserve the public URL while applying the example's Apache API rewrite.
     const router = path.join(directory, 'router.php');
@@ -106,6 +112,15 @@ test('PHP proxy preserves explicit credentials and guards cookie mutations', { s
         Cookie: 'authenticationToken=cookie-token', 'Content-Type': 'application/json', 'X-AE2-Request': 'true'
     }, body: '{}' })).status, 200);
     assert.equal(received.pop(), 'Bearer cookie-token');
+    // Item and machine ids travel as path segments and may hold colons; dot segments never pass.
+    const itemPath = url.replace('api/grids', encodeURIComponent('api/grids/grid-key/tracked-items/minecraft:iron_ingot:0'));
+    assert.equal((await fetch(itemPath, { headers: { Cookie: 'authenticationToken=cookie-token' } })).status, 200);
+    assert.equal(paths.pop(), '/api/grids/grid-key/tracked-items/minecraft%3Airon_ingot%3A0');
+    for (const escape of ['api/grids/..', 'api/../icon', 'api//grids', 'other/grids']) {
+        const response = await fetch(url.replace('api/grids', encodeURIComponent(escape)), {
+            headers: { Cookie: 'authenticationToken=cookie-token' } });
+        assert.equal(response.status, 404, escape);
+    }
     for (const status of ['INVALID_USER', 'INVALID_PASSWORD', 'NOT_ONLINE']) {
         authFailure = status;
         const response = await fetch(`http://127.0.0.1:${port}/index.php`, {
@@ -135,13 +150,13 @@ test('PHP proxy preserves explicit credentials and guards cookie mutations', { s
             const response = await request('', ['--data', 'username=ExamplePlayer&password=test']);
             assert.equal(response.status, 302);
             assert.doesNotMatch(response.headers, /;\s*path=/i);
-            assert.doesNotMatch((await request('')).body, /<input[^>]*name="password"/);
+            assert.doesNotMatch((await request('')).body, LOGIN_PAGE);
         };
         await login();
         const logout = await request('api/auth/logout', ['-X', 'POST', '-H', 'X-AE2-Request: true']);
         assert.equal(logout.status, 200);
         const cleanup = await request('', ['--data', 'clearSession=true', '-H', 'Sec-Fetch-Site: same-origin']);
-        assert.match((await request('')).body, /<input[^>]*name="password"/,
+        assert.match((await request('')).body, LOGIN_PAGE,
             'After logout and page cleanup, the browser must receive the login form');
         assert.equal(cleanup.status, 302);
         assert.match(cleanup.headers, /Location: \./i);
@@ -154,7 +169,7 @@ test('PHP proxy preserves explicit credentials and guards cookie mutations', { s
             const response = await request('api/grids');
             assert.equal(response.status, status);
             assert.doesNotMatch(response.headers, /set-cookie:/i);
-            assert.doesNotMatch((await request('')).body, /<input[^>]*name="password"/);
+            assert.doesNotMatch((await request('')).body, LOGIN_PAGE);
         }
         const bearerFailure = await request('api/grids', ['-H', 'Authorization: Bearer invalid']);
         assert.equal(bearerFailure.status, 401);
@@ -162,9 +177,9 @@ test('PHP proxy preserves explicit credentials and guards cookie mutations', { s
         const crossSite = await request('', ['--data', 'clearSession=true', '-H', 'Sec-Fetch-Site: cross-site']);
         assert.equal(crossSite.status, 403);
         assert.doesNotMatch(crossSite.headers, /set-cookie:/i);
-        assert.doesNotMatch((await request('')).body, /<input[^>]*name="password"/);
+        assert.doesNotMatch((await request('')).body, LOGIN_PAGE);
         assert.equal((await request('', ['--data', 'clearSession=true'])).status, 302);
-        assert.match((await request('')).body, /<input[^>]*name="password"/);
+        assert.match((await request('')).body, LOGIN_PAGE);
         await login();
     });
     await t.test('HTTPS form origin uses the public host and trusted proxy protocol', async () => {

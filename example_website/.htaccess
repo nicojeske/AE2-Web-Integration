@@ -2,4 +2,5 @@ RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RedirectMatch 403 /login\.html$
-RewriteRule ^(.*)$ index.php?API=$1 [QSA,L]
+# B re-escapes the decoded path, so ids holding & or # survive the trip into the query string.
+RewriteRule ^(.*)$ index.php?API=$1 [B,QSA,L]
