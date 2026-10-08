@@ -1,10 +1,10 @@
 // Pure helpers shared by the GregTech hub views (Machines, Power, Production).
 import { formatLiters, formatNumber } from "../api/format";
-import type { GTMachine, GTMachineStatus, GTRange } from "../api/types";
+import type { GTMachine, GTMachines, GTMachineStatus, GTRange } from "../api/types";
 import { GT_STATUS_ORDER } from "../api/types";
 import type { BadgeVariant } from "../ui/Badge";
 import type { SegmentedOption } from "../ui/SegmentedControl";
-import type { MachineFilters } from "../state/prefs";
+import type { MachineFilters, PassiveMachines } from "../state/prefs";
 
 export const GT_STATUS_LABELS: Record<GTMachineStatus, string> = {
     STRUCTURE_INCOMPLETE: "Structure incomplete",
@@ -104,19 +104,36 @@ export function filterMachines(machines: GTMachine[], filters: MachineFilters, s
 }
 
 export interface MachineGroup {
-    /** A status, or `"unloaded"` for the final "Not loaded" group. */
-    key: GTMachineStatus | "unloaded";
+    /** A status, `"passive"` for healthy machines marked passive, or `"unloaded"` for the final "Not loaded" group. */
+    key: GTMachineStatus | "passive" | "unloaded";
     label: string;
     machines: GTMachine[];
 }
 
-/** Loaded machines grouped by status in `GT_STATUS_ORDER` (problems first), then every unloaded one. */
-export function groupMachines(machines: GTMachine[]): MachineGroup[] {
+/** Statuses a passive machine stays tucked away in; anything else is worth a look and shows normally. */
+const PASSIVE_HEALTHY: ReadonlySet<GTMachineStatus> = new Set<GTMachineStatus>(["RUNNING", "IDLE"]);
+
+export function isTuckedPassive(m: GTMachine, passive: PassiveMachines): boolean {
+    return m.loaded && passive[m.id] === true && PASSIVE_HEALTHY.has(m.status);
+}
+
+/**
+ * Loaded machines grouped by status in `GT_STATUS_ORDER` (problems first), then the healthy ones marked
+ * passive, then every unloaded one.
+ */
+export function groupMachines(machines: GTMachine[], passive: PassiveMachines): MachineGroup[] {
     const groups: MachineGroup[] = GT_STATUS_ORDER.map((status) => ({
         key: status,
         label: GT_STATUS_LABELS[status],
-        machines: machines.filter((m) => m.loaded && m.status === status),
+        machines: machines.filter((m) => m.loaded && m.status === status && !isTuckedPassive(m, passive)),
     }));
+    groups.push({ key: "passive", label: "Passive", machines: machines.filter((m) => isTuckedPassive(m, passive)) });
     groups.push({ key: "unloaded", label: "Not loaded", machines: machines.filter((m) => !m.loaded) });
     return groups.filter((g) => g.machines.length > 0);
+}
+
+/** The server's passive suggestions the user hasn't marked or dismissed yet, in list order. */
+export function pendingPassiveSuggestions(data: GTMachines, passive: PassiveMachines): GTMachine[] {
+    const suggested = new Set(data.suggestedPassive ?? []);
+    return data.machines.filter((m) => suggested.has(m.id) && !(m.id in passive));
 }

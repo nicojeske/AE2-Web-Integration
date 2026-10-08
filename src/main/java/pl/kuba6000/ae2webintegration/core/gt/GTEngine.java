@@ -152,6 +152,7 @@ public final class GTEngine {
         maintenanceScheduled = false;
         nextMaintenanceNanos = 0L;
         nextSlowScanLogNanos = 0L;
+        GTPassiveDetector.clear();
     }
 
     /** Test hook: forget the provider and every stored GregTech datum in memory. */

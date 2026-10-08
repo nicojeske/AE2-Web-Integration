@@ -35,6 +35,7 @@ import {
     GT_STATUS_VARIANTS,
     gtRangeOptions,
     liveProgressTicks,
+    pendingPassiveSuggestions,
 } from "./gtModel";
 import { pointTimestamps } from "./statsModel";
 
@@ -56,6 +57,7 @@ export function Machines({ openId, onOpen }: MachinesProps) {
                     id={openId}
                     listed={machines.data?.machines.find((m) => m.id === openId) ?? null}
                     scannedAt={machines.data?.scannedAt ?? null}
+                    suggested={machines.data?.suggestedPassive?.includes(openId) ?? false}
                     onClose={() => onOpen(null)}
                 />
             )}
@@ -64,16 +66,18 @@ export function Machines({ openId, onOpen }: MachinesProps) {
 }
 
 function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string) => void }) {
-    const { machineFilters: filters, setMachineFilters, settings } = usePrefs();
+    const { machineFilters: filters, setMachineFilters, settings, passiveMachines } = usePrefs();
     const [search, setSearch] = useState("");
-    const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+    // The Passive group exists to get out of the way, so it starts every visit collapsed.
+    const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set(["passive"]));
     const now = useNow(1000);
 
     const dimensions = useMemo(() => [...new Set(data.machines.map(dimensionKey))].sort(), [data.machines]);
     const groups = useMemo(
-        () => groupMachines(filterMachines(data.machines, filters, search)),
-        [data.machines, filters, search],
+        () => groupMachines(filterMachines(data.machines, filters, search), passiveMachines),
+        [data.machines, filters, search, passiveMachines],
     );
+    const suggestions = useMemo(() => pendingPassiveSuggestions(data, passiveMachines), [data, passiveMachines]);
 
     if (data.machines.length === 0) {
         return (
@@ -165,6 +169,8 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
                 )}
             </div>
 
+            {suggestions.length > 0 && <PassiveSuggestions machines={suggestions} onOpen={onOpen} />}
+
             {groups.length === 0 && <div className="placeholder-panel">No machines match these filters.</div>}
 
             {groups.map((group) => {
@@ -210,6 +216,58 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
                 );
             })}
         </section>
+    );
+}
+
+/** The server's "these look passive" candidates, each to mark passive or dismiss; collapsed to one line by default. */
+function PassiveSuggestions({ machines, onOpen }: { machines: GTMachine[]; onOpen: (id: string) => void }) {
+    const { setPassive } = usePrefs();
+    const [open, setOpen] = useState(false);
+    const n = machines.length;
+    return (
+        <div className="passive-suggestions">
+            <div className="passive-suggestions__head">
+                <span className="passive-suggestions__text">
+                    {n === 1 ? "1 machine has" : `${n} machines have`} produced the same outputs steadily - mark{" "}
+                    {n === 1 ? "it" : "them"} passive to tuck {n === 1 ? "it" : "them"} into the collapsed Passive
+                    group?
+                </span>
+                <Button variant="text" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+                    {open ? "Hide" : "Review"}
+                </Button>
+                <Button
+                    size="sm"
+                    onClick={() =>
+                        setPassive(
+                            machines.map((m) => m.id),
+                            true,
+                        )
+                    }
+                >
+                    Mark all passive
+                </Button>
+            </div>
+            {open && (
+                <ul className="passive-suggestions__list">
+                    {machines.map((m) => (
+                        <li key={m.id} className="passive-suggestions__row">
+                            <button type="button" className="passive-suggestions__name" onClick={() => onOpen(m.id)}>
+                                {m.name}
+                            </button>
+                            <span className="passive-suggestions__where">
+                                {m.x}, {m.y}, {m.z} · {dimensionKey(m)}
+                            </span>
+                            <Button size="sm" onClick={() => setPassive([m.id], true)}>
+                                Mark passive
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setPassive([m.id], false)}>
+                                Not passive
+                            </Button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
     );
 }
 
@@ -346,16 +404,19 @@ function MachineDrawer({
     id,
     listed,
     scannedAt,
+    suggested,
     onClose,
 }: {
     id: string;
     /** This machine's entry in the app-wide `/gt/machines` poll - fresher than the drawer's own fetch. */
     listed: GTMachine | null;
     scannedAt: number | null;
+    /** Whether the server suggests this machine as passive. */
+    suggested: boolean;
     onClose: () => void;
 }) {
     const { nonce } = useGT();
-    const { settings } = usePrefs();
+    const { settings, passiveMachines, setPassive } = usePrefs();
     const copyCoords = useCopyCoords();
     const now = useNow(1000);
     const [range, setRange] = useState<GTRange>("24h");
@@ -370,6 +431,7 @@ function MachineDrawer({
 
     const m = listed ?? detail.data?.machine ?? null;
     const fmt = settings.numberFormat;
+    const isPassive = passiveMachines[id] === true;
 
     if (!m) {
         const missing = detail.error === "NOT_FOUND";
@@ -416,10 +478,19 @@ function MachineDrawer({
             <div className="machine-drawer__status">
                 <Badge variant={GT_STATUS_VARIANTS[m.status]}>{GT_STATUS_LABELS[m.status]}</Badge>
                 {!m.loaded && <Badge variant="grey">Not loaded</Badge>}
+                {isPassive && <Badge variant="grey">Passive</Badge>}
                 <Button variant="text" onClick={() => copyCoords(m)}>
                     Copy coordinates
                 </Button>
+                <Button variant="text" onClick={() => setPassive([m.id], isPassive ? null : true)}>
+                    {isPassive ? "Unmark passive" : "Mark as passive"}
+                </Button>
             </div>
+            {suggested && !(m.id in passiveMachines) && (
+                <div className="machine-drawer__hint">
+                    This machine has produced the same outputs steadily lately - it looks passive.
+                </div>
+            )}
             {m.status === "RUNNING" && m.maxProgressTicks > 0 && (
                 <ProgressBar percent={(progress / m.maxProgressTicks) * 100} color="var(--green)" />
             )}

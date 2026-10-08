@@ -287,6 +287,8 @@ export interface GTMachines {
     unloaded: number;
     summary: Record<GTMachineStatus, number>;
     machines: GTMachine[];
+    /** Listed machines that kept producing the same set of outputs lately - candidates to mark passive. */
+    suggestedPassive?: string[];
 }
 
 /** `/api/gt/machines/{machineId}` response. */

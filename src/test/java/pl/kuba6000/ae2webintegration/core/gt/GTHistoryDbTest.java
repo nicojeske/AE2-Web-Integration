@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -252,5 +253,32 @@ class GTHistoryDbTest {
             Collections.emptyList(),
             Arrays.asList(configRoot.listFiles((dir, name) -> name.endsWith(".json"))),
             "nothing is written to JSON files in database mode");
+    }
+
+    /** Oldest first, so tracking starts 3 days back: m1 is steady, m2 adds an output, m3 stops for a day. */
+    private static void recordSteadyProduction() {
+        for (int h = 72; h >= 0; h--) {
+            record("m1", ALICE, "ingot", 2, NOW - h * HOUR);
+            record("m2", BOB, h < 5 ? "plate" : "ingot", 1, NOW - h * HOUR);
+            if (h < 24 || h >= 48) {
+                record("m3", null, "dust", 4, NOW - h * HOUR);
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(Flavor.class)
+    void passiveSuggestionsMatchMemory(Flavor flavor) {
+        recordSteadyProduction();
+        Set<String> expected = GTPassiveDetector.compute(NOW);
+        assertEquals(Collections.singleton("m1"), expected);
+        GTTestSupport.reset();
+
+        HistoryDbTestSupport.start(flavor);
+        GTProductionLog.loadData();
+        recordSteadyProduction();
+        HistoryDbTestSupport.flush();
+
+        assertEquals(expected, GTPassiveDetector.compute(NOW));
     }
 }

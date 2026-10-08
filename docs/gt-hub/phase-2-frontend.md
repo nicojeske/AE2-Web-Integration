@@ -205,3 +205,12 @@ Where the code differs from the plan above:
   appears when there is no LSC. Rates read as amps at the highest tier reached plus raw EU/t
   (`formatEUtTier`, e.g. "+3.7A IV · 30k EU/t"). Chart axes stay in EU/t.
 
+- Passive machines (after the phase): machines that always run the same recipe or the same few can be
+  marked passive, from the drawer or from a suggestion strip above the groups. The marks are stored in
+  synced prefs as `passiveMachines` (`id -> true` means passive, `false` means a dismissed suggestion).
+  While Running or Idle, a marked machine sits in a "Passive" group after the status groups, collapsed on
+  every visit. Any other status puts it back in its normal group. The server's `/api/gt/machines` lists
+  `suggestedPassive`, built by `core/gt/GTPassiveDetector`: production is tracked for 1-3 days (capped at
+  the hourly retention), that span is cut into 3 equal windows of whole hourly buckets, and a machine is
+  suggested when its set of output stacks is non-empty and the same in all three windows. It reads through
+  `GTProductionLog.totals`, so both history backends give the same answer, and it is cached for 10 minutes.

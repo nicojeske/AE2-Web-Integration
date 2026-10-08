@@ -277,6 +277,11 @@ export function mockGTMachines(now: number): GTMachines {
         unloaded: machines.filter((m) => !m.loaded).length,
         summary,
         machines,
+        // The server derives these from production history; any few steady running machines will do here.
+        suggestedPassive: machines
+            .filter((m) => m.loaded && m.status === "RUNNING")
+            .slice(0, 3)
+            .map((m) => m.id),
     };
 }
 

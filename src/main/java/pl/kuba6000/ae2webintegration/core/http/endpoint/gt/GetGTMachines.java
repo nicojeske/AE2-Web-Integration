@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -16,6 +17,7 @@ import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.gt.GTEngine;
 import pl.kuba6000.ae2webintegration.core.gt.GTMachineRegistry;
+import pl.kuba6000.ae2webintegration.core.gt.GTPassiveDetector;
 import pl.kuba6000.ae2webintegration.core.gt.GTVisibility;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
@@ -54,6 +56,11 @@ public final class GetGTMachines extends GTRequest {
         /** Count per status, loaded machines only; every status is present, zero or not. */
         public Map<GTMachineStatus, Integer> summary = new EnumMap<>(GTMachineStatus.class);
         public List<GTMachineSnapshot> machines = new ArrayList<>();
+        /**
+         * Ids of listed machines that kept producing the same set of outputs over the last one to three
+         * days, offered to the user to mark as passive.
+         */
+        public List<String> suggestedPassive = new ArrayList<>();
     }
 
     /** Loaded before unloaded, then status in declaration order (problems first), then name, then id. */
@@ -82,6 +89,12 @@ public final class GetGTMachines extends GTRequest {
             }
         }
         result.machines.sort(ORDER);
+        Set<String> passive = GTPassiveDetector.candidates(System.currentTimeMillis());
+        for (GTMachineSnapshot machine : result.machines) {
+            if (passive.contains(machine.id)) {
+                result.suggestedPassive.add(machine.id);
+            }
+        }
         respond(HttpURLConnection.HTTP_OK, new Response(ApiStatus.OK, result));
     }
 }
