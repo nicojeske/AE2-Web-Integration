@@ -43,4 +43,5 @@ layout.json
 web/node_modules
 web/dist
 
+/ae2webintegration_icons/
 /itempanel_icons/

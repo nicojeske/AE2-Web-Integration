@@ -22,9 +22,9 @@ See `../CLAUDE.md`'s "Web frontend" section for the shape of what's here today.
 
 ### Real item icons in dev
 
-`src/dev/mock-server.ts` also serves `/icon?name=...` and sets `_REPLACE_ME_HAS_ITEM_ICONS`, mirroring
-`ItemIconIndex.java`'s display-name matching, from an `itempanel_icons/` directory expected at the repo
-root (sibling of `web/`). That directory is never committed (icon copyright) - see the repo root
+`src/dev/mock-server.ts` also serves `/icon?id=...` and sets `_REPLACE_ME_HAS_ITEM_ICONS`, mirroring
+`ItemIconIndex.java`'s itemid lookup, from an `ae2webintegration_icons/` directory expected at the repo
+root (sibling of `web/`) - the output of the in-game `/ae2webicons export` client command. That directory is never committed (icon copyright) - see the repo root
 `CLAUDE.md` and `.gitignore` - so it's simply absent for most contributors, and the mock server falls
 back to the usual generated placeholder tiles when it is.
 

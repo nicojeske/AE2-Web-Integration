@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 
 import type { Plugin } from "vite";
 
-import { skipSpecialFormat } from "../api/format.ts";
 import type { GTRange, StatsRange } from "../api/types.ts";
 
 import {
@@ -49,17 +48,19 @@ const MAX_TRACKED_ITEMID_LENGTH = 256;
 // Mirrors ItemIconIndex.java's matching rules (never committed to the repo - see .gitignore and
 // CLAUDE.md - so this directory is expected to be missing for most contributors, which is fine: the
 // feature just stays off, same as an unconfigured item_icon_directory server-side).
-const ICON_DIR = fileURLToPath(new URL("../../../itempanel_icons", import.meta.url));
+const ICON_DIR = fileURLToPath(new URL("../../../ae2webintegration_icons", import.meta.url));
 
-function normalizeIconName(raw: string): string {
-    return skipSpecialFormat(raw)
-        .replace(/[/\\:]/g, "_")
-        .replace(/\s+/g, " ")
-        .trim()
-        .toLowerCase();
+/** Port of `IconFileNames.fileName` (core/icons): the exporter's `<encoded itemid>.png`. */
+function iconFileName(itemid: string): string {
+    let out = "";
+    for (const byte of new TextEncoder().encode(itemid)) {
+        const c = String.fromCharCode(byte);
+        if (c === ":") out += "~";
+        else if (/[A-Za-z0-9._-]/.test(c)) out += c;
+        else out += "%" + byte.toString(16).toUpperCase().padStart(2, "0");
+    }
+    return out + ".png";
 }
-
-let iconIndex: Map<string, string> | undefined;
 
 /**
  * GregTech hub mode: `"1"` (default) = a server with GT, `"0"` = without one (sections hidden, every
@@ -79,19 +80,11 @@ function gtMode(pageUrl: string | undefined): GTMode {
  *  ever serves one (dev) principal. */
 let mockPrefsBlob: string | null = null;
 
-/** Lazily scanned once per dev-server run - the directory doesn't change without a restart either. */
-function loadIconIndex(): Map<string, string> {
-    if (!iconIndex) {
-        iconIndex = new Map();
-        if (existsSync(ICON_DIR)) {
-            for (const file of readdirSync(ICON_DIR)) {
-                if (!file.toLowerCase().endsWith(".png")) continue;
-                const key = normalizeIconName(file.slice(0, -4));
-                if (!iconIndex.has(key)) iconIndex.set(key, file);
-            }
-        }
-    }
-    return iconIndex;
+/** Lazily checked once per dev-server run - the directory doesn't change without a restart either. */
+let hasIconDir: boolean | undefined;
+function hasIcons(): boolean {
+    hasIconDir ??= existsSync(ICON_DIR) && readdirSync(ICON_DIR).some((file) => file.endsWith(".png"));
+    return hasIconDir;
 }
 
 /** HTTP status per API status, as `ApiStatus.java` maps them - the envelope still carries the status. */
@@ -490,7 +483,7 @@ export function mockApiPlugin(): Plugin {
                 .replace("_REPLACE_ME_IS_ADMIN", "true")
                 .replace("_REPLACE_ME_VERSION_OUTDATED", "false")
                 .replace("_REPLACE_ME_IS_PUBLIC_MODE", isPublicMode ? "true" : "false")
-                .replace("_REPLACE_ME_HAS_ITEM_ICONS", loadIconIndex().size > 0 ? "true" : "false")
+                .replace("_REPLACE_ME_HAS_ITEM_ICONS", hasIcons() ? "true" : "false")
                 .replace("_REPLACE_ME_HAS_GT", gtMode(ctx.originalUrl) === "0" ? "false" : "true");
         },
         configureServer(server) {
@@ -505,16 +498,16 @@ export function mockApiPlugin(): Plugin {
                 }
 
                 if (url.pathname === "/icon") {
-                    const name = params.get("name");
-                    const file = name ? loadIconIndex().get(normalizeIconName(name)) : undefined;
-                    if (!file) {
+                    const itemid = params.get("id");
+                    const file = itemid && hasIcons() ? join(ICON_DIR, iconFileName(itemid)) : undefined;
+                    if (!file || !existsSync(file)) {
                         res.statusCode = 404;
                         res.end();
                         return;
                     }
                     res.setHeader("Content-Type", "image/png");
                     res.setHeader("Cache-Control", "public, max-age=604800, immutable");
-                    res.end(readFileSync(join(ICON_DIR, file)));
+                    res.end(readFileSync(file));
                     return;
                 }
 

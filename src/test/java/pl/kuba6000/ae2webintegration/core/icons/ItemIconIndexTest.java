@@ -11,7 +11,7 @@ import java.nio.file.Files;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Tests for {@link ItemIconIndex} - the display-name -> icon-file matching logic. */
+/** Tests for {@link ItemIconIndex} - the itemid -> icon-file lookup over an exporter's output. */
 class ItemIconIndexTest {
 
     @TempDir
@@ -23,12 +23,16 @@ class ItemIconIndexTest {
         return file;
     }
 
+    private File touchIcon(String itemid) throws Exception {
+        return touch(IconFileNames.fileName(itemid));
+    }
+
     @Test
     void disabledIndexMatchesNothing() {
         ItemIconIndex index = ItemIconIndex.disabled();
         assertFalse(index.isEnabled());
         assertEquals(0, index.size());
-        assertNull(index.lookup("Redstone"));
+        assertNull(index.lookup("minecraft:redstone:0"));
     }
 
     @Test
@@ -44,87 +48,50 @@ class ItemIconIndexTest {
     }
 
     @Test
-    void exactNameMatches() throws Exception {
-        touch("Redstone.png");
+    void itemAndFluidIdsMatchExactly() throws Exception {
+        File redstone = touchIcon("minecraft:redstone:0");
+        File metaItem = touchIcon("gregtech:gt.metaitem.01:11020");
+        File chlorine = touchIcon("chlorine");
         ItemIconIndex index = ItemIconIndex.scan(dir);
         assertTrue(index.isEnabled());
-        assertEquals(1, index.size());
-        assertEquals(new File(dir, "Redstone.png"), index.lookup("Redstone"));
+        assertEquals(3, index.size());
+        assertEquals(redstone, index.lookup("minecraft:redstone:0"));
+        assertEquals(metaItem, index.lookup("gregtech:gt.metaitem.01:11020"));
+        assertEquals(chlorine, index.lookup("chlorine"));
     }
 
     @Test
-    void matchIsCaseAndWhitespaceInsensitive() throws Exception {
-        touch("ME Storage Cell.png");
+    void otherDamageValuesAndCaseMiss() throws Exception {
+        touchIcon("minecraft:wool:0");
         ItemIconIndex index = ItemIconIndex.scan(dir);
-        assertEquals(new File(dir, "ME Storage Cell.png"), index.lookup("me   storage    cell"));
-        assertEquals(new File(dir, "ME Storage Cell.png"), index.lookup("ME STORAGE CELL"));
+        assertNull(index.lookup("minecraft:wool:1"));
+        assertNull(index.lookup("Minecraft:Wool:0"));
+        assertNull(index.lookup(null));
     }
 
     @Test
-    void sectionFormatCodesAreStrippedBeforeMatching() throws Exception {
-        touch("Processor (Calculation).png");
-        ItemIconIndex index = ItemIconIndex.scan(dir);
-        assertEquals(new File(dir, "Processor (Calculation).png"), index.lookup("§b§lProcessor (Calculation)"));
-    }
-
-    @Test
-    void colonInDisplayNameMatchesUnderscoreInFilename() throws Exception {
-        // The icon export itself replaced path-unsafe characters (/, \, :) with '_' when it wrote files.
-        touch("Crafting Pattern #1_ 1x1.png");
-        ItemIconIndex index = ItemIconIndex.scan(dir);
-        assertEquals(new File(dir, "Crafting Pattern #1_ 1x1.png"), index.lookup("Crafting Pattern #1: 1x1"));
-    }
-
-    @Test
-    void hashAndSuperscriptCharactersMatchExactly() throws Exception {
-        touch("Map #0.png");
-        touch("128³ Spatial Component.png");
-        ItemIconIndex index = ItemIconIndex.scan(dir);
-        assertEquals(new File(dir, "Map #0.png"), index.lookup("Map #0"));
-        assertEquals(new File(dir, "128³ Spatial Component.png"), index.lookup("128³ Spatial Component"));
-    }
-
-    @Test
-    void apostropheDoesNotMatchWithoutIt() throws Exception {
-        touch("4,4'-Diphenylmethane Diisocyanate Dust.png");
-        ItemIconIndex index = ItemIconIndex.scan(dir);
-        assertNull(index.lookup("4,4-Diphenylmethane Diisocyanate Dust"));
-    }
-
-    @Test
-    void numberedCollisionVariantIsNotReachableByThePlainName() throws Exception {
-        touch("Fir Wood Planks.png");
-        touch("Fir Wood Planks_2.png");
-        ItemIconIndex index = ItemIconIndex.scan(dir);
-        assertEquals(2, index.size());
-        assertEquals(new File(dir, "Fir Wood Planks.png"), index.lookup("Fir Wood Planks"));
-        // The "_2" variant is indexed under its own distinct key - a display name of "Fir Wood Planks"
-        // never resolves to it, only its own literal (numbered) name does.
-        assertEquals(new File(dir, "Fir Wood Planks_2.png"), index.lookup("Fir Wood Planks_2"));
-    }
-
-    @Test
-    void nonPngFilesAreIgnored() throws Exception {
-        touch("Redstone.png");
+    void filesNotNamedLikeAnExportAreIgnored() throws Exception {
+        touchIcon("minecraft:redstone:0");
+        touch("Redstone Dust.png");
         Files.write(new File(dir, "notes.txt").toPath(), "hi".getBytes());
         ItemIconIndex index = ItemIconIndex.scan(dir);
         assertEquals(1, index.size());
+        assertNull(index.lookup("Redstone Dust"));
+    }
+
+    @Test
+    void directoryWithOnlyForeignFilesYieldsDisabledIndex() throws Exception {
+        touch("Redstone Dust.png");
+        assertFalse(
+            ItemIconIndex.scan(dir)
+                .isEnabled());
     }
 
     @Test
     void pathTraversalAttemptsMiss() throws Exception {
-        touch("Redstone.png");
+        touchIcon("minecraft:redstone:0");
         ItemIconIndex index = ItemIconIndex.scan(dir);
         assertNull(index.lookup("../../etc/passwd"));
-        assertNull(index.lookup("a/b"));
-        assertNull(index.lookup("a\\b"));
-        assertNull(index.lookup("a\0b"));
-    }
-
-    @Test
-    void unknownNameMisses() throws Exception {
-        touch("Redstone.png");
-        ItemIconIndex index = ItemIconIndex.scan(dir);
-        assertNull(index.lookup("Diamond"));
+        assertNull(index.lookup("minecraft~redstone~0.png"));
     }
 }

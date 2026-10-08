@@ -16,7 +16,7 @@ import pl.kuba6000.ae2webintegration.core.icons.ItemIconIndex;
 import pl.kuba6000.ae2webintegration.core.utils.HTTPUtils;
 
 /**
- * Serves a real item/fluid icon PNG, matched by display name (see {@link ItemIconIndex} for the matching rules).
+ * Serves a real item/fluid icon PNG by itemid (see {@link ItemIconIndex}), as {@code /icon?id=<itemid>}.
  * Outside the {@code /api} router because it answers with an image, not a JSON envelope. Not grid-scoped data,
  * so any authenticated principal may fetch any icon.
  */
@@ -54,11 +54,11 @@ public final class IconHandler implements HttpHandler {
                 return;
             }
 
-            String name = HTTPUtils.parseQueryString(
+            String itemid = HTTPUtils.parseQueryString(
                 exchange.getRequestURI()
                     .getRawQuery())
-                .get("name");
-            File icon = name == null ? null : itemIconIndex.lookup(name);
+                .get("id");
+            File icon = itemIconIndex.lookup(itemid);
             if (icon == null) {
                 exchange.sendResponseHeaders(HttpURLConnection.HTTP_NOT_FOUND, -1);
                 return;

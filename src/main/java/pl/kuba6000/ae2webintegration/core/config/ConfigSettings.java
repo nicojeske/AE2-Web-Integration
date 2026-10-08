@@ -46,9 +46,10 @@ public final class ConfigSettings {
         public boolean checkForUpdates = true;
 
         @Path("item_icon_directory")
-        @Comment({ "Directory of item icon PNGs named after item display names (e.g. an exported item-panel icon",
-            "dump), used for real icons in the web terminal. Absolute, or relative to this config directory.",
-            "Empty disables icons. The icon files are not distributed with the mod (copyright)." })
+        @Comment({ "Directory of item/fluid icon PNGs, used for real icons in the web terminal: the output of the",
+            "client command /ae2webicons export (.minecraft/dumps/ae2webintegration_icons), copied to the server.",
+            "Absolute, or relative to this config directory. Empty disables icons. The icon files are not",
+            "distributed with the mod (copyright)." })
         public String itemIconDirectory = "";
 
     }

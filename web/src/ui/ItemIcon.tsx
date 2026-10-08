@@ -28,7 +28,7 @@ function initialsOf(name: string): string {
 }
 
 /**
- * Names that have already 404'd against `icon?name=...` this page load. Shared across every mount so
+ * Itemids that have already 404'd against `icon?id=...` this page load. Shared across every mount so
  * scrolling a list or reopening a modal never refires a request already known to miss - see
  * REDESIGN_MILESTONES.md's "try + fallback" decision. Only cleared by a full page reload; the icon
  * directory can't change without a server restart or `/reload` either.
@@ -36,28 +36,28 @@ function initialsOf(name: string): string {
 const missingIcons = new Set<string>();
 
 /**
- * Renders a real item icon, matched server-side by display name (AE2Controller's ItemIconIndex), when
- * the server has one configured and this item's name has a match. Falls back to a generated placeholder
+ * Renders a real item icon, looked up server-side by itemid (IconHandler's ItemIconIndex), when the
+ * server has an icon export configured and it contains this item. Falls back to a generated placeholder
  * tile otherwise - a hue derived from `itemid` plus initials from the display name - which covers both
  * "no icon export configured" and "item not in the export" the same way, via the `<img>`'s `onError`.
  */
 export function ItemIcon({ itemid, name, size = 44, className }: ItemIconProps) {
     const plain = skipSpecialFormat(name).trim();
-    const [failed, setFailed] = useState(() => missingIcons.has(plain));
+    const [failed, setFailed] = useState(() => missingIcons.has(itemid));
 
-    if (getContext().hasItemIcons && !failed && plain.length > 0) {
+    if (getContext().hasItemIcons && !failed && itemid.length > 0) {
         return (
             <img
                 className={`item-icon item-icon--image${className ? ` ${className}` : ""}`}
                 style={{ width: `${size}px`, height: `${size}px` }}
-                src={iconUrl(plain)}
+                src={iconUrl(itemid)}
                 alt=""
                 title={plain}
                 loading="lazy"
                 decoding="async"
                 aria-hidden="true"
                 onError={() => {
-                    missingIcons.add(plain);
+                    missingIcons.add(itemid);
                     setFailed(true);
                 }}
             />
