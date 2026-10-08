@@ -116,8 +116,12 @@ localhost check and rate limiting.
 Config is `config/ae2webintegration/config.toml`, owned by core (`config/Config`, NightConfig, sections in
 `ConfigSettings` with `@Comment`s; `validate()` holds the bounds). Read it as `Config.INSTANCE.<section>.<field>`
 - the instance is replaced whole on `/ae2webintegration reload`. Fork sections: `statistics`, `history`,
-`gregtech`, plus `general.item_icon_directory`. Notifications go through `notification/NotificationManager`
-(Discord and ntfy destinations).
+`gregtech`. Notifications go through `notification/NotificationManager` (Discord and ntfy destinations).
+
+Item icons can't be rendered on a headless server: a client runs `/ae2webicons export` (1.7.10 adapter), renders
+every item and fluid, and uploads the PNGs over the mod's network channel to `icons/IconUpload`, which stages them
+and swaps them into `config/ae2webintegration/icons/` (`Config.iconDirectory()`), one `IconFileNames`-encoded
+`<itemid>.png` each. `http/IconHandler` serves them as `/icon?id=<itemid>`.
 
 Persistence: `CoreData` (`webdata.json`: accounts, prefs blobs), per-grid settings in `GridSettingsData`
 (tracking flag, tracked statistics items and their last-seen names) inside the grid-identity file, and

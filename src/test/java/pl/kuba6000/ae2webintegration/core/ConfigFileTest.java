@@ -112,6 +112,23 @@ class ConfigFileTest {
     }
 
     @Test
+    void removedIconDirectorySettingIsDroppedFromAnExistingFile() throws Exception {
+        Path file = root.resolve("ae2webintegration/config.toml");
+        Files.createDirectories(file.getParent());
+        Files.write(
+            file,
+            "[general]\nport = 25435\nitem_icon_directory = \"/srv/icons\"\n".getBytes(StandardCharsets.UTF_8));
+        Config.init(root.toFile());
+        assertEquals(25435, Config.INSTANCE.general.port);
+        CommentedConfig document = new TomlParser().parse(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+        assertFalse(document.contains("general.item_icon_directory"));
+        assertEquals(
+            root.resolve("ae2webintegration/icons")
+                .toFile(),
+            Config.iconDirectory());
+    }
+
+    @Test
     void malformedOrMissingFileCannotResetAnActiveConfiguration() throws Exception {
         Config.init(root.toFile());
         String password = Config.INSTANCE.general.password;

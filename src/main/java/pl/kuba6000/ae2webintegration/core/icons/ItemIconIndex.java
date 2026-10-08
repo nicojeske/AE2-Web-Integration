@@ -9,9 +9,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Maps itemids to real icon PNGs rendered by the mod's client-side icon exporter, because item textures are
- * otherwise unavailable on a headless server. The export names every file after the item's itemid (see
- * {@link IconFileNames}), so a lookup is an exact match on the same key the web terminal already uses.
+ * Maps itemids to real icon PNGs rendered by the mod's client-side icon exporter and uploaded to the server
+ * ({@link IconUpload}), because item textures are otherwise unavailable on a headless server. Every file is named
+ * after the item's itemid (see {@link IconFileNames}), so a lookup is an exact match on the same key the web
+ * terminal already uses.
  * <p>
  * Immutable once built: {@link #scan(File)} produces a fresh instance from a one-time directory
  * listing; the caller (IconHandler) swaps a volatile reference rather than mutating an existing one,
@@ -39,8 +40,7 @@ public final class ItemIconIndex {
     /**
      * Scans {@code directory} once for icon files named by {@link IconFileNames} and indexes them by itemid.
      * Files that aren't an exporter's output are skipped. Never throws - a missing, empty, or unreadable
-     * directory yields an index that behaves exactly like {@link #disabled()}, just logged so a misconfigured
-     * path is visible instead of silently doing nothing.
+     * directory (no icons uploaded yet) yields an index that behaves exactly like {@link #disabled()}.
      */
     public static ItemIconIndex scan(File directory) {
         if (directory == null) {
@@ -48,10 +48,7 @@ public final class ItemIconIndex {
         }
         File[] files = directory.listFiles();
         if (files == null) {
-            LOG.warn(
-                "item_icon_directory '" + directory
-                    + "' does not exist or is not a readable directory - item icons"
-                    + " disabled");
+            LOG.info("No item icons in '" + directory + "' - upload them in-game with /ae2webicons export");
             return disabled();
         }
 
@@ -66,10 +63,7 @@ public final class ItemIconIndex {
             }
         }
         if (map.isEmpty()) {
-            LOG.warn(
-                "item_icon_directory '" + directory
-                    + "' contains no exported icons - item icons disabled (export them in-game with"
-                    + " /ae2webicons export)");
+            LOG.info("No item icons in '" + directory + "' - upload them in-game with /ae2webicons export");
             return disabled();
         }
         LOG.info(

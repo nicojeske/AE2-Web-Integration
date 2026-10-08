@@ -45,13 +45,6 @@ public final class ConfigSettings {
         @Comment("Check for mod updates.")
         public boolean checkForUpdates = true;
 
-        @Path("item_icon_directory")
-        @Comment({ "Directory of item/fluid icon PNGs, used for real icons in the web terminal: the output of the",
-            "client command /ae2webicons export (.minecraft/dumps/ae2webintegration_icons), copied to the server.",
-            "Absolute, or relative to this config directory. Empty disables icons. The icon files are not",
-            "distributed with the mod (copyright)." })
-        public String itemIconDirectory = "";
-
     }
 
     public static final class Notifications {

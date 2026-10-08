@@ -45,9 +45,9 @@ const MAX_HISTORY_POINTS = 500;
 const DEFAULT_HISTORY_POINTS = 120;
 const MAX_TRACKED_ITEMID_LENGTH = 256;
 
-// Mirrors ItemIconIndex.java's matching rules (never committed to the repo - see .gitignore and
-// CLAUDE.md - so this directory is expected to be missing for most contributors, which is fine: the
-// feature just stays off, same as an unconfigured item_icon_directory server-side).
+// A copy of a server's uploaded config/ae2webintegration/icons (never committed to the repo - see
+// .gitignore - so this directory is expected to be missing for most contributors, which is fine: the
+// feature just stays off, same as a server nobody has uploaded icons to yet).
 const ICON_DIR = fileURLToPath(new URL("../../../ae2webintegration_icons", import.meta.url));
 
 /** Port of `IconFileNames.fileName` (core/icons): the exporter's `<encoded itemid>.png`. */

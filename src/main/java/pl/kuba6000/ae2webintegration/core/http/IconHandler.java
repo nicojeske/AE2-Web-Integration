@@ -34,12 +34,17 @@ public final class IconHandler implements HttpHandler {
      * serving lookups until the new one is ready.
      */
     public static void rebuildIndexAsync() {
-        File directory = Config.itemIconDirectory();
-        Thread scanThread = new Thread(
-            () -> itemIconIndex = ItemIconIndex.scan(directory),
-            "ae2webintegration-icon-scan");
+        Thread scanThread = new Thread(IconHandler::rebuildIndex, "ae2webintegration-icon-scan");
         scanThread.setDaemon(true);
         scanThread.start();
+    }
+
+    /**
+     * Rescans {@link Config#iconDirectory()} and swaps the index in. Synchronized so a scan that started earlier
+     * (server start) can't publish its older view after a later one (a finished upload).
+     */
+    public static synchronized void rebuildIndex() {
+        itemIconIndex = ItemIconIndex.scan(Config.iconDirectory());
     }
 
     @Override

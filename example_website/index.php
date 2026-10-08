@@ -6,8 +6,8 @@
     // Immediate proxy IPs allowed to supply X-Forwarded-Proto. Add remote proxies explicitly.
     // These proxies must preserve the public Host (including its port) and overwrite this header.
     $AE2_TRUSTED_PROXIES = ['127.0.0.1', '::1'];
-    // Mirror the mod's own config, which this proxy cannot ask: true only when the server has a non-empty
-    // general.item_icon_directory, and when it runs GregTech with gregtech.enabled. Left false, the terminal
+    // Mirror the mod's own state, which this proxy cannot ask: true only when icons have been uploaded to the
+    // server (/ae2webicons export in-game), and when it runs GregTech with gregtech.enabled. Left false, the terminal
     // falls back to generated item tiles and hides the GregTech pages.
     $AE2_HAS_ITEM_ICONS = false;
     $AE2_HAS_GT = false;

@@ -7,7 +7,9 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -96,6 +98,9 @@ public class Config {
         return document;
     }
 
+    /** Settings that no longer exist, dropped from an existing file so it doesn't advertise them. */
+    private static final List<String> REMOVED_KEYS = Collections.singletonList("general.item_icon_directory");
+
     @Deprecated
     private static final Map<String, String> LEGACY_KEYS = new LinkedHashMap<>();
 
@@ -135,6 +140,9 @@ public class Config {
         CommentedConfig defaults = newDocument();
         CONVERTER.toConfig(loaded, defaults);
         fillDefaults(document, defaults);
+        for (String key : REMOVED_KEYS) {
+            document.remove(key);
+        }
         CONVERTER.toObject(document, loaded);
         loaded.validate();
         addComments(document, loaded);
@@ -215,20 +223,11 @@ public class Config {
     }
 
     /**
-     * Directory to look up item icon PNGs in, or {@code null} when unconfigured (icons disabled). An absolute
-     * path is used as-is; a relative one is resolved against the config directory, like the other data files.
+     * Where icons uploaded by the in-game exporter live (see {@code IconUpload}), next to the other data files.
+     * Icons are on whenever it holds any.
      */
-    public static File itemIconDirectory() {
-        String path = INSTANCE.general.itemIconDirectory;
-        if (path == null || path.trim()
-            .isEmpty()) {
-            return null;
-        }
-        File file = new File(path.trim());
-        if (file.isAbsolute() || configDirectory == null) {
-            return file;
-        }
-        return new File(configDirectory, path.trim());
+    public static File iconDirectory() {
+        return configDirectory == null ? null : new File(configDirectory, "icons");
     }
 
     // History database: environment variables win, so a Kubernetes secret never has to land in the config file.
