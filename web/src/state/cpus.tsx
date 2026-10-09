@@ -7,7 +7,6 @@ import { skipSpecialFormat } from "../api/format";
 import type { CpuDetail, CpuSummary, GridKey, GridSummary } from "../api/types";
 import { gridOptionLabel } from "../shell/gridLabel";
 import { notify } from "../util/notify";
-import { craftTotals, progressFraction } from "./craftProgress";
 import type { GridSelection } from "./network";
 import { useNetwork } from "./network";
 import { usePrefs } from "./prefs";
@@ -24,25 +23,25 @@ export interface CpuView extends CpuSummary {
     sourceGridKey: GridKey;
     /** Owner-derived label for the source grid; only meaningful in All-Grids mode. */
     gridLabel: string;
-    /** Per-CPU detail, fetched only within `detailScope` and only for busy CPUs. */
+    /** Per-CPU detail, fetched only for the CPU `detailScope` names, and only while it's busy. */
     detail: CpuDetail | null;
+    /** `Date.now()` when this list entry was fetched - its `timeElapsed`/`stalledSince` are server clock. */
+    listFetchedAt: number;
     /**
      * `Date.now()` when `detail` was fetched - `detail.timeElapsed`/`timeStarted` are the *server's*
      * clock, so callers needing a live-ticking elapsed must add `Date.now() - fetchedAt` rather than
      * trusting `Date.now() - timeStarted` directly (client/server clock skew).
      */
     fetchedAt: number | null;
-    /** 0-99, or null when there's nothing to derive a bar from (untracked, or no detail yet). */
+    /** 0-99 from the tracked job's planned/crafted totals, or null when untracked. */
     progressPct: number | null;
 }
 
 /**
- * Which busy CPUs the expensive per-CPU detail fan-in should cover this poll cycle - `null` fetches none,
- * `"all"` fetches every busy CPU (the Jobs view), and a specific CPU fetches just that one (Craft
- * Detail, which only ever needs the one it's showing). Narrower than plain on/off so opening Craft
- * Detail doesn't keep fanning detail requests out to every other busy CPU in the background.
+ * The one busy CPU whose expensive per-CPU detail the poll also fetches (Craft Detail), or `null` for none.
+ * The list alone carries every card's progress, so nothing else needs the detail.
  */
-export type DetailScope = "all" | { gridKey: GridKey; cpuKey: string } | null;
+export type DetailScope = { gridKey: GridKey; cpuKey: string } | null;
 
 export interface CpusContextValue {
     cpus: CpuView[];
@@ -51,12 +50,8 @@ export interface CpusContextValue {
     error: string | null;
     /** Grid labels that failed during an All-Grids CPU-list fan-out. */
     failedGrids: string[];
-    /**
-     * Fans the expensive per-busy-CPU detail in on top of the CPU list. Callers gate this to when it's
-     * actually shown (Jobs: `"all"`, Craft Detail: the one CPU it's rendering) - never globally - per
-     * the server-thread drain budget (`CoreEngine.DRAIN_BUDGET_NANOS`, `AE2Controller.requests`'
-     * 32-slot queue).
-     */
+    /** Fetches one busy CPU's detail on top of the CPU list - only while Craft Detail shows it, per the
+     *  server-thread drain budget (`CoreEngine.DRAIN_BUDGET_NANOS`, `AE2Controller.requests`' 32-slot queue). */
     detailScope: DetailScope;
     setDetailScope: (scope: DetailScope) => void;
     /** Suppresses the next busy->idle completion toast/notification for one CPU (a drawer-initiated cancel). */
@@ -80,17 +75,10 @@ function computeTargets(selection: GridSelection, allGrids: GridSummary[]): Grid
     return grid ? [grid] : [];
 }
 
-/**
- * Clamped to [0, 99] so it can never read 100% before the CPU actually reports idle (the risk logged at
- * REDESIGN_MILESTONES.md:297), and it can move non-monotonically since it's derived from crafted totals.
- * See `craftProgress.ts` for the underlying `requested ~= craftedTotal + active + pending` approximation
- * (REDESIGN_MILESTONES.md caveat 1) shared with the Craft Detail page.
- */
-function estimateProgress(detail: CpuDetail | null, hasTrackingInfo: boolean): number | null {
-    if (!hasTrackingInfo || !detail?.items) return null;
-    const totals = craftTotals(detail.items);
-    if (totals.requested <= 0) return null;
-    return Math.min(99, Math.max(0, progressFraction(totals) * 100));
+/** Clamped to [0, 99] so it never reads 100% before the CPU actually reports idle. */
+function listProgress(cpu: CpuSummary): number | null {
+    if (!cpu.hasTrackingInfo || cpu.plannedTotal <= 0) return null;
+    return Math.min(99, Math.max(0, (cpu.craftedTotal / cpu.plannedTotal) * 100));
 }
 
 interface LastBusyEntry {
@@ -198,6 +186,7 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
                         if (generation !== generationRef.current) return;
                         try {
                             const list = await getCpuList(grid.key);
+                            const listFetchedAt = Date.now();
                             const label = gridOptionLabel(grid, gridsRef.current);
                             for (const [cpuKey, summary] of Object.entries(list)) {
                                 collected.push({
@@ -207,7 +196,8 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
                                     gridLabel: label,
                                     detail: null,
                                     fetchedAt: null,
-                                    progressPct: null,
+                                    listFetchedAt,
+                                    progressPct: listProgress(summary),
                                 });
                             }
                         } catch {
@@ -216,28 +206,18 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
                     }
 
                     const scope = detailScopeRef.current;
-                    if (scope !== null) {
-                        // Sequential, not fanned out: each detail read is a server-thread task under a 5ms/tick
-                        // drain budget (CoreEngine.DRAIN_BUDGET_NANOS) - see REDESIGN_MILESTONES.md caveat 2.
-                        for (const cpu of collected) {
-                            if (generation !== generationRef.current) return;
-                            if (!cpu.isBusy) continue;
-                            if (
-                                scope !== "all" &&
-                                (scope.gridKey !== cpu.sourceGridKey || scope.cpuKey !== cpu.cpuKey)
-                            ) {
-                                continue;
-                            }
-                            try {
-                                const detail = await getCpu(cpu.sourceGridKey, cpu.cpuKey);
-                                cpu.detail = detail;
-                                cpu.fetchedAt = Date.now();
-                                cpu.progressPct = estimateProgress(detail, cpu.hasTrackingInfo);
-                            } catch {
-                                // Transient (SERVER_BUSY, TIMEOUT, the job finishing mid-cycle) - keep
-                                // this CPU without fresh detail this cycle rather than surfacing an
-                                // error; the next cycle usually succeeds.
-                            }
+                    const target = scope
+                        ? collected.find(
+                              (c) => c.isBusy && c.sourceGridKey === scope.gridKey && c.cpuKey === scope.cpuKey,
+                          )
+                        : undefined;
+                    if (target) {
+                        try {
+                            target.detail = await getCpu(target.sourceGridKey, target.cpuKey);
+                            target.fetchedAt = Date.now();
+                        } catch {
+                            // Transient (SERVER_BUSY, TIMEOUT, the job finishing mid-cycle) - keep the CPU
+                            // without fresh detail this cycle; the next one usually succeeds.
                         }
                     }
 

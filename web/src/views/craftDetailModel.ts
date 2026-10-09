@@ -2,7 +2,7 @@
 // orderModel.ts). No Preact here so the arithmetic is reviewable/testable in isolation - mirrors
 // claude-design's `craftDetailVals()` (AE2 Web Terminal.dc.html:895-1048) against the real DTOs.
 import { formatBytes, formatDuration, formatNumber } from "../api/format";
-import { craftTotals } from "../state/craftProgress";
+import { craftTotals, estimateRemaining } from "../state/craftProgress";
 import type { CompactedItem, ConsumedItem, DimensionalCoords, ItemStack, ResourceRef } from "../api/types";
 import type { CpuView } from "../state/cpus";
 
@@ -63,7 +63,7 @@ export interface CraftDetailView {
     outputQty: number;
     subtitle: string;
     statusLabel: string;
-    statusVariant: "amber" | "green" | "grey";
+    statusVariant: "amber" | "green" | "grey" | "red";
     /** Elapsed/Took, Est. remaining, Crafts/sec - the Output card is rendered separately since its
      *  value needs `<FormattedText>`, not a plain string. */
     stats: CraftDetailStat[];
@@ -74,6 +74,8 @@ export interface CraftDetailView {
     /** `null` when untracked; otherwise raw materials first, then intermediates. */
     consumed: ConsumedRow[] | null;
     machines: WorkingMachineRow[];
+    /** Set while the tracked job has made no progress for the server's stall time. */
+    stall: { duration: string; reason: string | null } | null;
     finished: boolean;
 }
 
@@ -166,6 +168,14 @@ function buildMachineRows(live: CpuView, now: number): WorkingMachineRow[] {
     }));
 }
 
+function buildStall(live: CpuView, now: number): CraftDetailView["stall"] {
+    const detail = live.detail;
+    if (!detail?.hasTrackingInfo || detail.stalledSince <= 0 || live.fetchedAt === null) return null;
+    // `stalledSince` is on the server's clock - same reasoning as `buildMachineRows`.
+    const serverNow = detail.timeStarted + detail.timeElapsed + Math.max(0, now - live.fetchedAt);
+    return { duration: formatDuration(Math.max(0, serverNow - detail.stalledSince)), reason: detail.stallReason };
+}
+
 function buildRow(
     item: CompactedItem,
     tracked: boolean,
@@ -173,7 +183,7 @@ function buildRow(
     totalTime: number,
     used: Map<string, number>,
 ): CraftDetailItemRow {
-    const requested = item.craftedTotal + item.active + item.pending;
+    const requested = item.planned > 0 ? item.planned : item.craftedTotal + item.active + item.pending;
     const stats: CraftDetailStat[] = [
         { label: "active", value: formatNumber(item.active) },
         { label: "pending", value: formatNumber(item.pending) },
@@ -214,16 +224,15 @@ export function buildActiveCraftDetail(
     const totals = craftTotals(items);
     const elapsed = liveElapsed(live, now) ?? 0;
     const progressFraction = totals.requested > 0 ? Math.min(1, totals.crafted / totals.requested) : 0;
-    const etaReady = tracked && progressFraction >= 0.15 && elapsed > 20_000 && progressFraction < 1;
+    const stalled = detail.stalledSince > 0;
+    const remaining = tracked && !stalled ? estimateRemaining(elapsed, progressFraction) : null;
     const jobRate = tracked && elapsed > 0 ? totals.crafted / (elapsed / 1000) : 0;
 
     const stats: CraftDetailStat[] = [{ label: "Elapsed", value: tracked ? formatDuration(elapsed) : "—" }];
     if (tracked) {
         stats.push({
             label: "Est. remaining",
-            value: etaReady
-                ? `~${formatDuration((elapsed * (1 - progressFraction)) / progressFraction)}`
-                : "Calculating",
+            value: stalled ? "Stalled" : remaining !== null ? `~${formatDuration(remaining)}` : "Calculating",
         });
         stats.push({ label: "Crafts / sec", value: jobRate.toFixed(2) });
     }
@@ -232,20 +241,23 @@ export function buildActiveCraftDetail(
         outputItemid: live.finalOutput.itemid,
         outputName: live.finalOutput.itemname,
         outputQty: live.finalOutput.quantity,
-        subtitle: `${live.name} - ${live.coProcessors} co-proc${live.coProcessors === 1 ? "" : "s"} - ${storageStat(live.usedStorage, live.availableStorage)}`,
-        statusLabel: tracked ? "Crafting" : "Crafting - no tracking",
-        statusVariant: "amber",
+        subtitle: `${live.name} - ${live.coProcessors} co-proc${live.coProcessors === 1 ? "" : "s"} - ${storageStat(live.usedStorage, live.availableStorage)}${detail.requestedBy ? ` - requested by ${detail.requestedBy}` : ""}`,
+        statusLabel: detail.stalledSince > 0 ? "Stalled" : tracked ? "Crafting" : "Crafting - no tracking",
+        statusVariant: detail.stalledSince > 0 ? "red" : "amber",
         stats,
         progress: tracked
             ? {
                   fraction: progressFraction,
-                  caption: `${formatNumber(totals.crafted)} of ${formatNumber(totals.requested)} sub-crafts complete - approximated from crafted totals`,
+                  caption: `${formatNumber(totals.crafted)} of ${formatNumber(totals.requested)} sub-crafts complete${
+                      detail.plannedTotal > 0 ? "" : " - approximated from crafted totals"
+                  }`,
               }
             : null,
         columns: buildColumns(items, tracked, totals.totalTime, false, usedByItem(detail.consumed)),
         bottleneck: tracked ? buildBottleneck(items, totals.totalTime) : null,
         consumed: tracked ? buildConsumedRows(detail.consumed) : null,
         machines: buildMachineRows(live, now),
+        stall: buildStall(live, now),
         finished: false,
     };
 }
@@ -276,6 +288,7 @@ function buildFromSnapshot(snapshot: CraftDetailSnapshot): CraftDetailView {
         bottleneck: tracked ? buildBottleneck(items, totals.totalTime) : null,
         consumed: tracked ? buildConsumedRows(snapshot.consumed) : null,
         machines: [],
+        stall: null,
         finished: true,
     };
 }

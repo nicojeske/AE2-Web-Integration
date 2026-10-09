@@ -1,5 +1,7 @@
 package pl.kuba6000.ae2webintegration.core.tracking;
 
+import org.jetbrains.annotations.Nullable;
+
 import pl.kuba6000.ae2webintegration.core.api.IAEMixinCallbacks;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAECraftingPatternDetails;
@@ -12,11 +14,12 @@ public class AEMixinCallbacks implements IAEMixinCallbacks {
     public static AEMixinCallbacks INSTANCE = new AEMixinCallbacks();
 
     @Override
-    public void jobStarted(ICraftingCPUCluster cpuCluster, IAEGrid grid, boolean isMerging, boolean isAuthorPlayer) {
+    public void jobStarted(ICraftingCPUCluster cpuCluster, IAEGrid grid, boolean isMerging, boolean isAuthorPlayer,
+        @Nullable String requester) {
         if (!Config.INSTANCE.tracking.trackMachineCrafting && !isAuthorPlayer) {
             return;
         }
-        AE2JobTracker.addJob(cpuCluster, grid, isMerging);
+        AE2JobTracker.addJob(cpuCluster, grid, isMerging, requester);
     }
 
     @Override

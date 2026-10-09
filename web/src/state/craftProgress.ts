@@ -1,7 +1,6 @@
-// Shared crafting-progress arithmetic, so the Jobs card bar (cpus.tsx) and the Craft Detail page
-// (views/craftDetailModel.ts) can never disagree on what "how far along is this job" means. No real
-// `requested` field exists (REDESIGN_MILESTONES.md caveat 1) - it's approximated per item as
-// `craftedTotal + active + pending`.
+// Shared crafting-progress arithmetic for the Craft Detail page (views/craftDetailModel.ts). A tracked
+// job carries each item's `planned` units, fixed when it started; an item without one (a byproduct, a
+// pre-snapshot job) falls back to `craftedTotal + active + pending`.
 import type { CompactedItem } from "../api/types";
 
 export interface CraftTotals {
@@ -18,15 +17,18 @@ export function craftTotals(items: CompactedItem[] | null): CraftTotals {
     if (items) {
         for (const item of items) {
             crafted += item.craftedTotal;
-            requested += item.craftedTotal + item.active + item.pending;
+            requested += item.planned > 0 ? item.planned : item.craftedTotal + item.active + item.pending;
             totalTime += item.timeSpentCrafting;
         }
     }
     return { crafted, requested, totalTime };
 }
 
-/** `0..1`, or `0` when there's nothing to derive a fraction from. Callers clamp/scale as needed. */
-export function progressFraction(t: CraftTotals): number {
-    if (t.requested <= 0) return 0;
-    return Math.min(1, t.crafted / t.requested);
+/**
+ * Remaining time by linear extrapolation, or `null` while too early to say: the first stretch of a job is
+ * dominated by setup, so it waits for 15% progress and 20 s of history.
+ */
+export function estimateRemaining(elapsedMs: number, fraction: number): number | null {
+    if (fraction < 0.15 || fraction >= 1 || elapsedMs <= 20_000) return null;
+    return (elapsedMs * (1 - fraction)) / fraction;
 }

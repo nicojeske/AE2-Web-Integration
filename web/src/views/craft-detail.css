@@ -492,3 +492,17 @@
     gap: 4px;
     margin-top: 2px;
 }
+
+.craft-detail__col-toggle {
+    margin-left: auto;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+.craft-detail__col-toggle:hover {
+    color: var(--text-primary);
+}

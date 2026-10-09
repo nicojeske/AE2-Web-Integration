@@ -38,6 +38,9 @@ export interface MockBusyCpu {
     /** Wall-clock ms for the mock craft to reach 100%. */
     craftDurationMs: number;
     hasTrackingInfo: boolean;
+    /** Progress (0..1) at which the job stops advancing for good - a stalled job, for the stall UI. */
+    stallAt?: number;
+    requestedBy?: string;
     recipe: MockRecipeRow[];
     /** Raw materials the whole job takes from storage, used up evenly as it progresses. */
     rawInputs?: { itemid: string; itemname: string; total: number }[];
@@ -281,6 +284,9 @@ export const mockGrids: MockGrid[] = [
                 startedAt: serverStart - 214_000,
                 craftDurationMs: 6 * 60_000,
                 hasTrackingInfo: true,
+                // Freezes a few seconds after the dev server starts, so the stall UI is always reachable.
+                stallAt: 0.6,
+                requestedBy: "Steve",
                 recipe: [
                     {
                         itemid: "appliedenergistics2:processor_calc",
@@ -716,7 +722,25 @@ export function toGridSummaries(): GridSummary[] {
 }
 
 function craftProgress(cpu: MockBusyCpu): number {
-    return Math.min(1, (Date.now() - cpu.startedAt) / cpu.craftDurationMs);
+    return Math.min(cpu.stallAt ?? 1, (Date.now() - cpu.startedAt) / cpu.craftDurationMs);
+}
+
+/** The job-level fields `GetCPUList`/`GetCPU` copy from the tracker; all zero/null when untracked. */
+export function mockJobProgress(cpu: MockBusyCpu) {
+    if (!cpu.hasTrackingInfo) {
+        return { timeElapsed: 0, plannedTotal: 0, craftedTotal: 0, stalledSince: 0, requestedBy: null };
+    }
+    const stalledSince =
+        cpu.stallAt !== undefined && craftProgress(cpu) >= cpu.stallAt
+            ? cpu.startedAt + cpu.stallAt * cpu.craftDurationMs
+            : 0;
+    return {
+        timeElapsed: Date.now() - cpu.startedAt,
+        plannedTotal: cpu.recipe.reduce((a, r) => a + r.requested, 0),
+        craftedTotal: toCompactedItems(cpu).reduce((a, i) => a + i.craftedTotal, 0),
+        stalledSince,
+        requestedBy: cpu.requestedBy ?? null,
+    };
 }
 
 /**
@@ -854,6 +878,11 @@ export function toCpuList(grid: MockGrid): CpuList {
             coProcessors: cpu.coProcessors,
             hasTrackingInfo: false,
             timeStarted: 0,
+            timeElapsed: 0,
+            plannedTotal: 0,
+            craftedTotal: 0,
+            stalledSince: 0,
+            requestedBy: null,
         };
     }
     for (const cpu of grid.busyCpus) {
@@ -867,6 +896,7 @@ export function toCpuList(grid: MockGrid): CpuList {
             hasTrackingInfo: cpu.hasTrackingInfo,
             // GetCPUList.java only sets timeStarted inside its hasTrackingInfo branch.
             timeStarted: cpu.hasTrackingInfo ? cpu.startedAt : 0,
+            ...mockJobProgress(cpu),
         };
     }
     return list;
@@ -910,6 +940,7 @@ export function toCompactedItems(cpu: MockBusyCpu): CompactedItem[] {
             stored: row.stored,
             timeSpentCrafting,
             craftedTotal,
+            planned: cpu.hasTrackingInfo ? row.requested : 0,
             shareInCraftingTime: row.requested / 64,
             shareInCraftingTimeCombined: Math.min(1, timeSpentCrafting / cpu.craftDurationMs),
             craftsPerSec,

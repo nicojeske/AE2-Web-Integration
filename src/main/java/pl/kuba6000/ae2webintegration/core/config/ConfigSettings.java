@@ -96,6 +96,11 @@ public final class ConfigSettings {
         @Comment("Track crafting requested directly by machines, rather than only player requests.")
         public boolean trackMachineCrafting;
 
+        @Path("stall_minutes")
+        @Comment({ "Minutes a tracked job may go without anything being delivered before it is shown as stalled",
+            "and a notification is sent (0-1440). Zero disables stall detection." })
+        public int stallMinutes = 15;
+
     }
 
     public static final class Statistics {
@@ -184,6 +189,7 @@ public final class ConfigSettings {
         if (notifications.minimumCraftingDurationSeconds < 0 || notifications.minimumCraftingAmount < 0) {
             throw new IllegalArgumentException("Notification minimums must not be negative");
         }
+        requireRange("tracking.stall_minutes", tracking.stallMinutes, 0, 1440);
         requireRange("statistics.sample_interval_minutes", statistics.sampleIntervalMinutes, 1, 60);
         requireRange("statistics.fine_retention_days", statistics.fineRetentionDays, 1, 90);
         requireRange("statistics.hourly_retention_days", statistics.hourlyRetentionDays, 1, 3650);

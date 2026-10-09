@@ -1,6 +1,7 @@
 package pl.kuba6000.ae2webintegration.core.tracking;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -13,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 import com.google.common.collect.MapMaker;
 
+import pl.kuba6000.ae2webintegration.core.AE2Controller;
 import pl.kuba6000.ae2webintegration.core.CoreEngine;
 import pl.kuba6000.ae2webintegration.core.api.DimensionalCoords;
 import pl.kuba6000.ae2webintegration.core.api.JSON_Stack;
@@ -29,6 +31,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.IPatternProviderViewable;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 import pl.kuba6000.ae2webintegration.core.notification.NotificationManager;
 import pl.kuba6000.ae2webintegration.core.notification.message.CraftingMessage;
+import pl.kuba6000.ae2webintegration.core.notification.message.StatusMessage;
 
 public class AE2JobTracker {
 
@@ -72,12 +75,60 @@ public class AE2JobTracker {
         public HashMap<String, AEInterface> interfaceLookup = new HashMap<>();
         public HashMap<AEInterface, HashSet<IAEKey>> interfaceWaitingFor = new HashMap<>();
         public HashMap<IAEKey, HashMap<AEInterface, HashSet<IAEKey>>> interfaceWaitingForLookup = new HashMap<>();
+        /**
+         * Units of each resource the job set out to craft, captured when it starts (and again on a merge) as
+         * crafted + still expected + still to push. Fixed from then on, so it is the progress denominator.
+         */
+        public HashMap<IAEKey, Long> planned = new HashMap<>();
+        public long plannedTotal;
+        /** Sum of {@link #craftedTotal}. */
+        public long craftedSum;
+        /** Who submitted the job: a player, or the web user; null for a machine or when unknown. */
+        public @Nullable String requestedBy;
+        /** Last time anything was delivered back to the CPU, Unix epoch milliseconds. */
+        public long lastProgressAt;
+        /** {@link #lastProgressAt} once no progress was made for the configured stall time; zero otherwise. */
+        public long stalledSince;
+        /** What a stalled job is waiting on; null while it isn't stalled. */
+        public @Nullable String stallReason;
         public boolean isDone = false;
         public boolean wasCancelled = false;
 
         public JobTrackingInfo(@NotNull JSON_Stack finalOutput) {
             this.finalOutput = finalOutput;
             this.timeStarted = System.currentTimeMillis();
+            this.lastProgressAt = this.timeStarted;
+        }
+
+        void addCrafted(IAEKey key, long amount) {
+            if (amount <= 0L) return;
+            craftedTotal.merge(key, amount, Long::sum);
+            craftedSum += amount;
+            lastProgressAt = System.currentTimeMillis();
+            stalledSince = 0L;
+            stallReason = null;
+        }
+
+        /**
+         * Recomputes {@link #planned} from what the CPU still has to do plus what was crafted so far. Skipped
+         * when the platform can't enumerate the CPU, which leaves progress to the client's approximation.
+         */
+        void snapshotPlan(ICraftingCPUCluster cpu) {
+            IStackList all = AE2Controller.AE2Interface == null ? null
+                : AE2Controller.AE2Interface.web$createStackList();
+            if (all == null) return;
+            cpu.web$getAllItems(all);
+            HashMap<IAEKey, Long> snapshot = new HashMap<>(craftedTotal);
+            for (IAEGenericStack stack : all.web$stacks()) {
+                IAEKey key = stack.web$what();
+                long remaining = cpu.web$getActiveItems(key) + cpu.web$getPendingItems(key);
+                if (remaining > 0L)
+                    snapshot.put(key.web$copyIdentity(), craftedTotal.getOrDefault(key, 0L) + remaining);
+            }
+            planned = snapshot;
+            long total = 0L;
+            for (long amount : snapshot.values()) total += amount;
+            plannedTotal = total;
         }
 
         public long getTimeSpentOn(IAEKey key) {
@@ -124,7 +175,27 @@ public class AE2JobTracker {
         nextFreeTrackingInfoID = 1;
     }
 
+    /**
+     * Set by {@code SubmitCraftingPlan} around its native submit, which starts the job synchronously on the
+     * same thread: the platform only sees the web integration's own action source, not the web user.
+     */
+    private static final ThreadLocal<String> WEB_REQUESTER = new ThreadLocal<>();
+
+    public static void runAsWebRequester(@NotNull String username, @NotNull Runnable submit) {
+        WEB_REQUESTER.set(username);
+        try {
+            submit.run();
+        } finally {
+            WEB_REQUESTER.remove();
+        }
+    }
+
     public static void addJob(ICraftingCPUCluster cpuCluster, IAEGrid grid, boolean isMerging) {
+        addJob(cpuCluster, grid, isMerging, null);
+    }
+
+    public static void addJob(ICraftingCPUCluster cpuCluster, IAEGrid grid, boolean isMerging,
+        @Nullable String requester) {
         if (!CoreEngine.GRID_IDENTITIES.isInitialized()) return;
         JobTrackingInfo info = isMerging ? trackingInfoMap.get(cpuCluster) : null;
         if (isMerging && info == null) return;
@@ -142,8 +213,12 @@ public class AE2JobTracker {
         if (isMerging) {
             info.finalOutput = finalOutput;
         } else {
-            trackingInfoMap.put(cpuCluster, new JobTrackingInfo(finalOutput));
+            info = new JobTrackingInfo(finalOutput);
+            String webRequester = WEB_REQUESTER.get();
+            info.requestedBy = webRequester != null ? webRequester : requester;
+            trackingInfoMap.put(cpuCluster, info);
         }
+        info.snapshotPlan(cpuCluster);
     }
 
     public static void updateCraftingStatus(ICraftingCPUCluster cpu, Object diff) {
@@ -159,7 +234,7 @@ public class AE2JobTracker {
             } else {
                 long previous = info.waitingFor.get(keyDiff);
                 if (previous > waitingAmount) {
-                    info.craftedTotal.merge(keyDiff, previous - waitingAmount, Long::sum);
+                    info.addCrafted(keyDiff, previous - waitingAmount);
                 }
                 info.waitingFor.put(keyDiff, waitingAmount);
             }
@@ -170,7 +245,7 @@ public class AE2JobTracker {
                 long elapsed = ended - started;
                 long endedReal = System.currentTimeMillis();
                 info.timeSpentOn.merge(keyDiff, elapsed, Long::sum);
-                info.craftedTotal.merge(keyDiff, info.waitingFor.remove(keyDiff), Long::sum);
+                info.addCrafted(keyDiff, info.waitingFor.remove(keyDiff));
                 info.itemShare.computeIfAbsent(keyDiff, k -> new ArrayList<>())
                     .add(Pair.of(started, endedReal));
                 if (info.interfaceWaitingForLookup.containsKey(keyDiff)) {
@@ -232,7 +307,7 @@ public class AE2JobTracker {
         if (data == null || !data.getSettings()
             .isTracked()) return;
         for (Map.Entry<IAEKey, Long> entry : info.waitingFor.entrySet()) {
-            info.craftedTotal.merge(entry.getKey(), entry.getValue(), Long::sum);
+            info.addCrafted(entry.getKey(), entry.getValue());
         }
         info.waitingFor.clear();
         final long now = System.currentTimeMillis();
@@ -279,4 +354,67 @@ public class AE2JobTracker {
         completeCrafting(grid, cpu);
     }
 
+    /**
+     * Marks running jobs that delivered nothing for {@code stallMillis} as stalled, and posts one notification
+     * per stall; progress clears the mark ({@link JobTrackingInfo#addCrafted}). Runs on the server thread.
+     */
+    public static void checkStalls(long nowMillis, long stallMillis) {
+        if (stallMillis <= 0L) return;
+        for (Map.Entry<ICraftingCPUCluster, JobTrackingInfo> entry : trackingInfoMap.entrySet()) {
+            JobTrackingInfo info = entry.getValue();
+            if (nowMillis - info.lastProgressAt < stallMillis) continue;
+            info.stallReason = stallReason(info);
+            if (info.stalledSince != 0L) continue;
+            info.stalledSince = info.lastProgressAt;
+            if (Config.INSTANCE.general.publicMode) continue;
+            ICraftingCPUCluster cpu = entry.getKey();
+            NotificationManager.postMessageNonBlocking(
+                new StatusMessage(
+                    "Crafting stalled on " + cpu.web$getName(),
+                    "No progress for " + NotificationManager.formatDuration(nowMillis - info.lastProgressAt)
+                        + " crafting "
+                        + info.finalOutput.quantity
+                        + "x "
+                        + info.finalOutput.itemname
+                        + ". "
+                        + info.stallReason,
+                    StatusMessage.Severity.WARNING));
+        }
+    }
+
+    /** The machine the job has waited on longest, or that nothing is out at a machine at all. */
+    static @NotNull String stallReason(JobTrackingInfo info) {
+        AEInterface oldest = null;
+        long oldestSince = Long.MAX_VALUE;
+        for (Map.Entry<AEInterface, Long> started : info.interfaceStarted.entrySet()) {
+            if (started.getValue() < oldestSince) {
+                oldest = started.getKey();
+                oldestSince = started.getValue();
+            }
+        }
+        if (oldest == null) return "Nothing is out at a machine - waiting for ingredients or a free machine.";
+        StringBuilder reason = new StringBuilder("Waiting on ").append(oldest.name);
+        DimensionalCoords location = oldest.location.isEmpty() ? null : Collections.min(oldest.location);
+        if (location != null) {
+            reason.append(" at ")
+                .append(location.x())
+                .append(", ")
+                .append(location.y())
+                .append(", ")
+                .append(location.z());
+        }
+        HashSet<IAEKey> waiting = info.interfaceWaitingFor.get(oldest);
+        if (waiting != null && !waiting.isEmpty()) {
+            reason.append(" for ")
+                .append(
+                    waiting.iterator()
+                        .next()
+                        .web$getDisplayName());
+            if (waiting.size() > 1) reason.append(" and ")
+                .append(waiting.size() - 1)
+                .append(" more");
+        }
+        return reason.append('.')
+            .toString();
+    }
 }

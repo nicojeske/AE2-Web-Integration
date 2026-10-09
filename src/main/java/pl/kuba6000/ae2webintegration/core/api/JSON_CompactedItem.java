@@ -40,6 +40,13 @@ public class JSON_CompactedItem {
      */
     public long stored = 0;
     /**
+     * Resource units the tracked job set out to craft, fixed when it started (or merged); zero when this
+     * resource isn't crafted by the job or tracking is unavailable.
+     *
+     * @example 64
+     */
+    public long planned = 0;
+    /**
      * Measured time spent crafting this resource, in milliseconds.
      *
      * @example 5000

@@ -20,6 +20,7 @@ import {
     settleCompletedJobs,
     toCompactedItems,
     mockConsumed,
+    mockJobProgress,
     mockWorkingMachines,
     toCpuList,
     toGridSummaries,
@@ -292,7 +293,11 @@ async function handleApi(
                     items,
                     hasTrackingInfo: busy.hasTrackingInfo,
                     timeStarted: busy.hasTrackingInfo ? busy.startedAt : 0,
-                    timeElapsed: busy.hasTrackingInfo ? Date.now() - busy.startedAt : 0,
+                    ...mockJobProgress(busy),
+                    stallReason:
+                        mockJobProgress(busy).stalledSince > 0
+                            ? "Waiting on Charger at 120, 64, -32 for Fluix Crystal."
+                            : null,
                     consumed: mockConsumed(busy, items),
                     machines: mockWorkingMachines(busy, items),
                 });
@@ -308,6 +313,11 @@ async function handleApi(
                 hasTrackingInfo: false,
                 timeStarted: 0,
                 timeElapsed: 0,
+                plannedTotal: 0,
+                craftedTotal: 0,
+                stalledSince: 0,
+                stallReason: null,
+                requestedBy: null,
                 consumed: [],
                 machines: [],
             });
@@ -383,6 +393,7 @@ async function handleApi(
                     startedAt: Date.now(),
                     craftDurationMs: 60_000,
                     hasTrackingInfo: grid.isTrackingEnabled,
+                    requestedBy: "DevAdmin",
                     recipe: [
                         {
                             itemid: outputItemid,

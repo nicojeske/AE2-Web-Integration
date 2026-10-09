@@ -112,8 +112,19 @@ public class CoreEngine {
         drainRequests(System::nanoTime);
         runPlanMaintenance(System.nanoTime());
         runHistorySampling(System.nanoTime(), System.currentTimeMillis());
+        runStallCheck(System.currentTimeMillis());
         GTEngine.onServerTick();
         maintainVersionChecker();
+    }
+
+    private static final long STALL_CHECK_INTERVAL_MILLIS = 5_000L;
+    private static long nextStallCheckMillis;
+
+    /** A few seconds of lag on a threshold measured in minutes doesn't matter; walking every job each tick does. */
+    private static void runStallCheck(long nowMillis) {
+        if (nowMillis < nextStallCheckMillis) return;
+        nextStallCheckMillis = nowMillis + STALL_CHECK_INTERVAL_MILLIS;
+        AE2JobTracker.checkStalls(nowMillis, TimeUnit.MINUTES.toMillis(Config.INSTANCE.tracking.stallMinutes));
     }
 
     private static void maintainVersionChecker() {

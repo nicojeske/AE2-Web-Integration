@@ -1,4 +1,29 @@
-/* Active Jobs (M2) */
+/* Active Jobs */
+
+/* One line above the cards: busy/idle/stalled counts and storage in use. */
+.jobs-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 18px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+}
+.jobs-summary strong {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.jobs-summary__stalled,
+.jobs-summary__stalled strong {
+    color: var(--red);
+}
+.jobs-summary__bytes {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
 
 .cpu-grid {
     display: grid;
@@ -62,38 +87,26 @@
     white-space: nowrap;
 }
 
+.cpu-card--stalled {
+    border-color: rgba(242, 96, 107, 0.45);
+}
+
+.cpu-card__timing {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+
+.cpu-card__stalled {
+    color: var(--red);
+}
+
 .cpu-card__footer {
     display: flex;
     justify-content: space-between;
     font-size: 11.5px;
     color: var(--text-dim);
     font-family: var(--font-mono);
-}
-
-/* Detail drawer stat/item rows */
-.drawer-row {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card-sm);
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.drawer-row__name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.drawer-row__detail {
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    color: var(--text-muted);
-}
-
-.cpu-drawer__empty {
-    padding: 20px;
-    font-size: 12px;
 }

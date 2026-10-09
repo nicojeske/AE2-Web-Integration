@@ -14,7 +14,7 @@ import { ProgressBar } from "../ui/ProgressBar";
 import { ItemIcon } from "../ui/ItemIcon";
 import { ConsumedSection, CraftDetailColumns, CraftDetailHeader, StatCard, WorkingMachines } from "./craftDetailParts";
 import { buildActiveCraftDetail, isJobFinished, snapshotOf } from "./craftDetailModel";
-import type { CraftDetailSnapshot } from "./craftDetailModel";
+import type { CraftDetailColumn, CraftDetailColumnKey, CraftDetailSnapshot } from "./craftDetailModel";
 
 export interface CraftDetailProps {
     gridKey: GridKey;
@@ -32,6 +32,9 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
     const [bottleneckOpen, setBottleneckOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [cancelling, setCancelling] = useState(false);
+    const [filter, setFilter] = useState("");
+    // Done grows all job long and is the least interesting column while it runs.
+    const [collapsed, setCollapsed] = useState<CraftDetailColumnKey[]>(["done"]);
 
     // Counts Elapsed/ETA up between polls (the poll cadence is 2.5s/5s; this ticks every 1s), mirroring
     // the poller's own document.hidden pause so a backgrounded tab doesn't keep a timer running.
@@ -115,7 +118,9 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                 outputName={view.outputName}
                 outputQty={view.outputQty}
                 subtitle={
-                    selected === "all" && live?.gridLabel ? `${view.subtitle} - ${live.gridLabel}` : view.subtitle
+                    selected === "all" && live?.gridLabel
+                        ? `${view.subtitle} - network ${live.gridLabel}`
+                        : view.subtitle
                 }
                 statusLabel={view.statusLabel}
                 statusVariant={view.statusVariant}
@@ -133,6 +138,12 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                 ))}
             </section>
 
+            {view.stall && (
+                <p className="craft-detail__notice craft-detail__notice--error">
+                    No progress for {view.stall.duration}.{view.stall.reason ? ` ${view.stall.reason}` : ""}
+                </p>
+            )}
+
             {view.progress && (
                 <section className="craft-detail__progress">
                     <ProgressBar percent={view.progress.fraction * 100} height={8} />
@@ -142,7 +153,25 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
 
             {!view.finished && view.consumed !== null && <WorkingMachines rows={view.machines} />}
 
-            <CraftDetailColumns columns={view.columns} />
+            <section className="plan-toolbar">
+                <input
+                    type="search"
+                    className="plan-toolbar__search"
+                    placeholder="Filter items…"
+                    value={filter}
+                    onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
+                />
+            </section>
+
+            <CraftDetailColumns
+                columns={filterColumns(view.columns, filter)}
+                collapsed={view.finished || filter.trim() !== "" ? [] : collapsed}
+                onToggleCollapsed={
+                    view.finished
+                        ? undefined
+                        : (key) => setCollapsed((c) => (c.includes(key) ? c.filter((k) => k !== key) : [...c, key]))
+                }
+            />
 
             {view.consumed !== null && <ConsumedSection rows={view.consumed} />}
 
@@ -228,4 +257,17 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
             )}
         </section>
     );
+}
+
+/** Narrows every column to the rows whose plain name or itemid contains `filter`, case-insensitive. */
+function filterColumns(columns: CraftDetailColumn[], filter: string): CraftDetailColumn[] {
+    const needle = filter.trim().toLowerCase();
+    if (needle === "") return columns;
+    return columns.map((col) => ({
+        ...col,
+        rows: col.rows.filter(
+            (r) =>
+                skipSpecialFormat(r.itemname).toLowerCase().includes(needle) || r.itemid.toLowerCase().includes(needle),
+        ),
+    }));
 }

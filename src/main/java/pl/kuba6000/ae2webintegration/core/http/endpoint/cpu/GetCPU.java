@@ -113,6 +113,33 @@ public final class GetCPU extends ISyncedRequest {
          * @example 10000
          */
         public long timeElapsed = 0L;
+        /**
+         * Resource units the tracked job set out to craft, summed over every resource; zero when untracked.
+         *
+         * @example 1280
+         */
+        public long plannedTotal = 0L;
+        /**
+         * Resource units delivered so far, summed over every resource; zero when untracked.
+         *
+         * @example 640
+         */
+        public long craftedTotal = 0L;
+        /**
+         * When the tracked job last made progress before stalling, in Unix epoch milliseconds; zero while it
+         * isn't stalled or is untracked.
+         *
+         * @example 0
+         */
+        public long stalledSince = 0L;
+        /**
+         * What a stalled job is waiting on; null while it isn't stalled.
+         *
+         * @example Waiting on Assembler at 120, 64, -32 for Circuit.
+         */
+        public @Nullable String stallReason;
+        /** Who submitted the tracked job: a player or web user; null for a machine, untracked, or unknown. */
+        public @Nullable String requestedBy;
         /** Inputs taken by the patterns pushed so far, largest first; empty when tracking is unavailable. */
         public ArrayList<JSON_CompactedJobTrackingInfo.ConsumedGSONItem> consumed = new ArrayList<>();
         /** Pattern providers still processing pushed patterns, longest-running first. */
@@ -182,6 +209,14 @@ public final class GetCPU extends ISyncedRequest {
             if (clusterData.hasTrackingInfo) {
                 clusterData.timeStarted = trackingInfo.timeStarted;
                 clusterData.timeElapsed = (System.currentTimeMillis()) - clusterData.timeStarted;
+                clusterData.plannedTotal = trackingInfo.plannedTotal;
+                clusterData.craftedTotal = trackingInfo.craftedSum;
+                clusterData.stalledSince = trackingInfo.stalledSince;
+                clusterData.stallReason = trackingInfo.stalledSince != 0L ? trackingInfo.stallReason : null;
+                clusterData.requestedBy = trackingInfo.requestedBy;
+                for (Map.Entry<IAEKey, Long> planned : trackingInfo.planned.entrySet()) {
+                    prep.computeIfAbsent(planned.getKey(), JSON_CompactedItem::new).planned = planned.getValue();
+                }
                 for (IAEKey key : trackingInfo.timeSpentOn.keySet()) {
                     JSON_CompactedItem compactedItem = prep.computeIfAbsent(key, JSON_CompactedItem::new);
                     compactedItem.timeSpentCrafting += trackingInfo.getTimeSpentOn(key);

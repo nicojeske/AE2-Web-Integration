@@ -61,6 +61,15 @@ export interface CpuSummary {
     coProcessors: number;
     hasTrackingInfo: boolean;
     timeStarted: number;
+    /** Server-measured; zero when untracked. */
+    timeElapsed: number;
+    /** Units the tracked job set out to craft, all resources summed; zero when untracked. */
+    plannedTotal: number;
+    craftedTotal: number;
+    /** Server-clock epoch millis of the last progress before the job stalled; zero while not stalled. */
+    stalledSince: number;
+    /** Player or web user who submitted the tracked job; null for a machine, untracked, or unknown. */
+    requestedBy: string | null;
 }
 
 export type CpuList = Record<string, CpuSummary>;
@@ -74,6 +83,8 @@ export interface CompactedItem {
     stored: number;
     timeSpentCrafting: number;
     craftedTotal: number;
+    /** Units the tracked job set out to craft; zero when not crafted by it or untracked. */
+    planned: number;
     shareInCraftingTime: number;
     shareInCraftingTimeCombined: number;
     craftsPerSec: number;
@@ -91,6 +102,13 @@ export interface CpuDetail {
     hasTrackingInfo: boolean;
     timeStarted: number;
     timeElapsed: number;
+    plannedTotal: number;
+    craftedTotal: number;
+    /** Server-clock epoch millis of the last progress before the job stalled; zero while not stalled. */
+    stalledSince: number;
+    /** What a stalled job is waiting on; null while it isn't stalled. */
+    stallReason: string | null;
+    requestedBy: string | null;
     /** Inputs of the patterns pushed so far, largest first; empty when untracked. */
     consumed: ConsumedItem[];
     /** Pattern providers still holding unfinished pushed patterns, longest-running first. */

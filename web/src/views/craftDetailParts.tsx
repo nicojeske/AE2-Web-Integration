@@ -7,7 +7,7 @@ import { Badge } from "../ui/Badge";
 import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
-import type { ConsumedRow, CraftDetailColumn, WorkingMachineRow } from "./craftDetailModel";
+import type { ConsumedRow, CraftDetailColumn, CraftDetailColumnKey, WorkingMachineRow } from "./craftDetailModel";
 import type { BadgeVariant } from "../ui/Badge";
 
 export interface CraftDetailHeaderProps {
@@ -61,7 +61,14 @@ export function StatCard({ label, children }: { label: string; children: Compone
     );
 }
 
-export function CraftDetailColumns({ columns }: { columns: CraftDetailColumn[] }) {
+export interface CraftDetailColumnsProps {
+    columns: CraftDetailColumn[];
+    /** Columns showing only their count and a "Show" button instead of their rows. */
+    collapsed?: CraftDetailColumnKey[];
+    onToggleCollapsed?: (key: CraftDetailColumnKey) => void;
+}
+
+export function CraftDetailColumns({ columns, collapsed = [], onToggleCollapsed }: CraftDetailColumnsProps) {
     return (
         <section className="craft-detail__columns">
             {columns.map((col) => (
@@ -69,37 +76,47 @@ export function CraftDetailColumns({ columns }: { columns: CraftDetailColumn[] }
                     <div className={`craft-detail__col-head craft-detail__col-head--${col.color}`}>
                         <span className="craft-detail__col-title">{col.title}</span>
                         <span className="craft-detail__col-count">{col.rows.length}</span>
+                        {onToggleCollapsed && col.rows.length > 0 && (
+                            <button
+                                type="button"
+                                className="craft-detail__col-toggle"
+                                onClick={() => onToggleCollapsed(col.key)}
+                            >
+                                {collapsed.includes(col.key) ? "Show" : "Hide"}
+                            </button>
+                        )}
                     </div>
-                    {col.rows.map((row) => (
-                        <div className="craft-detail__item-card" key={row.itemid}>
-                            <div className="craft-detail__item-head">
-                                <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
-                                <FormattedText text={row.itemname} className="craft-detail__item-name" />
-                                <span className={`craft-detail__item-badge craft-detail__item-badge--${col.color}`}>
-                                    {row.badgeText}
-                                </span>
-                            </div>
-                            <div className="craft-detail__item-stats">
-                                {row.stats.map((st) => (
-                                    <div className="craft-detail__item-stat" key={st.label}>
-                                        <span>{st.label}</span>
-                                        <span>{st.value}</span>
-                                    </div>
-                                ))}
-                            </div>
-                            {row.sharePct !== null && (
-                                <div className="craft-detail__share">
-                                    <div className="craft-detail__share-track">
-                                        <div
-                                            className="craft-detail__share-fill"
-                                            style={{ width: `${Math.round(row.sharePct * 100)}%` }}
-                                        />
-                                    </div>
-                                    <span>{Math.round(row.sharePct * 100)}% of craft time</span>
+                    {!collapsed.includes(col.key) &&
+                        col.rows.map((row) => (
+                            <div className="craft-detail__item-card" key={row.itemid}>
+                                <div className="craft-detail__item-head">
+                                    <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
+                                    <FormattedText text={row.itemname} className="craft-detail__item-name" />
+                                    <span className={`craft-detail__item-badge craft-detail__item-badge--${col.color}`}>
+                                        {row.badgeText}
+                                    </span>
                                 </div>
-                            )}
-                        </div>
-                    ))}
+                                <div className="craft-detail__item-stats">
+                                    {row.stats.map((st) => (
+                                        <div className="craft-detail__item-stat" key={st.label}>
+                                            <span>{st.label}</span>
+                                            <span>{st.value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                {row.sharePct !== null && (
+                                    <div className="craft-detail__share">
+                                        <div className="craft-detail__share-track">
+                                            <div
+                                                className="craft-detail__share-fill"
+                                                style={{ width: `${Math.round(row.sharePct * 100)}%` }}
+                                            />
+                                        </div>
+                                        <span>{Math.round(row.sharePct * 100)}% of craft time</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
                     {col.rows.length === 0 && <div className="craft-detail__col-empty">{col.emptyText}</div>}
                 </section>
             ))}

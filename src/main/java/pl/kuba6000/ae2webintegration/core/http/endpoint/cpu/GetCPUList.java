@@ -115,6 +115,33 @@ public final class GetCPUList extends ISyncedRequest {
          * @example 1700000000000
          */
         public long timeStarted = 0L;
+        /**
+         * Elapsed crafting time in milliseconds, measured on the server; zero when tracking is unavailable.
+         *
+         * @example 10000
+         */
+        public long timeElapsed = 0L;
+        /**
+         * Resource units the tracked job set out to craft, summed over every resource; zero when untracked.
+         *
+         * @example 1280
+         */
+        public long plannedTotal = 0L;
+        /**
+         * Resource units delivered so far, summed over every resource; zero when untracked.
+         *
+         * @example 640
+         */
+        public long craftedTotal = 0L;
+        /**
+         * When the tracked job last made progress before stalling, in Unix epoch milliseconds; zero while it
+         * isn't stalled or is untracked.
+         *
+         * @example 0
+         */
+        public long stalledSince = 0L;
+        /** Who submitted the tracked job: a player or web user; null for a machine, untracked, or unknown. */
+        public @Nullable String requestedBy;
     }
 
     /** Duplicate addresses are logged; the last CPU for an address is retained. */
@@ -157,6 +184,11 @@ public final class GetCPUList extends ISyncedRequest {
                 if (trackingInfo != null) {
                     cpuInfo.hasTrackingInfo = true;
                     cpuInfo.timeStarted = trackingInfo.timeStarted;
+                    cpuInfo.timeElapsed = System.currentTimeMillis() - trackingInfo.timeStarted;
+                    cpuInfo.plannedTotal = trackingInfo.plannedTotal;
+                    cpuInfo.craftedTotal = trackingInfo.craftedSum;
+                    cpuInfo.stalledSince = trackingInfo.stalledSince;
+                    cpuInfo.requestedBy = trackingInfo.requestedBy;
                 }
             }
             cpuList.put(entry.getKey(), cpuInfo);

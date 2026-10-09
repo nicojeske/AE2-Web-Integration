@@ -105,16 +105,11 @@ function Shell() {
         changeSection("jobs");
     }, [changeSection]);
 
-    // Shell is the single writer of `detailScope` - the expensive per-CPU detail fan-in covers every
-    // busy CPU while Jobs is the active section, narrows to just the one CPU Craft Detail is showing,
-    // and stops entirely everywhere else (server-thread drain budget - see CoreEngine.DRAIN_BUDGET_NANOS).
+    // Shell is the single writer of `detailScope`: only the CPU Craft Detail is showing gets its expensive
+    // per-CPU detail (server-thread drain budget - see CoreEngine.DRAIN_BUDGET_NANOS).
     useEffect(() => {
-        if (craftDetail) {
-            setDetailScope({ gridKey: craftDetail.gridKey, cpuKey: craftDetail.cpuKey });
-        } else {
-            setDetailScope(section === "jobs" ? "all" : null);
-        }
-    }, [section, craftDetail, setDetailScope]);
+        setDetailScope(craftDetail ? { gridKey: craftDetail.gridKey, cpuKey: craftDetail.cpuKey } : null);
+    }, [craftDetail, setDetailScope]);
 
     // Same precedent as `detailScope` above: Statistics only polls while it's actually the visible
     // surface, not just the selected section - CraftDetail/TrackingDetail/PlanDetail can all replace

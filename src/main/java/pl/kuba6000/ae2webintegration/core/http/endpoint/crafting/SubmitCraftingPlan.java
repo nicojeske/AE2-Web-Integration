@@ -26,6 +26,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.IAECraftingJob;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.ICraftingCPUCluster;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAECraftingGrid;
+import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
 
 /**
  * Submits a completed crafting plan to a crafting CPU.
@@ -136,9 +137,14 @@ public final class SubmitCraftingPlan extends ISyncedRequest {
                         return;
                     }
                 }
-                String error = craftingGrid.web$submitJob(craftingJob, target, true, grid);
-                if (error != null) {
-                    respond(HttpURLConnection.HTTP_CONFLICT, new FailureResponse(ApiStatus.FAIL, error));
+                String[] error = new String[1];
+                ICraftingCPUCluster cpu = target;
+                AE2JobTracker.runAsWebRequester(
+                    context.getPrincipal()
+                        .getUsername(),
+                    () -> error[0] = craftingGrid.web$submitJob(craftingJob, cpu, true, grid));
+                if (error[0] != null) {
+                    respond(HttpURLConnection.HTTP_CONFLICT, new FailureResponse(ApiStatus.FAIL, error[0]));
                 } else {
                     gridData.removeJob(this.jobID);
                     respond(HttpURLConnection.HTTP_OK, new Response(ApiStatus.OK, null));
