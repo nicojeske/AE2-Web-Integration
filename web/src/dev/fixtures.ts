@@ -53,23 +53,19 @@ export interface MockGrid {
     busyCpus: MockBusyCpu[];
     history: TrackingHistoryElement[];
     trackingDetails: Map<number, TrackingDetail>;
-    /** M8: this grid's server-side tracked-item set (order matters - the server preserves insertion order). */
-    trackedItems: string[];
-    /** M8: when each tracked item's history begins - untrack/re-track resets it, mirroring `pruneTo`. */
+    /** M8: when a scripted item's history begins; every other stored item has history since `serverStart`
+     *  minus 40 days, the way the real server samples every item. */
     historyStart: Map<string, number>;
 }
 
 const serverStart = Date.now();
 
-// M8 Statistics fixture tuning - deliberately small so the cap is reachable by clicking in dev.
-export const MOCK_TRACKED_LIMIT = 10;
-
 /**
- * A tracked itemid that never appears in any grid's `items` fixture - stands in for a tracked item that
- * has emptied out of a real network entirely (only craftables survive a real `GetItems` at quantity 0).
- * Its display name only ever reaches the client via `/trackeditems`' `names` field (see
- * `trackedItemNames` below), mirroring `GridData.trackedItemNames` server-side - exercises the
- * card/Manage-Tracked/Compare-legend name and icon fallback for an item `useItems()` can never resolve.
+ * An itemid that never appears in any grid's `items` fixture - stands in for an item that has emptied out
+ * of a real network entirely (only craftables survive a real `GetItems` at quantity 0). Its display name
+ * only ever reaches the client via item-history's `names` field (see `historyNames` below), mirroring the
+ * name the server stores per series - exercises the card/Pinned-Items/Compare-legend name and icon
+ * fallback for an item `useItems()` can never resolve.
  */
 export const MOCK_GHOST_ITEM_ID = "modpack:reactant_dust";
 const MOCK_GHOST_ITEM_NAME = "Reactant Dust";
@@ -245,7 +241,7 @@ export const mockGrids: MockGrid[] = [
                 quantity: 40,
                 craftable: true,
             },
-            // M8 chart-quality/derived-metrics pass: a monotonically declining tracked item, so
+            // M8 chart-quality/derived-metrics pass: a monotonically declining item, so
             // `seriesStats`' negative `slopePerHour` and `timeToEmptyMillis`'s projection have
             // something to show in dev - see mockBucketValue's "sand" branch.
             {
@@ -256,7 +252,7 @@ export const mockGrids: MockGrid[] = [
                 quantity: 1500,
                 craftable: false,
             },
-            // Large-magnitude tracked item (~2.4M) alongside everything else's 3-4 digit quantities -
+            // Large-magnitude item (~2.4M) alongside everything else's 3-4 digit quantities -
             // exercises log scale and compact number formatting on the overview's aggregate chart. Also the
             // one item whose identity is AMBIGUOUS (two stacks with the same canonical data), so it lists
             // without an itemKey and the order flow's "can't be ordered" path is reachable in dev.
@@ -588,22 +584,9 @@ export const mockGrids: MockGrid[] = [
                 } satisfies TrackingDetail,
             ],
         ]),
-        // M8: nine tracked items (one below the 10-item mock cap, so a tenth click reaches
-        // TRACKED_LIMIT_REACHED) covering a normal trend, a gap, a zero-baseline ramp, a
-        // just-started item, a flat §-formatted one, a decline, a large-magnitude item, a near-max
-        // sawtooth, and an item absent from the network entirely - see mockItemHistory's scenario
-        // table and mockBucketValue's per-item branches.
-        trackedItems: [
-            "minecraft:iron_ingot",
-            "minecraft:redstone",
-            "appliedenergistics2:material_silicon",
-            "appliedenergistics2:crystal_certus",
-            "appliedenergistics2:processor_calc",
-            "minecraft:sand",
-            "appliedenergistics2:matter_ball",
-            "appliedenergistics2:sky_stone_block",
-            MOCK_GHOST_ITEM_ID,
-        ],
+        // M8: scripted history for a normal trend, a gap, a zero-baseline ramp, a just-started item, a
+        // flat §-formatted one, a decline, a large-magnitude item, a near-max sawtooth, and an item absent
+        // from the network entirely - see mockBucketValue's per-item branches.
         historyStart: new Map([
             ["minecraft:iron_ingot", serverStart - 40 * 86_400_000],
             ["minecraft:redstone", serverStart - 40 * 86_400_000],
@@ -700,7 +683,6 @@ export const mockGrids: MockGrid[] = [
         ],
         history: [],
         trackingDetails: new Map(),
-        trackedItems: ["minecraft:cobblestone"],
         historyStart: new Map([["minecraft:cobblestone", serverStart - 40 * 86_400_000]]),
     },
 ];
@@ -962,14 +944,14 @@ function itemLiveQuantity(grid: MockGrid, itemid: string): number {
 }
 
 /**
- * `/trackeditems`' `names` field - mirrors `GridData.getTrackedItemNames()`: a display name for every
- * tracked item still resolvable, either from the live item list or (for `MOCK_GHOST_ITEM_ID`) the one
+ * item-history's `names` field - mirrors the name the server stores per series: a display name for every
+ * requested item still resolvable, either from the live item list or (for `MOCK_GHOST_ITEM_ID`) the one
  * name it was ever given, standing in for a name the real server would have captured while the item was
  * still in storage.
  */
-export function trackedItemNames(grid: MockGrid): Record<string, string> {
+export function historyNames(grid: MockGrid, itemids: string[]): Record<string, string> {
     const names: Record<string, string> = {};
-    for (const id of grid.trackedItems) {
+    for (const id of itemids) {
         const item = grid.items.find((i) => i.itemid === id);
         if (item) {
             names[id] = item.itemname;
@@ -987,8 +969,10 @@ const REDSTONE_GAP_END_MS_AGO = 6 * 3_600_000;
 
 /** Value at one bucket, or `HISTORY_NO_SAMPLE` - see the scenario table in mockItemHistory's caller. */
 function mockBucketValue(grid: MockGrid, itemid: string, bucketStartMs: number, now: number): number {
-    const start = grid.historyStart.get(itemid);
-    if (start === undefined || bucketStartMs < start) return HISTORY_NO_SAMPLE; // untracked, or predates tracking
+    const start =
+        grid.historyStart.get(itemid) ??
+        (grid.items.some((i) => i.itemid === itemid) ? serverStart - 40 * 86_400_000 : undefined);
+    if (start === undefined || bucketStartMs < start) return HISTORY_NO_SAMPLE; // never stored, or not yet
 
     if (itemid === "minecraft:redstone") {
         const age = now - bucketStartMs;
@@ -1003,9 +987,9 @@ function mockBucketValue(grid: MockGrid, itemid: string, bucketStartMs: number, 
     let target: number;
     let noiseAmplitude: number;
     if (itemid === MOCK_GHOST_ITEM_ID) {
-        // Out of stock for its entire tracked span - not in any grid's `items` fixture at all, so
+        // Out of stock for its entire recorded span - not in any grid's `items` fixture at all, so
         // `live` is always 0. Exercises the card's "out of stock" tag and the name/icon fallback to
-        // `/trackeditems`' `names` field once `item` itself can never resolve.
+        // item-history's `names` field once `item` itself can never resolve.
         return 0;
     } else if (itemid === "appliedenergistics2:sky_stone_block") {
         // Sits within a few percent of its own max with small periodic dips that fully refill - a
@@ -1022,7 +1006,7 @@ function mockBucketValue(grid: MockGrid, itemid: string, bucketStartMs: number, 
         target = live;
         noiseAmplitude = 0;
     } else if (itemid === "appliedenergistics2:material_silicon") {
-        // Zero for the first 30% of *this item's own* tracked span, then ramps to the live value -
+        // Zero for the first 30% of *this item's own* recorded span, then ramps to the live value -
         // deliberately relative to `historyStart` (recent, see the fixture literal below) rather than
         // the full 365-day retention window, so the zero segment is actually visible within the
         // default 7d card/compare range instead of being masked by the historyStart gate above.
@@ -1110,8 +1094,8 @@ export function mockItemHistory(
         to: toBucket * tierBucketMs,
         stepMillis,
         resolution,
-        limit: MOCK_TRACKED_LIMIT,
         series,
+        names: historyNames(grid, itemids),
     };
 }
 

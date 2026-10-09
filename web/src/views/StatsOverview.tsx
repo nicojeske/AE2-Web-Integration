@@ -2,7 +2,7 @@
 // chart, both computed from the `history` bundle `state/stats.tsx` already polls; no extra requests.
 import type { GridKey, StatsRange } from "../api/types";
 import { formatNumber, formatRelativeAge } from "../api/format";
-import type { HistoryBundle } from "../state/stats";
+import { MAX_PINNED, type HistoryBundle } from "../state/stats";
 import type { BrowserItem } from "../state/items";
 import type { Thresholds } from "../state/prefs";
 import { Badge } from "../ui/Badge";
@@ -13,8 +13,7 @@ import { COMPARE_W, deltaPercent, describeResolution, isTrendSignificant, series
 
 export interface StatsOverviewProps {
     gridKey: GridKey;
-    tracked: string[];
-    trackedLimit: number;
+    pinned: string[];
     items: BrowserItem[];
     favorites: Record<string, true>;
     thresholds: Record<string, Thresholds>;
@@ -26,8 +25,7 @@ export interface StatsOverviewProps {
 
 export function StatsOverview({
     gridKey,
-    tracked,
-    trackedLimit,
+    pinned,
     items,
     favorites,
     thresholds,
@@ -37,14 +35,14 @@ export function StatsOverview({
     numberFormat,
 }: StatsOverviewProps) {
     const stepMillis = history?.stepMillis ?? 0;
-    const totalSeries = sumSeries(tracked.map((id) => history?.byItem.get(id) ?? []));
+    const totalSeries = sumSeries(pinned.map((id) => history?.byItem.get(id) ?? []));
     const totalStats = seriesStats(totalSeries, stepMillis);
     const netChangePct = deltaPercent(totalSeries);
 
     let rising = 0;
     let falling = 0;
     let flat = 0;
-    for (const id of tracked) {
+    for (const id of pinned) {
         const s = seriesStats(history?.byItem.get(id) ?? [], stepMillis);
         if (s.slopePerHour === null) continue;
         // A trend that doesn't clear isTrendSignificant's noise gate counts as flat here too - a
@@ -56,9 +54,9 @@ export function StatsOverview({
     }
 
     let lowStockCount = 0;
-    for (const id of tracked) {
+    for (const id of pinned) {
         const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === id);
-        // Reuses the Browser badge's own rule - a tracked item only counts here if it's favourited
+        // Reuses the Browser badge's own rule - a pinned item only counts here if it's favourited
         // (otherwise it has no `alertBelow` to compare against) and still on the network.
         if (item && isLowStock(item, favorites, thresholds)) lowStockCount++;
     }
@@ -67,9 +65,9 @@ export function StatsOverview({
         <div className="stats-overview">
             <div className="stats-overview__tiles">
                 <Card className="stats-tile">
-                    <span className="stats-tile__label">Tracked</span>
+                    <span className="stats-tile__label">Pinned</span>
                     <span className="stats-tile__value">
-                        {tracked.length}/{trackedLimit}
+                        {pinned.length}/{MAX_PINNED}
                     </span>
                 </Card>
                 <Card className="stats-tile">
@@ -112,7 +110,7 @@ export function StatsOverview({
             </div>
             {history && totalStats.samples > 0 && (
                 <Card className="stats-overview__chart-card">
-                    <span className="stats-overview__chart-title">Total tracked stock</span>
+                    <span className="stats-overview__chart-title">Total pinned stock</span>
                     <Chart
                         values={totalSeries}
                         timestamps={history.timestamps}
@@ -122,7 +120,7 @@ export function StatsOverview({
                         height={90}
                         numberFormat={numberFormat}
                         showAxes
-                        ariaLabel="Total tracked stock"
+                        ariaLabel="Total pinned stock"
                     />
                 </Card>
             )}

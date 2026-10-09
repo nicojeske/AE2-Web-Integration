@@ -7,12 +7,12 @@ export interface CheckboxProps {
     onChange: (checked: boolean) => void;
     children?: ComponentChildren;
     className?: string;
-    /** M8: disables an untracked row once the grid's tracked-item cap is reached. */
+    /** Disables an unpinned row once the pinned-item cap is reached. */
     disabled?: boolean;
     title?: string;
 }
 
-/** The design's 16px square toggle (notify checkbox, auto-craft, manage-tracked rows) - not a native input. */
+/** The design's 16px square toggle (notify checkbox, auto-craft, pinned-item rows) - not a native input. */
 export function Checkbox({ checked, onChange, children, className, disabled = false, title }: CheckboxProps) {
     return (
         <section

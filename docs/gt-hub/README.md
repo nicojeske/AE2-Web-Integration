@@ -29,8 +29,8 @@ Out of scope for v1: Discord alerts, remote on/off, quests, pollution.
  ┌──────────────────────────────┐   scan()      ┌────────────────────────────────────┐  JSON     ┌──────────────────┐
  │ GTProvider implements        │◀──────────────│ gt/GTEngine (server tick)          │──────────▶│ Machines view     │
  │   IGTProvider                │  every 10 s   │  ├ GTMachineRegistry  gtmachines.json│/api/gt/*│ Power view        │
- │ walks loadedTileEntityList   │               │  ├ GTPowerHistoryStore gtpower.json │          │ Production view   │
- │ Mixin on MTEMultiBlockBase   │ recordGT-     │  ├ GTProductionLog gtproduction.json│          └──────────────────┘
+ │ walks loadedTileEntityList   │               │  ├ GTPowerHistoryStore  history DB  │          │ Production view   │
+ │ Mixin on MTEMultiBlockBase   │ recordGT-     │  ├ GTProductionLog      history DB  │          └──────────────────┘
  │   .runMachine (outputs)      │──Production──▶│  └ GTVisibility (owner / GT team)   │
  └──────────────────────────────┘               │ http/endpoint/gt/* (6 endpoints)   │
                                                 └────────────────────────────────────┘
@@ -41,8 +41,9 @@ Out of scope for v1: Discord alerts, remote on/off, quests, pollution.
   `IAEWebInterface.getInstance().registerGTProvider(...)`.
 - Without a provider, which is the case on the other branches, every `/api/gt/*` endpoint answers `NOT_AVAILABLE`,
   `_REPLACE_ME_HAS_GT` becomes `false`, and the UI hides the GT sections.
-- The three history stores keep JSON files by default. With `history.jdbc_url` set they use PostgreSQL
-  (TimescaleDB if installed) instead; see "History database (optional)" in the [main README](../../README.md).
+- The power and production history live in PostgreSQL (TimescaleDB if installed) and need `history.jdbc_url`;
+  see "History database" in the [main README](../../README.md). Without it those endpoints answer
+  `HISTORY_DISABLED`.
 - Live GregTech state is only read during the scan, which runs on the server tick. HTTP handlers only ever read
   what the scan stored. This is the same split as the existing `IAsyncRequest` endpoints.
 

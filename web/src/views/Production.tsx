@@ -9,7 +9,7 @@ import type { GTFlow, GTProduction, GTProductionEntry, GTRange } from "../api/ty
 import { GT_PRODUCTION_POLL_MS, useGT, useGTPoll } from "../state/gt";
 import { useNetwork } from "../state/network";
 import { usePrefs } from "../state/prefs";
-import { useStats } from "../state/stats";
+import { MAX_PINNED, useStats } from "../state/stats";
 import { Button } from "../ui/Button";
 import { Chart } from "../ui/Chart";
 import { cx } from "../ui/cx";
@@ -393,14 +393,10 @@ function describeStep(stepMillis: number): string {
     return hours === 1 ? "hour" : `${hours} hours`;
 }
 
-/**
- * Opens this item in Statistics on the selected network. Statistics only charts tracked items, so an
- * untracked one asks first - tracking takes one of the network's limited tracked-item slots.
- */
+/** Opens this item's stock history in Statistics on the selected network, pinning it there first. */
 function StockHistoryButton({ itemid, onOpenStats }: { itemid: string; onOpenStats: () => void }) {
     const { selected, selectedGrid } = useNetwork();
-    const { tracked, trackedLimit, addTracked } = useStats();
-    const [confirming, setConfirming] = useState(false);
+    const { pinned, pin } = useStats();
 
     if (selected === "all" || !selectedGrid) {
         return (
@@ -411,39 +407,18 @@ function StockHistoryButton({ itemid, onOpenStats }: { itemid: string; onOpenSta
             </span>
         );
     }
-    if (tracked.includes(itemid)) {
-        return (
-            <Button variant="text" onClick={onOpenStats}>
-                Stock history
-            </Button>
-        );
-    }
-    if (!confirming) {
-        return (
-            <Button variant="text" onClick={() => setConfirming(true)} title="Not tracked on this network yet">
-                Stock history
-            </Button>
-        );
-    }
-    const full = trackedLimit > 0 && tracked.length >= trackedLimit;
+    const full = !pinned.includes(itemid) && pinned.length >= MAX_PINNED;
     return (
-        <span className="production__confirm">
-            {full ? (
-                <span className="production__confirm-text">Tracked-item limit reached</span>
-            ) : (
-                <Button
-                    variant="text"
-                    onClick={() => {
-                        void addTracked(itemid);
-                        onOpenStats();
-                    }}
-                >
-                    Track &amp; open
-                </Button>
-            )}
-            <Button variant="text" onClick={() => setConfirming(false)}>
-                Cancel
-            </Button>
-        </span>
+        <Button
+            variant="text"
+            disabled={full}
+            title={full ? `Statistics already shows ${MAX_PINNED} pinned items - unpin one first` : undefined}
+            onClick={() => {
+                pin(itemid);
+                onOpenStats();
+            }}
+        >
+            Stock history
+        </Button>
     );
 }

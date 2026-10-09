@@ -10,6 +10,8 @@ import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTScanResult;
 import pl.kuba6000.ae2webintegration.core.api.gt.IGTProvider;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
 
 /**
  * Shared fakes for the GregTech tests, public so request-level tests in the {@code core} package can reach
@@ -37,8 +39,19 @@ public final class GTTestSupport {
     }
 
     public static void reset() {
+        HistoryDbTestSupport.stop();
         GTEngine.resetForTests();
         resetConfig();
+    }
+
+    /** Starts an emptied history database; without one GregTech records no history. */
+    public static HistoryDb startHistory() {
+        return HistoryDbTestSupport.start(HistoryDbTestSupport.Flavor.TIMESCALE);
+    }
+
+    /** Waits until every history write so far is committed. */
+    public static void flushHistory() {
+        HistoryDbTestSupport.flush();
     }
 
     public static void resetConfig() {

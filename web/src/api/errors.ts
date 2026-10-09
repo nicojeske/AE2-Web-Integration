@@ -35,8 +35,8 @@ export function describeApiError(e: unknown, fallback: string): string {
             return "This network is no longer available";
         case "NO_PERMISSIONS":
             return "You no longer have access to this network";
-        case "TRACKED_LIMIT_REACHED":
-            return "This network's tracked-item limit is full - untrack something first";
+        case "HISTORY_DISABLED":
+            return "History isn't recorded on this server - it needs a history database";
         case "BAD_PARAM":
             return "The server rejected that request - try reloading the page";
         case "TRACKING_NOT_FOUND":

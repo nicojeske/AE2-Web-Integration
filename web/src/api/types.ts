@@ -202,8 +202,6 @@ export interface TrackingDetail {
 /** `GET|PATCH /api/grids/{gridKey}/settings` response. */
 export interface GridSettingsResult {
     isTracked: boolean;
-    trackedItems: string[];
-    trackedItemNames: Record<string, string>;
 }
 
 /**
@@ -231,15 +229,8 @@ export interface ItemHistoryResult {
     to: number;
     stepMillis: number;
     resolution: "fine" | "hourly";
-    limit: number;
     series: ItemHistorySeries[];
-}
-
-/** `/api/grids/{gridKey}/tracked-items` response. `names` holds the display name last observed for each
- *  tracked item, so one that emptied out of storage still shows a real name. */
-export interface TrackedItemsResult {
-    tracked: string[];
-    limit: number;
+    /** Display name last seen in storage per requested item, so one that emptied out still has a name. */
     names: Record<string, string>;
 }
 

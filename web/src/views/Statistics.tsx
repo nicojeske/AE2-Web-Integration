@@ -1,7 +1,7 @@
 // Statistics section (M8, dashboard/chart-quality pass): range control, an overview KPI row, and
-// tracked-item chart cards, plus the entry points into the Manage Tracked and Compare modals.
-// Single-grid only - the tracked set and its cap are per-grid server-side (see REDESIGN_MILESTONES.md's
-// M8 decision), so All-Grids mode gets a notice instead of a fan-out like every other section.
+// pinned-item chart cards, plus the entry points into the Pinned Items and Compare modals.
+// Single-grid only - history is per grid server-side, so All-Grids mode gets a notice instead of a
+// fan-out like every other section.
 import { useState } from "preact/hooks";
 
 import { describeResolution, retentionNote } from "./statsModel";
@@ -16,7 +16,7 @@ import { alertBelowFor } from "./browserModel";
 import { CHART_SCALE_OPTIONS, CHART_SIZE_PX, RANGE_OPTIONS } from "./statsModel";
 import { CompareModal } from "./CompareModal";
 import { CustomRangeInput } from "./CustomRangeInput";
-import { ManageTrackedModal } from "./ManageTrackedModal";
+import { ManagePinnedModal } from "./ManagePinnedModal";
 import { StatCard } from "./StatCard";
 import { StatsOverview } from "./StatsOverview";
 import { useNetwork } from "../state/network";
@@ -47,12 +47,11 @@ export function Statistics() {
         setRange,
         customMinutes,
         setCustomMinutes,
-        tracked,
-        trackedLimit,
-        trackedNames,
-        trackedError,
+        pinned,
+        names,
         history,
         historyLoading,
+        historyError,
         refresh,
         setCompareRange,
     } = stats;
@@ -84,7 +83,7 @@ export function Statistics() {
                         <span>Smoothing</span>
                     </Checkbox>
                     <Button variant="secondary" size="sm" className="stats__manage" onClick={() => setManageOpen(true)}>
-                        Manage tracked items
+                        Choose items
                     </Button>
                 </div>
 
@@ -117,18 +116,22 @@ export function Statistics() {
                     </div>
                 )}
 
-                {trackedError && (
+                {historyError === "HISTORY_DISABLED" ? (
+                    <div className="placeholder-panel">
+                        This server records no item history - it needs a history database (history.jdbc_url in the
+                        mod&apos;s config).
+                    </div>
+                ) : historyError ? (
                     <div className="placeholder-panel browser__error">
-                        <p>{trackedError}</p>
+                        <p>{historyError}</p>
                         <Button variant="secondary" onClick={() => void refresh()}>
                             Retry
                         </Button>
                     </div>
-                )}
-
-                {tracked.length === 0 ? (
+                ) : pinned.length === 0 ? (
                     <div className="placeholder-panel">
-                        No items tracked yet. Use &quot;Manage tracked items&quot; to choose what shows up here.
+                        Every item&apos;s stock is recorded. Use &quot;Choose items&quot; to pick which ones show up
+                        here.
                     </div>
                 ) : historyLoading && !history ? (
                     <div className="placeholder-panel">Loading statistics…</div>
@@ -136,8 +139,7 @@ export function Statistics() {
                     <>
                         <StatsOverview
                             gridKey={gridKey}
-                            tracked={tracked}
-                            trackedLimit={trackedLimit}
+                            pinned={pinned}
                             items={items}
                             favorites={favorites}
                             thresholds={thresholds}
@@ -147,7 +149,7 @@ export function Statistics() {
                             numberFormat={settings.numberFormat}
                         />
                         <div className="stats__grid">
-                            {tracked.map((itemid) => {
+                            {pinned.map((itemid) => {
                                 const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === itemid);
                                 const key = prefsKey(gridKey, itemid);
                                 const threshold = favorites[key] ? alertBelowFor(thresholds, key) : null;
@@ -156,7 +158,7 @@ export function Statistics() {
                                         key={itemid}
                                         itemid={itemid}
                                         item={item}
-                                        trackedName={trackedNames[itemid]}
+                                        storedName={names[itemid]}
                                         values={history?.byItem.get(itemid) ?? []}
                                         timestamps={history?.timestamps ?? []}
                                         range={range}
@@ -176,7 +178,7 @@ export function Statistics() {
                 )}
             </section>
 
-            {manageOpen && <ManageTrackedModal onClose={() => setManageOpen(false)} />}
+            {manageOpen && <ManagePinnedModal onClose={() => setManageOpen(false)} />}
             {compareIds && <CompareModal itemids={compareIds} onClose={() => setCompareIds(null)} />}
         </>
     );

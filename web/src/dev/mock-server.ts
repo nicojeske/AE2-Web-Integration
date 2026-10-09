@@ -12,7 +12,6 @@ import {
     findGrid,
     findItemByKey,
     MOCK_HOURLY_RETENTION_DAYS,
-    MOCK_TRACKED_LIMIT,
     mockGrids,
     mockItemHistory,
     mockCpuKey,
@@ -25,9 +24,7 @@ import {
     toCpuList,
     toGridSummaries,
     toJobData,
-    trackedItemNames,
 } from "./fixtures.ts";
-import type { MockGrid } from "./fixtures.ts";
 import {
     findMockMachine,
     hasMockPowerSource,
@@ -45,7 +42,7 @@ import {
 const STATS_RANGES = new Set<StatsRange>(["15m", "1h", "6h", "24h", "7d", "30d", "1y", "all", "custom"]);
 const MAX_HISTORY_POINTS = 500;
 const DEFAULT_HISTORY_POINTS = 120;
-const MAX_TRACKED_ITEMID_LENGTH = 256;
+const MAX_HISTORY_ITEMS = 50;
 
 // A copy of a server's uploaded config/ae2webintegration/icons (never committed to the repo - see
 // .gitignore - so this directory is expected to be missing for most contributors, which is fine: the
@@ -78,6 +75,15 @@ function gtMode(pageUrl: string | undefined): GTMode {
     return raw === "0" || raw === "na" ? raw : "1";
 }
 
+/**
+ * Whether the mock records item history: `MOCK_HISTORY=0` (or `?history=0` on the page URL) simulates a
+ * server without a history database, whose item-history endpoint answers HISTORY_DISABLED.
+ */
+function historyEnabled(pageUrl: string | undefined): boolean {
+    const fromPage = pageUrl ? new URL(pageUrl, "http://localhost").searchParams.get("history") : null;
+    return (fromPage ?? process.env.MOCK_HISTORY ?? "1") !== "0";
+}
+
 /** Stands in for `CoreData`'s per-principal blob map - a single slot is fine since the mock server only
  *  ever serves one (dev) principal. */
 let mockPrefsBlob: string | null = null;
@@ -103,6 +109,7 @@ const HTTP_STATUS: Record<string, number> = {
     INVALID_ID: 404,
     NOT_FOUND: 404,
     NOT_AVAILABLE: 404,
+    HISTORY_DISABLED: 404,
     METHOD_NOT_ALLOWED: 405,
 };
 
@@ -402,13 +409,10 @@ async function handleApi(
                 const body = await readJson(req);
                 if (typeof body.isTracked === "boolean") grid.isTrackingEnabled = body.isTracked;
             }
-            return ok(res, {
-                isTracked: grid.isTrackingEnabled,
-                trackedItems: grid.trackedItems,
-                trackedItemNames: trackedItemNames(grid),
-            });
+            return ok(res, { isTracked: grid.isTrackingEnabled });
         }
         case "GET item-history": {
+            if (!historyEnabled(req.headers.referer)) return respond(res, "HISTORY_DISABLED", null);
             const rangeParam = params.get("range") ?? "7d";
             if (!STATS_RANGES.has(rangeParam as StatsRange)) return respond(res, "BAD_PARAM", null);
             const range = rangeParam as StatsRange;
@@ -426,62 +430,20 @@ async function handleApi(
                 if (!Number.isInteger(n) || n < 1) return respond(res, "BAD_PARAM", null);
                 points = Math.min(n, MAX_HISTORY_POINTS);
             }
-            const itemsParam = params.get("items");
-            const itemids = itemsParam
-                ? [
-                      ...new Set(
-                          itemsParam
-                              .split(",")
-                              .map((s) => s.trim())
-                              .filter(Boolean),
-                      ),
-                  ]
-                : [...grid.trackedItems];
+            const itemids = [
+                ...new Set(
+                    (params.get("items") ?? "")
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                ),
+            ];
+            if (itemids.length === 0 || itemids.length > MAX_HISTORY_ITEMS) return respond(res, "BAD_PARAM", null);
             return ok(res, mockItemHistory(grid, itemids, range, points, customMinutes));
-        }
-        case "GET tracked-items":
-            return trackedItemsResponse(res, grid, grid.trackedItems);
-        case "PUT tracked-items": {
-            const body = await readJson(req);
-            if (typeof body.items !== "string") return respond(res, "BAD_PARAM", null);
-            const ids = body.items === "" ? [] : body.items.split(",").map((s) => s.trim());
-            if (ids.some((tracked) => tracked.length > MAX_TRACKED_ITEMID_LENGTH)) {
-                return respond(res, "BAD_PARAM", null);
-            }
-            return trackedItemsResponse(res, grid, [...new Set(ids.filter(Boolean))]);
-        }
-        case "PUT tracked-items/{id}": {
-            const itemid = (id ?? "").trim();
-            if (itemid.length === 0 || itemid.length > MAX_TRACKED_ITEMID_LENGTH) {
-                return respond(res, "BAD_PARAM", null);
-            }
-            const next2 = grid.trackedItems.includes(itemid) ? grid.trackedItems : [...grid.trackedItems, itemid];
-            return trackedItemsResponse(res, grid, next2);
-        }
-        case "DELETE tracked-items/{id}": {
-            const itemid = (id ?? "").trim();
-            // Untracking destroys that item's history (ItemHistoryStore.pruneTo) - the mock's stand-in is
-            // dropping historyStart, so a re-track genuinely restarts the series.
-            if (grid.trackedItems.includes(itemid)) grid.historyStart.delete(itemid);
-            return trackedItemsResponse(
-                res,
-                grid,
-                grid.trackedItems.filter((x) => x !== itemid),
-            );
         }
         default:
             return respond(res, "NOT_FOUND", null);
     }
-}
-
-/** Applies a tracked-items change (or a read, for an unchanged list) the way `TrackedItems.respondWith` does. */
-function trackedItemsResponse(res: ServerResponse, grid: MockGrid, next2: string[]): void {
-    if (next2.length > MOCK_TRACKED_LIMIT) return respond(res, "TRACKED_LIMIT_REACHED", null);
-    for (const itemid of next2) {
-        if (!grid.historyStart.has(itemid)) grid.historyStart.set(itemid, Date.now());
-    }
-    grid.trackedItems = next2;
-    ok(res, { tracked: grid.trackedItems, limit: MOCK_TRACKED_LIMIT, names: trackedItemNames(grid) });
 }
 
 /**

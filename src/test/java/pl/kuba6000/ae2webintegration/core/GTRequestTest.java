@@ -24,6 +24,7 @@ import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.gt.GTProductionLog;
 import pl.kuba6000.ae2webintegration.core.gt.GTTestSupport;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachine;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachines;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPower;
@@ -53,6 +54,7 @@ class GTRequestTest {
     void setUp() {
         Config.init(configRoot);
         GTTestSupport.reset();
+        GTTestSupport.startHistory();
         provider = new GTTestSupport.FakeProvider();
     }
 
@@ -278,6 +280,7 @@ class GTRequestTest {
         GTProductionLog.record(GTFlow.PRODUCED, bobs, "Vac", BOB, "helium", "Helium", 1000, true, now);
         GTProductionLog.record(GTFlow.PRODUCED, carols, "EBF", CAROL, "gt:ingot:1", "Titanium Ingot", 500, false, now);
 
+        GTTestSupport.flushHistory();
         JsonObject byItem = run(new GetGTProduction(), ALICE_ID, "range=1h&groupBy=item");
         assertStatus("OK", byItem);
         JsonArray rows = byItem.getAsJsonObject("data")
@@ -346,6 +349,7 @@ class GTRequestTest {
         GTProductionLog.record(GTFlow.PRODUCED, alices, "EBF", ALICE, "gt:ingot:1", "Titanium Ingot", 30, false, now);
         GTProductionLog.record(GTFlow.CONSUMED, alices, "EBF", ALICE, "gt:dust:1", "Titanium Dust", 30, false, now);
 
+        GTTestSupport.flushHistory();
         JsonObject consumed = run(new GetGTProduction(), ALICE_ID, "range=1h&flow=consumed");
         assertStatus("OK", consumed);
         JsonObject data = consumed.getAsJsonObject("data");
@@ -405,6 +409,7 @@ class GTRequestTest {
             false,
             now);
 
+        GTTestSupport.flushHistory();
         JsonObject response = run(new GetGTProductionHistory(), ALICE_ID, "item=gt:ingot:1&range=24h");
         assertStatus("OK", response);
         JsonArray points = response.getAsJsonObject("data")
@@ -425,12 +430,25 @@ class GTRequestTest {
     }
 
     @Test
+    void historyEndpointsAreDisabledWithoutADatabase() {
+        provider.next.powerSources.add(GTTestSupport.lsc(1, ALICE, 1000, 4000, 5L, 15L));
+        GTTestSupport.scan(provider, System.currentTimeMillis());
+        HistoryDbTestSupport.stop();
+        String id = provider.next.powerSources.get(0).id;
+
+        assertStatus("HISTORY_DISABLED", run(new GetGTPowerHistory(), ALICE_ID, "source=" + id));
+        assertStatus("HISTORY_DISABLED", run(new GetGTProduction(), ALICE_ID, "range=1h"));
+        assertStatus("HISTORY_DISABLED", run(new GetGTProductionHistory(), ALICE_ID, "range=1h"));
+    }
+
+    @Test
     void perHourUsesTheTrackedSpanButNeverLessThanFiveMinutes() {
         scanThreeOwners();
         long now = System.currentTimeMillis();
         GTProductionLog
             .record(GTFlow.PRODUCED, GTMachineSnapshot.idOf(0, 1, 64, 0), "EBF", ALICE, "a", "A", 60, false, now);
 
+        GTTestSupport.flushHistory();
         JsonObject data = run(new GetGTProduction(), ALICE_ID, "range=24h").getAsJsonObject("data");
 
         assertEquals(

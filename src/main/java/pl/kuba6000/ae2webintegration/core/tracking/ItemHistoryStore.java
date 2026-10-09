@@ -1,29 +1,9 @@
 package pl.kuba6000.ae2webintegration.core.tracking;
 
-import java.io.File;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-import com.google.common.io.Files;
-import com.google.gson.Gson;
 
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
 import pl.kuba6000.ae2webintegration.core.config.Config;
@@ -32,12 +12,12 @@ import pl.kuba6000.ae2webintegration.core.history.HistoryTable;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
-import pl.kuba6000.ae2webintegration.core.utils.GSONUtils;
 
 /**
- * Per-grid, per-item stored-count history: a two-tier ring buffer (fine resolution at the configured
- * sample interval, an hourly rollup covering a much longer window) sampled once per grid per tick from
- * {@code CoreEngine.onServerTick()} and persisted to its own file, separate from {@code griddata.json}.
+ * Per-grid, per-item stored-count history of every item in a grid, in two tiers (fine resolution at the
+ * configured sample interval, an hourly rollup covering a much longer window) kept in the history database.
+ * Without one there is no item history: {@link #sample} does nothing and {@code GetItemHistory} answers
+ * {@code HISTORY_DISABLED}.
  * <p>
  * Only ever touches stored data through {@link #sample} (called on the server thread with a live
  * {@link IStackList}) and {@link #readSeries} (called from the {@code GetItemHistory} async request on an
@@ -45,121 +25,53 @@ import pl.kuba6000.ae2webintegration.core.utils.GSONUtils;
  */
 public final class ItemHistoryStore {
 
-    private static final Logger LOG = LogManager.getLogger("ae2webintegration");
-
-    /** Stored counts are always >= 0, so this is unambiguous and keeps the wire/disk form plain longs. */
-    public static final long NO_SAMPLE = -1L;
+    /** Stored counts are always >= 0, so this is unambiguous and keeps the wire form plain longs. */
+    public static final long NO_SAMPLE = HistoryDb.NO_SAMPLE;
 
     private static final long HOURLY_BUCKET_MILLIS = TimeUnit.HOURS.toMillis(1);
-    private static final int SCHEMA_VERSION = 1;
 
     private ItemHistoryStore() {}
 
-    // --- Runtime state ---
-
-    private static final class ItemSeries {
-
-        final RingSeries fine;
-        final RingSeries hourly;
-
-        ItemSeries(RingSeries fine, RingSeries hourly) {
-            this.fine = fine;
-            this.hourly = hourly;
-        }
-    }
-
-    private static final class GridHistory {
-
-        final ConcurrentHashMap<String, ItemSeries> items = new ConcurrentHashMap<>();
-    }
-
-    private static volatile ConcurrentHashMap<String, GridHistory> gridHistories = new ConcurrentHashMap<>();
-
-    private static final AtomicBoolean dirty = new AtomicBoolean(false);
-
-    // --- Sampling ---
-
     /**
-     * Sums stored amounts per {@code itemid} over one grid's storage list and records one sample for
-     * every tracked item, including a real {@code 0} for a tracked item currently absent from the
-     * network (never a gap - the item is still tracked, it is simply empty right now). Returns the
-     * display name observed for each tracked item still in storage this sample (empty map if none),
-     * so a caller can remember a tracked item's name from the last time it was actually seen.
+     * Sums stored amounts per {@code itemid} over one grid's storage list and records one sample for every
+     * item in it. An item recorded before that is no longer stored records a real {@code 0}, so its history
+     * never carries a stale count forward; an item that is only craftable (amount 0) and was never stored
+     * creates no series at all. Values are written change-only, so an unchanged item costs nothing.
      */
-    public static Map<String, String> sample(String gridKey, Set<String> tracked, IStackList storage, long nowMillis) {
-        if (tracked.isEmpty()) {
-            return Collections.emptyMap();
+    public static void sample(String gridKey, IStackList storage, long nowMillis) {
+        HistoryDb db = HistoryDb.get();
+        if (db == null) {
+            return;
         }
         Map<String, Long> stored = new HashMap<>();
-        for (String itemid : tracked) {
-            stored.put(itemid, 0L);
-        }
-        Map<String, String> observedNames = new HashMap<>();
+        Map<String, String> names = new HashMap<>();
         for (IAEGenericStack stack : storage.web$stacks()) {
-            IAEKey key = stack.web$what();
-            String itemid = key.web$getItemID();
-            if (!stored.containsKey(itemid)) {
+            long amount = stack.web$amount();
+            if (amount <= 0) {
                 continue;
             }
-            stored.merge(itemid, stack.web$amount(), Long::sum);
-            observedNames.putIfAbsent(itemid, key.web$getDisplayName());
+            IAEKey key = stack.web$what();
+            String itemid = key.web$getItemID();
+            stored.merge(itemid, amount, Long::sum);
+            names.putIfAbsent(itemid, key.web$getDisplayName());
+        }
+        for (String known : db.knownKeys(HistoryTable.ITEM_FINE, gridKey)) {
+            stored.putIfAbsent(known, 0L);
         }
 
         long fineBucketMillis = fineBucketMillis();
-        int fineCapacity = fineCapacity();
-        int hourlyCapacity = hourlyCapacity();
-        long fineBucket = Math.floorDiv(nowMillis, fineBucketMillis);
-        long hourlyBucket = Math.floorDiv(nowMillis, HOURLY_BUCKET_MILLIS);
-
-        HistoryDb db = HistoryDb.get();
-        if (db != null) {
-            String scope = gridKey;
-            long fineStart = fineBucket * fineBucketMillis;
-            long hourlyStart = hourlyBucket * HOURLY_BUCKET_MILLIS;
-            for (String itemid : tracked) {
-                long value = stored.getOrDefault(itemid, 0L);
-                db.putGauge(HistoryTable.ITEM_FINE, scope, itemid, fineStart, value);
-                db.putGauge(HistoryTable.ITEM_HOURLY, scope, itemid, hourlyStart, value);
-            }
-            db.markSampled(HistoryTable.ITEM_FINE, scope, fineStart, fineBucketMillis);
-            db.markSampled(HistoryTable.ITEM_HOURLY, scope, hourlyStart, HOURLY_BUCKET_MILLIS);
-            return observedNames;
+        long fineStart = Math.floorDiv(nowMillis, fineBucketMillis) * fineBucketMillis;
+        long hourlyStart = Math.floorDiv(nowMillis, HOURLY_BUCKET_MILLIS) * HOURLY_BUCKET_MILLIS;
+        for (Map.Entry<String, Long> entry : stored.entrySet()) {
+            db.putGauge(HistoryTable.ITEM_FINE, gridKey, entry.getKey(), fineStart, entry.getValue());
+            db.putGauge(HistoryTable.ITEM_HOURLY, gridKey, entry.getKey(), hourlyStart, entry.getValue());
         }
-
-        GridHistory history = gridHistories.computeIfAbsent(gridKey, k -> new GridHistory());
-        for (String itemid : tracked) {
-            long value = stored.getOrDefault(itemid, 0L);
-            ItemSeries series = history.items.computeIfAbsent(
-                itemid,
-                k -> new ItemSeries(
-                    new RingSeries(fineBucketMillis, fineCapacity),
-                    new RingSeries(HOURLY_BUCKET_MILLIS, hourlyCapacity)));
-            series.fine.record(fineBucket, value);
-            series.hourly.record(hourlyBucket, value);
+        for (Map.Entry<String, String> entry : names.entrySet()) {
+            db.putName(HistoryTable.ITEM_FINE, gridKey, entry.getKey(), entry.getValue());
         }
-        dirty.set(true);
-        return observedNames;
+        db.markSampled(HistoryTable.ITEM_FINE, gridKey, fineStart, fineBucketMillis);
+        db.markSampled(HistoryTable.ITEM_HOURLY, gridKey, hourlyStart, HOURLY_BUCKET_MILLIS);
     }
-
-    /** Drops any series for items that are no longer tracked, e.g. after {@code TrackedItems} removes one. */
-    public static void pruneTo(String gridKey, Set<String> tracked) {
-        HistoryDb db = HistoryDb.get();
-        if (db != null) {
-            db.retainKeys(HistoryTable.ITEM_FINE, gridKey, tracked);
-            db.retainKeys(HistoryTable.ITEM_HOURLY, gridKey, tracked);
-            return;
-        }
-        GridHistory history = gridHistories.get(gridKey);
-        if (history == null) {
-            return;
-        }
-        if (history.items.keySet()
-            .retainAll(tracked)) {
-            dirty.set(true);
-        }
-    }
-
-    // --- Reading ---
 
     /**
      * Builds the {@code GetItemHistory} response: one tier is picked for the whole request by comparing the
@@ -167,17 +79,15 @@ public final class ItemHistoryStore {
      * non-gap value in each output window - never averaged, so no floating point and no NaN-serialization
      * hazard (see {@code GSONUtils}'s known-unfixed leniency gap).
      */
-    public static JSON_ItemHistory readSeries(String gridKey, List<String> itemids, long fromMillis, long toMillis,
-        int maxPoints) {
+    public static JSON_ItemHistory readSeries(HistoryDb db, String gridKey, List<String> itemids, long fromMillis,
+        long toMillis, int maxPoints) {
         JSON_ItemHistory result = new JSON_ItemHistory();
         long fromClamped = Math.min(fromMillis, toMillis);
         long toClamped = Math.max(fromMillis, toMillis);
         long span = toClamped - fromClamped;
-        long fineSpanMillis = fineBucketMillis() * fineCapacity();
-        boolean useFine = span <= fineSpanMillis;
+        boolean useFine = span <= TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.fineRetentionDays);
         long tierBucketMillis = useFine ? fineBucketMillis() : HOURLY_BUCKET_MILLIS;
         result.resolution = useFine ? "fine" : "hourly";
-        result.limit = Config.INSTANCE.statistics.maxTrackedItemsPerGrid;
 
         long fromBucket = Math.floorDiv(fromClamped, tierBucketMillis);
         long toBucket = Math.max(fromBucket, Math.floorDiv(toClamped, tierBucketMillis));
@@ -189,451 +99,32 @@ public final class ItemHistoryStore {
         result.to = toBucket * tierBucketMillis;
         result.stepMillis = stepBuckets * tierBucketMillis;
 
-        HistoryDb db = HistoryDb.get();
-        GridHistory history = gridHistories.get(gridKey);
+        HistoryTable table = useFine ? HistoryTable.ITEM_FINE : HistoryTable.ITEM_HOURLY;
         for (String itemid : itemids) {
-            if (db != null) {
-                long[] values = db.readGauge(
-                    useFine ? HistoryTable.ITEM_FINE : HistoryTable.ITEM_HOURLY,
-                    gridKey,
-                    itemid,
-                    fromBucket,
-                    toBucket,
-                    stepBuckets,
-                    tierBucketMillis);
-                result.series.add(new JSON_ItemHistory.JSON_ItemSeries(itemid, values));
-                continue;
-            }
-            ItemSeries series = history == null ? null : history.items.get(itemid);
-            RingSeries ring = series == null ? null : (useFine ? series.fine : series.hourly);
-            ArrayList<Long> points = new ArrayList<>();
-            for (long windowStart = fromBucket; windowStart <= toBucket; windowStart += stepBuckets) {
-                long windowEnd = Math.min(windowStart + stepBuckets - 1, toBucket);
-                long value = NO_SAMPLE;
-                if (ring != null) {
-                    for (long bucket = windowEnd; bucket >= windowStart; bucket--) {
-                        long candidate = ring.get(bucket);
-                        if (candidate != NO_SAMPLE) {
-                            value = candidate;
-                            break;
-                        }
-                    }
-                }
-                points.add(value);
-            }
-            long[] values = new long[points.size()];
-            for (int i = 0; i < values.length; i++) {
-                values[i] = points.get(i);
-            }
+            long[] values = db.readGauge(table, gridKey, itemid, fromBucket, toBucket, stepBuckets, tierBucketMillis);
             result.series.add(new JSON_ItemHistory.JSON_ItemSeries(itemid, values));
         }
+        result.names.putAll(db.readNames(HistoryTable.ITEM_FINE, gridKey, itemids));
         return result;
+    }
+
+    /** Drops samples past the configured retention; rate-limited by {@link HistoryDb#prune}. */
+    public static void prune(long nowMillis) {
+        HistoryDb db = HistoryDb.get();
+        if (db == null) {
+            return;
+        }
+        db.prune(
+            HistoryTable.ITEM_FINE,
+            nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.fineRetentionDays),
+            nowMillis);
+        db.prune(
+            HistoryTable.ITEM_HOURLY,
+            nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.hourlyRetentionDays),
+            nowMillis);
     }
 
     private static long fineBucketMillis() {
         return TimeUnit.MINUTES.toMillis(Config.INSTANCE.statistics.sampleIntervalMinutes);
-    }
-
-    private static int fineCapacity() {
-        long totalMillis = TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.fineRetentionDays);
-        return (int) Math.max(1, totalMillis / fineBucketMillis());
-    }
-
-    private static int hourlyCapacity() {
-        return Math.max(1, Config.INSTANCE.statistics.hourlyRetentionDays * 24);
-    }
-
-    // --- Ring buffer ---
-
-    /**
-     * One fixed-resolution ring of longs, indexed by an absolute bucket number ({@code epochMillis /
-     * bucketMillis}). Advancing past a gap clears the skipped slots so a server that was offline reads
-     * back as {@link #NO_SAMPLE} there, never as a stale repeat of the last known value.
-     */
-    static final class RingSeries {
-
-        final long bucketMillis;
-        private long[] values;
-        private long newestBucket = Long.MIN_VALUE;
-
-        RingSeries(long bucketMillis, int capacity) {
-            this.bucketMillis = bucketMillis;
-            this.values = new long[Math.max(1, capacity)];
-            Arrays.fill(values, NO_SAMPLE);
-        }
-
-        private RingSeries(long bucketMillis, long[] values, long newestBucket) {
-            this.bucketMillis = bucketMillis;
-            this.values = values;
-            this.newestBucket = newestBucket;
-        }
-
-        synchronized void record(long bucket, long value) {
-            int capacity = values.length;
-            if (newestBucket == Long.MIN_VALUE) {
-                values[index(bucket, capacity)] = value;
-                newestBucket = bucket;
-                return;
-            }
-            if (bucket <= newestBucket) {
-                // Out-of-order or same-bucket write (e.g. two samples landing in the same hourly bucket) -
-                // overwrite in place only if it is still within the retained window.
-                if (newestBucket - bucket < capacity) {
-                    values[index(bucket, capacity)] = value;
-                }
-                return;
-            }
-            long gap = bucket - newestBucket;
-            if (gap >= capacity) {
-                Arrays.fill(values, NO_SAMPLE);
-            } else {
-                for (long skipped = newestBucket + 1; skipped < bucket; skipped++) {
-                    values[index(skipped, capacity)] = NO_SAMPLE;
-                }
-            }
-            values[index(bucket, capacity)] = value;
-            newestBucket = bucket;
-        }
-
-        synchronized long get(long bucket) {
-            if (newestBucket == Long.MIN_VALUE || bucket > newestBucket) {
-                return NO_SAMPLE;
-            }
-            if (newestBucket - bucket >= values.length) {
-                return NO_SAMPLE;
-            }
-            return values[index(bucket, values.length)];
-        }
-
-        synchronized RingSnapshot snapshot() {
-            RingSnapshot snapshot = new RingSnapshot();
-            snapshot.bucketMillis = bucketMillis;
-            snapshot.newestBucket = newestBucket;
-            snapshot.values = values.clone();
-            return snapshot;
-        }
-
-        /**
-         * Rebuilds from a persisted snapshot against the currently configured bucket size and capacity. A
-         * bucket-size mismatch (the sample interval changed since the last save) discards the data rather
-         * than resizing - the bucket numbering itself would no longer line up. A capacity-only mismatch
-         * (a retention setting changed) resizes, keeping the newest overlapping samples.
-         */
-        static RingSeries fromSnapshot(RingSnapshot snapshot, long desiredBucketMillis, int desiredCapacity) {
-            if (snapshot == null || snapshot.values == null
-                || snapshot.values.length == 0
-                || snapshot.bucketMillis != desiredBucketMillis) {
-                return new RingSeries(desiredBucketMillis, desiredCapacity);
-            }
-            RingSeries loaded = new RingSeries(snapshot.bucketMillis, snapshot.values, snapshot.newestBucket);
-            if (snapshot.values.length == desiredCapacity) {
-                return loaded;
-            }
-            return loaded.resized(desiredCapacity);
-        }
-
-        private synchronized RingSeries resized(int newCapacity) {
-            RingSeries resized = new RingSeries(bucketMillis, newCapacity);
-            if (newestBucket == Long.MIN_VALUE) {
-                return resized;
-            }
-            int keep = Math.min(values.length, newCapacity);
-            for (int i = 0; i < keep; i++) {
-                long bucket = newestBucket - i;
-                long value = get(bucket);
-                if (value != NO_SAMPLE) {
-                    resized.values[index(bucket, newCapacity)] = value;
-                }
-            }
-            resized.newestBucket = newestBucket;
-            return resized;
-        }
-
-        private static int index(long bucket, int capacity) {
-            int modulo = (int) (bucket % capacity);
-            return modulo < 0 ? modulo + capacity : modulo;
-        }
-    }
-
-    // --- Persistence ---
-
-    private static File dataFile() {
-        return Config.getConfigFile("itemhistory.json");
-    }
-
-    private static final class RingSnapshot {
-
-        long bucketMillis;
-        long newestBucket;
-        long[] values;
-    }
-
-    private static final class PersistedItemSeries {
-
-        RingSnapshot fine;
-        RingSnapshot hourly;
-    }
-
-    private static final class PersistedFile {
-
-        int schemaVersion = SCHEMA_VERSION;
-        Map<String, Map<String, PersistedItemSeries>> grids = new LinkedHashMap<>();
-    }
-
-    private static PersistedFile buildSnapshot() {
-        PersistedFile file = new PersistedFile();
-        for (Map.Entry<String, GridHistory> gridEntry : gridHistories.entrySet()) {
-            Map<String, PersistedItemSeries> items = new LinkedHashMap<>();
-            for (Map.Entry<String, ItemSeries> itemEntry : gridEntry.getValue().items.entrySet()) {
-                ItemSeries series = itemEntry.getValue();
-                PersistedItemSeries persisted = new PersistedItemSeries();
-                persisted.fine = series.fine.snapshot();
-                persisted.hourly = series.hourly.snapshot();
-                items.put(itemEntry.getKey(), persisted);
-            }
-            if (!items.isEmpty()) {
-                file.grids.put(gridEntry.getKey(), items);
-            }
-        }
-        return file;
-    }
-
-    /** Synchronous write - only called from {@code onServerStopping}, where blocking the shutdown is fine. */
-    public static void saveNow() {
-        if (HistoryDb.get() != null) {
-            // Already streamed to the database; CoreEngine.onServerStopping waits for the last batch.
-            return;
-        }
-        if (Config.getConfigDirectory() == null) {
-            // Startup failed before Config.init() ran, or a test never called it - a relative path under
-            // the process's working directory would be the wrong place to write, so skip entirely rather
-            // than guess. onServerStopped()'s own javadoc already covers a startup that failed partway.
-            return;
-        }
-        try {
-            GSONUtils.writeAtomically(dataFile(), buildSnapshot());
-        } catch (Exception e) {
-            LOG.error("Failed to save item history", e);
-        }
-        dirty.set(false);
-        pendingWrite.set(null);
-    }
-
-    /** Called periodically from {@code CoreEngine}; only schedules a background write if data changed. */
-    public static void flushIfDirty() {
-        HistoryDb db = HistoryDb.get();
-        if (db != null) {
-            // Writes stream to the database as they happen; all that is left for the periodic flush is pruning.
-            long now = System.currentTimeMillis();
-            db.prune(
-                HistoryTable.ITEM_FINE,
-                now - TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.fineRetentionDays),
-                now);
-            db.prune(
-                HistoryTable.ITEM_HOURLY,
-                now - TimeUnit.DAYS.toMillis(Config.INSTANCE.statistics.hourlyRetentionDays),
-                now);
-            return;
-        }
-        if (Config.getConfigDirectory() == null) {
-            return;
-        }
-        if (dirty.compareAndSet(true, false)) {
-            submitWrite(buildSnapshot());
-        }
-    }
-
-    // At most one write in flight; a newer snapshot supersedes whatever is still queued, so this never
-    // backs up behind a slow disk - it just writes the latest state whenever the previous write finishes.
-    private static final AtomicReference<PersistedFile> pendingWrite = new AtomicReference<>();
-    private static final AtomicBoolean writeInFlight = new AtomicBoolean(false);
-    private static volatile ExecutorService writer;
-
-    private static ExecutorService writer() {
-        ExecutorService current = writer;
-        if (current == null) {
-            synchronized (ItemHistoryStore.class) {
-                current = writer;
-                if (current == null) {
-                    current = Executors.newSingleThreadExecutor(r -> {
-                        Thread thread = new Thread(r, "ae2webintegration-item-history-writer");
-                        thread.setDaemon(true);
-                        return thread;
-                    });
-                    writer = current;
-                }
-            }
-        }
-        return current;
-    }
-
-    private static void submitWrite(PersistedFile snapshot) {
-        pendingWrite.set(snapshot);
-        if (writeInFlight.compareAndSet(false, true)) {
-            writer().submit(ItemHistoryStore::drainWrites);
-        }
-    }
-
-    private static void drainWrites() {
-        PersistedFile toWrite;
-        while ((toWrite = pendingWrite.getAndSet(null)) != null) {
-            try {
-                GSONUtils.writeAtomically(dataFile(), toWrite);
-            } catch (Exception e) {
-                LOG.error("Failed to save item history", e);
-            }
-        }
-        writeInFlight.set(false);
-        // A write could have been queued between the loop's last check and the flag reset above.
-        if (pendingWrite.get() != null && writeInFlight.compareAndSet(false, true)) {
-            writer().submit(ItemHistoryStore::drainWrites);
-        }
-    }
-
-    public static void loadData() {
-        if (Config.getConfigDirectory() == null) {
-            LOG.warn("Item history: config directory not initialized, starting with empty history.");
-            return;
-        }
-        File file = dataFile();
-        if (!file.exists()) {
-            LOG.info("Item history file not found, starting with empty history.");
-            return;
-        }
-        ConcurrentHashMap<String, GridHistory> loaded = readFile(file);
-        if (loaded == null) {
-            return;
-        }
-        HistoryDb db = HistoryDb.get();
-        if (db != null) {
-            importInto(db, loaded, file);
-            return;
-        }
-        gridHistories = loaded;
-    }
-
-    /** Parses the JSON history file against the current config, or {@code null} if it cannot be read. */
-    private static ConcurrentHashMap<String, GridHistory> readFile(File file) {
-        Gson gson = GSONUtils.GSON_BUILDER.create();
-        try (Reader reader = Files.newReader(file, StandardCharsets.UTF_8)) {
-            PersistedFile loaded = gson.fromJson(reader, PersistedFile.class);
-            if (loaded == null) {
-                LOG.error("Item history file is empty or malformed, starting with empty history.");
-                return null;
-            }
-            if (loaded.schemaVersion > SCHEMA_VERSION) {
-                LOG.warn(
-                    "Item history file was written by a newer version (schema " + loaded.schemaVersion
-                        + "), reading it as schema "
-                        + SCHEMA_VERSION);
-            }
-            long fineBucketMillis = fineBucketMillis();
-            int fineCapacity = fineCapacity();
-            int hourlyCapacity = hourlyCapacity();
-            ConcurrentHashMap<String, GridHistory> rebuilt = new ConcurrentHashMap<>();
-            if (loaded.grids != null) {
-                for (Map.Entry<String, Map<String, PersistedItemSeries>> gridEntry : loaded.grids.entrySet()) {
-                    GridHistory history = new GridHistory();
-                    if (gridEntry.getValue() != null) {
-                        for (Map.Entry<String, PersistedItemSeries> itemEntry : gridEntry.getValue()
-                            .entrySet()) {
-                            PersistedItemSeries persisted = itemEntry.getValue();
-                            if (persisted == null) {
-                                continue;
-                            }
-                            RingSeries fine = RingSeries.fromSnapshot(persisted.fine, fineBucketMillis, fineCapacity);
-                            RingSeries hourly = RingSeries
-                                .fromSnapshot(persisted.hourly, HOURLY_BUCKET_MILLIS, hourlyCapacity);
-                            history.items.put(itemEntry.getKey(), new ItemSeries(fine, hourly));
-                        }
-                    }
-                    rebuilt.put(gridEntry.getKey(), history);
-                }
-            }
-            return rebuilt;
-        } catch (Exception e) {
-            // As in GridData/CoreData: a failed read must not overwrite the file it failed on.
-            LOG.error("Failed to load item history from file: " + file.getAbsolutePath(), e);
-            return null;
-        }
-    }
-
-    /**
-     * One-time move of {@code itemhistory.json} into the history database: the rings become change-only rows,
-     * and the buckets any item of a grid was sampled in become that grid's coverage. The file is renamed once
-     * the import committed, and kept, so switching back to JSON storage is a rename away.
-     */
-    private static void importInto(HistoryDb db, Map<String, GridHistory> grids, File file) {
-        HistoryDb.Import rows = new HistoryDb.Import();
-        for (Map.Entry<String, GridHistory> gridEntry : grids.entrySet()) {
-            String scope = gridEntry.getKey();
-            Map<HistoryTable, TreeSet<Long>> sampled = new HashMap<>();
-            for (Map.Entry<String, ItemSeries> itemEntry : gridEntry.getValue().items.entrySet()) {
-                importRing(rows, HistoryTable.ITEM_FINE, scope, itemEntry.getKey(), itemEntry.getValue().fine, sampled);
-                importRing(
-                    rows,
-                    HistoryTable.ITEM_HOURLY,
-                    scope,
-                    itemEntry.getKey(),
-                    itemEntry.getValue().hourly,
-                    sampled);
-            }
-            for (Map.Entry<HistoryTable, TreeSet<Long>> entry : sampled.entrySet()) {
-                long bucketMillis = entry.getKey() == HistoryTable.ITEM_FINE ? fineBucketMillis()
-                    : HOURLY_BUCKET_MILLIS;
-                Long start = null;
-                Long previous = null;
-                for (long bucket : entry.getValue()) {
-                    if (previous != null && bucket != previous + 1) {
-                        rows.coverage(entry.getKey(), scope, start * bucketMillis, previous * bucketMillis);
-                        start = null;
-                    }
-                    if (start == null) {
-                        start = bucket;
-                    }
-                    previous = bucket;
-                }
-                if (start != null) {
-                    rows.coverage(entry.getKey(), scope, start * bucketMillis, previous * bucketMillis);
-                }
-            }
-        }
-        db.importOnce(file.getName(), rows, () -> HistoryDb.keepImportedFile(file));
-    }
-
-    private static void importRing(HistoryDb.Import rows, HistoryTable table, String scope, String itemid,
-        RingSeries ring, Map<HistoryTable, TreeSet<Long>> sampled) {
-        RingSnapshot snapshot = ring.snapshot();
-        if (snapshot.newestBucket == Long.MIN_VALUE) {
-            return;
-        }
-        long last = NO_SAMPLE;
-        long lastWrittenMillis = 0L;
-        for (long bucket = snapshot.newestBucket - snapshot.values.length + 1; bucket
-            <= snapshot.newestBucket; bucket++) {
-            long value = ring.get(bucket);
-            if (value == NO_SAMPLE) {
-                continue;
-            }
-            long startMillis = bucket * ring.bucketMillis;
-            sampled.computeIfAbsent(table, k -> new TreeSet<>())
-                .add(bucket);
-            if (last == NO_SAMPLE || value != last || startMillis - lastWrittenMillis >= table.anchorMillis()) {
-                rows.gauge(table, scope, itemid, startMillis, value);
-                last = value;
-                lastWrittenMillis = startMillis;
-            }
-        }
-    }
-
-    /**
-     * Resets only the sampler's own scheduling bookkeeping (mirrors {@code CoreEngine.resetHistorySampling}).
-     * Deliberately does not clear {@link #gridHistories}: unlike {@code AE2JobTracker}'s per-world-session
-     * tracking, sampled history is meant to survive a server stop/start within the same JVM, the same way
-     * {@code GridData.isTracked} does - it is either still in memory or already on disk via {@link #saveNow}.
-     */
-    public static void clearRuntimeState() {
-        dirty.set(false);
-        pendingWrite.set(null);
     }
 }

@@ -1,6 +1,5 @@
 package pl.kuba6000.ae2webintegration.core.history;
 
-import java.io.File;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.Driver;
@@ -12,8 +11,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TimeZone;
@@ -28,8 +28,8 @@ import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.history.HistoryWriter.SeriesKey;
 
 /**
- * History storage in PostgreSQL (TimescaleDB when the extension is installed), used instead of the JSON
- * history files whenever {@code history.jdbc_url} is configured.
+ * History storage in PostgreSQL (TimescaleDB when the extension is installed). Item statistics and GregTech
+ * power/production history exist only while {@code history.jdbc_url} is configured.
  * <p>
  * Writes ({@link #putGauge}, {@link #addCounter}, {@link #markSampled}, ...) come from the server thread and
  * only enqueue for {@link HistoryWriter}. Reads run on the calling HTTP worker over a separate connection,
@@ -58,6 +58,8 @@ public final class HistoryDb {
 
     /** Last value and timestamp written per change-only series. Server thread only, cleared on drops. */
     private final ConcurrentHashMap<SeriesKey, long[]> written = new ConcurrentHashMap<>();
+    /** Last name written per series. Server thread only. */
+    private final ConcurrentHashMap<SeriesKey, String> writtenNames = new ConcurrentHashMap<>();
     /** Open coverage interval per (table, scope): {fromMillis, toMillis}. */
     private final ConcurrentHashMap<String, long[]> coverage = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<HistoryTable, Long> nextPruneMillis = new ConcurrentHashMap<>();
@@ -71,7 +73,7 @@ public final class HistoryDb {
 
     // --- Lifecycle ---
 
-    /** The running database backend, or {@code null} when history is kept in memory and JSON files. */
+    /** The running database backend, or {@code null} when none is configured - then there is no history. */
     public static HistoryDb get() {
         return active;
     }
@@ -94,7 +96,7 @@ public final class HistoryDb {
 
     static synchronized HistoryDb start(String url, String user, String password) {
         if (!url.startsWith("jdbc:postgresql:")) {
-            LOG.error("history.jdbc_url must be a jdbc:postgresql:// URL, keeping history in JSON files");
+            LOG.error("history.jdbc_url must be a jdbc:postgresql:// URL, history is disabled");
             return null;
         }
         HistoryDb db = new HistoryDb(url, user, password);
@@ -124,7 +126,7 @@ public final class HistoryDb {
 
     /**
      * Loads pgjdbc only once a database is actually configured, so a build that does not bundle the driver
-     * still starts fine with history in JSON files.
+     * still starts fine, just without history.
      */
     private static final class DriverHolder {
 
@@ -178,6 +180,29 @@ public final class HistoryDb {
         writer.enqueue(new HistoryWriter.SampleOp(new SeriesKey(table, scope, key), bucketStartMillis, delta));
     }
 
+    /** Labels a series with a display name; only an actual change is written. */
+    public void putName(HistoryTable table, String scope, String key, String name) {
+        SeriesKey series = new SeriesKey(table, scope, key);
+        if (name.equals(writtenNames.put(series, name))) {
+            return;
+        }
+        writer.enqueue(new HistoryWriter.NameOp(series, name));
+    }
+
+    /**
+     * Keys of every series of {@code scope} in {@code table}: what the database held when the writer connected
+     * plus what was written since. Empty until the database was first reached.
+     */
+    public Set<String> knownKeys(HistoryTable table, String scope) {
+        Set<String> keys = writer.keysOf(table, scope);
+        for (SeriesKey series : written.keySet()) {
+            if (series.table == table && series.scope.equals(scope)) {
+                keys.add(series.key);
+            }
+        }
+        return keys;
+    }
+
     /**
      * Notes that every series of {@code scope} in a change-only table was sampled for the bucket starting at
      * {@code bucketStartMillis}. Consecutive buckets extend one interval; a skipped bucket starts a new one,
@@ -193,14 +218,6 @@ public final class HistoryDb {
             coverage.put(coverageKey, interval);
         }
         writer.enqueue(new HistoryWriter.CoverageOp(table, scope, interval[0], interval[1]));
-    }
-
-    /** Deletes every series of {@code scope} whose key is not in {@code keep}. */
-    public void retainKeys(HistoryTable table, String scope, Collection<String> keep) {
-        Set<String> kept = new HashSet<>(keep);
-        written.keySet()
-            .removeIf(s -> s.table == table && s.scope.equals(scope) && !kept.contains(s.key));
-        writer.enqueue(new HistoryWriter.RetainOp(table, scope, kept.toArray(new String[0])));
     }
 
     /**
@@ -236,75 +253,9 @@ public final class HistoryDb {
         }, () -> onLoaded.accept(holder[0])));
     }
 
-    /** Rows to import in one transaction, see {@link #importOnce}. */
-    public static final class Import {
-
-        final List<HistoryWriter.Op> ops = new ArrayList<>();
-
-        public void gauge(HistoryTable table, String scope, String key, long bucketStartMillis, long value) {
-            ops.add(new HistoryWriter.SampleOp(new SeriesKey(table, scope, key), bucketStartMillis, value));
-        }
-
-        public void counter(HistoryTable table, String scope, String key, long bucketStartMillis, long delta) {
-            ops.add(new HistoryWriter.SampleOp(new SeriesKey(table, scope, key), bucketStartMillis, delta));
-        }
-
-        public void coverage(HistoryTable table, String scope, long fromMillis, long toMillis) {
-            ops.add(new HistoryWriter.CoverageOp(table, scope, fromMillis, toMillis));
-        }
-
-        public void meta(String name, String value) {
-            ops.add(new HistoryWriter.MetaOp(name, value));
-        }
-
-        public boolean isEmpty() {
-            return ops.isEmpty();
-        }
-    }
-
-    /**
-     * Writes {@code rows} in one transaction unless an import named {@code marker} already committed, then runs
-     * {@code afterCommit} (e.g. renaming the imported file). The marker is written in the same transaction, so
-     * a crash between commit and rename never imports counters twice.
-     */
-    public void importOnce(String marker, Import rows, Runnable afterCommit) {
-        String metaName = "import:" + marker;
-        writer.enqueue(new HistoryWriter.TaskOp("import " + marker, (c, w) -> {
-            try (PreparedStatement ps = c.prepareStatement("SELECT 1 FROM ae2wi_meta WHERE name = ?")) {
-                ps.setString(1, metaName);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        LOG.info("History import '{}' already done, skipping", marker);
-                        return;
-                    }
-                }
-            }
-            w.writeAll(c, rows.ops);
-            w.writeAll(
-                c,
-                Arrays.asList(new HistoryWriter.MetaOp(metaName, String.valueOf(System.currentTimeMillis()))));
-            LOG.info("Imported '{}' into the history database ({} rows)", marker, rows.ops.size());
-        }, afterCommit));
-    }
-
-    /**
-     * Renames an imported JSON file to {@code <name>.migrated}, keeping it so switching back to JSON storage is
-     * a rename away.
-     */
-    public static void keepImportedFile(File file) {
-        File target = new File(file.getParentFile(), file.getName() + ".migrated");
-        if (target.exists()) {
-            target = new File(file.getParentFile(), file.getName() + ".migrated." + System.currentTimeMillis());
-        }
-        if (file.renameTo(target)) {
-            LOG.info("Moved {} into the history database, kept the file as {}", file.getName(), target.getName());
-        } else {
-            LOG.warn("Imported {} into the history database but could not rename it", file.getName());
-        }
-    }
-
     void forgetWrittenValues() {
         written.clear();
+        writtenNames.clear();
     }
 
     // --- Reading (HTTP worker threads) ---
@@ -360,9 +311,33 @@ public final class HistoryDb {
         }
     }
 
+    /** The stored display names of those {@code keys} of {@code scope} in {@code table} that have one. */
+    public Map<String, String> readNames(HistoryTable table, String scope, Collection<String> keys) {
+        Map<String, String> none = new HashMap<>();
+        if (keys.isEmpty()) {
+            return none;
+        }
+        return read(c -> {
+            Map<String, String> names = new HashMap<>();
+            try (PreparedStatement ps = c.prepareStatement(
+                "SELECT key, name FROM ae2wi_series WHERE tbl = ? AND scope = ? AND key = ANY(?) AND name IS NOT NULL")) {
+                ps.setQueryTimeout(READ_TIMEOUT_SECONDS);
+                ps.setString(1, table.id);
+                ps.setString(2, scope);
+                ps.setArray(3, c.createArrayOf("text", keys.toArray(new String[0])));
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        names.put(rs.getString(1), rs.getString(2));
+                    }
+                }
+            }
+            return names;
+        }, none);
+    }
+
     /**
      * Newest value in each window of {@code step} buckets over {@code [fromBucket, toBucket]}, or
-     * {@link #NO_SAMPLE} for a window without a sample - the same contract as the in-memory ring buffers.
+     * {@link #NO_SAMPLE} for a window without a sample.
      */
     public long[] readGauge(HistoryTable table, String scope, String key, long fromBucket, long toBucket, long step,
         long bucketMillis) {

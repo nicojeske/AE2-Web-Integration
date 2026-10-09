@@ -101,7 +101,7 @@ public final class ConfigSettings {
     public static final class Statistics {
 
         @Path("sample_interval_minutes")
-        @Comment("How often, in minutes, to sample stored counts of tracked statistics items (1-60).")
+        @Comment("How often, in minutes, to sample the stored count of every item (1-60). Needs [history].")
         public int sampleIntervalMinutes = 5;
 
         @Path("fine_retention_days")
@@ -112,18 +112,14 @@ public final class ConfigSettings {
         @Comment("Days of hourly-rollup statistics history to keep per item, beyond the fine window (1-3650).")
         public int hourlyRetentionDays = 365;
 
-        @Path("max_tracked_items_per_grid")
-        @Comment("Maximum number of items a single grid may track statistics history for (1-128).")
-        public int maxTrackedItemsPerGrid = 24;
-
     }
 
     public static final class History {
 
         @Path("jdbc_url")
-        @Comment({ "PostgreSQL JDBC URL (jdbc:postgresql://host:5432/db) to store statistics and GregTech history in,",
-            "instead of JSON files next to this config. TimescaleDB is used automatically when installed.",
-            "Empty uses the JSON files. The environment variable AE2WEB_HISTORY_JDBC_URL overrides this." })
+        @Comment({ "PostgreSQL JDBC URL (jdbc:postgresql://host:5432/db) to store statistics and GregTech history in.",
+            "TimescaleDB is used automatically when installed. Empty disables item statistics and GregTech",
+            "power/production history. The environment variable AE2WEB_HISTORY_JDBC_URL overrides this." })
         public String jdbcUrl = "";
 
         @Path("db_user")
@@ -191,7 +187,6 @@ public final class ConfigSettings {
         requireRange("statistics.sample_interval_minutes", statistics.sampleIntervalMinutes, 1, 60);
         requireRange("statistics.fine_retention_days", statistics.fineRetentionDays, 1, 90);
         requireRange("statistics.hourly_retention_days", statistics.hourlyRetentionDays, 1, 3650);
-        requireRange("statistics.max_tracked_items_per_grid", statistics.maxTrackedItemsPerGrid, 1, 128);
         requireRange("gregtech.scan_interval_seconds", gregtech.scanIntervalSeconds, 2, 300);
         requireRange("gregtech.power_sample_interval_seconds", gregtech.powerSampleIntervalSeconds, 10, 3600);
         requireRange("gregtech.power_fine_retention_hours", gregtech.powerFineRetentionHours, 1, 168);

@@ -5,27 +5,20 @@ import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import {
-    addTrackedItem,
-    ApiError,
-    getItemHistory,
-    getTrackedItems,
-    removeTrackedItem,
-    setTrackedItems as apiSetTrackedItems,
-} from "../api/client";
-import { describeApiError } from "../api/errors";
-import type { GridKey, ItemHistoryResult, StatsRange, TrackedItemsResult } from "../api/types";
+import { ApiError, getItemHistory } from "../api/client";
+import type { GridKey, ItemHistoryResult, StatsRange } from "../api/types";
 import { CARD_POINTS, COMPARE_POINTS, DEFAULT_CUSTOM_MINUTES, toValues } from "../views/statsModel";
 import { useNetwork } from "./network";
 import { usePrefs } from "./prefs";
-import { useToast } from "./toast";
+
+/** The server answers at most this many series per request, so it also caps a grid's pinned cards. */
+export const MAX_PINNED = 50;
 
 export interface HistoryBundle {
     from: number;
     to: number;
     stepMillis: number;
     resolution: "fine" | "hourly";
-    limit: number;
     /** Derived from the response array, never from the requested `points` - see M7 caveats. */
     count: number;
     timestamps: number[];
@@ -47,7 +40,6 @@ function toBundle(result: ItemHistoryResult): HistoryBundle {
         to: result.to,
         stepMillis: result.stepMillis,
         resolution: result.resolution,
-        limit: result.limit,
         count,
         timestamps,
         byItem,
@@ -56,8 +48,8 @@ function toBundle(result: ItemHistoryResult): HistoryBundle {
 }
 
 export interface StatsContextValue {
-    /** `null` in All-Grids mode or with no grid selected - the
-     *  tracked set and its cap are per-grid server-side, so Statistics is single-grid only. */
+    /** `null` in All-Grids mode or with no grid selected - history is per grid server-side, so
+     *  Statistics is single-grid only. */
     gridKey: GridKey | null;
     range: StatsRange;
     setRange: (r: StatsRange) => void;
@@ -65,13 +57,11 @@ export interface StatsContextValue {
     customMinutes: number;
     setCustomMinutes: (m: number) => void;
 
-    tracked: string[];
-    trackedLimit: number;
-    /** Last display name observed server-side for each tracked item, keyed by itemid - the fallback
-     *  a tracked item keeps once it empties out and drops out of `useItems()`. */
-    trackedNames: Record<string, string>;
-    trackedLoading: boolean;
-    trackedError: string | null;
+    /** This grid's pinned items (synced prefs), in card order. Every item has history; pins only pick cards. */
+    pinned: string[];
+    /** Last display name the server saw for each item fetched so far, keyed by itemid - the fallback an
+     *  item keeps once it empties out and drops out of `useItems()`. */
+    names: Record<string, string>;
 
     history: HistoryBundle | null;
     historyLoading: boolean;
@@ -85,13 +75,14 @@ export interface StatsContextValue {
     compareLoading: boolean;
     /** The compare modal calls this on mount/unmount so its higher-resolution bundle only polls while open. */
     setCompareActive: (active: boolean) => void;
+    /** The items the open compare modal charts. */
+    setCompareItems: (itemids: string[]) => void;
 
     /** Shell calls this, mirroring the `detailScope` precedent in cpus.tsx - only poll while visible. */
     setActive: (active: boolean) => void;
     refresh: () => Promise<void>;
-    addTracked: (itemid: string) => Promise<void>;
-    removeTracked: (itemid: string) => Promise<void>;
-    setTrackedSet: (itemids: string[]) => Promise<void>;
+    pin: (itemid: string) => void;
+    unpin: (itemid: string) => void;
 }
 
 const StatsContext = createContext<StatsContextValue | null>(null);
@@ -105,10 +96,12 @@ const POLL_MS = 60_000;
 
 export function StatsProvider({ children }: { children?: ComponentChildren }) {
     const { selected, selectedGrid } = useNetwork();
-    const { settings, setSettings } = usePrefs();
-    const toast = useToast();
+    const { settings, setSettings, statsPinned, setStatsPinned } = usePrefs();
 
     const gridKey = selected !== "all" && selectedGrid ? selectedGrid.key : null;
+    const pinnedForGrid = gridKey === null ? undefined : statsPinned[gridKey];
+    const pinned = useMemo(() => pinnedForGrid ?? [], [pinnedForGrid]);
+    const pinnedKey = pinned.join(",");
 
     // Seeded from the Settings modal's persisted default (state/prefs.tsx) - every other Statistics
     // control resets on reload same as before; only the main range mirrors back into that setting below,
@@ -119,11 +112,8 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     const [compareRange, setCompareRange] = useState<StatsRange>("7d");
     const [compareCustomMinutes, setCompareCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
 
-    const [tracked, setTracked] = useState<string[]>([]);
-    const [trackedLimit, setTrackedLimit] = useState(0);
-    const [trackedNames, setTrackedNames] = useState<Record<string, string>>({});
-    const [trackedLoading, setTrackedLoading] = useState(false);
-    const [trackedError, setTrackedError] = useState<string | null>(null);
+    const [names, setNames] = useState<Record<string, string>>({});
+    const [compareItems, setCompareItemsState] = useState<string[]>([]);
 
     const [history, setHistory] = useState<HistoryBundle | null>(null);
     const [historyLoading, setHistoryLoading] = useState(false);
@@ -149,17 +139,17 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     activeRef.current = active;
     const compareActiveRef = useRef(compareActive);
     compareActiveRef.current = compareActive;
-    const trackedRef = useRef(tracked);
-    trackedRef.current = tracked;
-    const gridIdForMutationRef = useRef(gridKey);
-    gridIdForMutationRef.current = gridKey;
+    const pinnedRef = useRef(pinned);
+    pinnedRef.current = pinned;
+    const compareItemsRef = useRef(compareItems);
+    compareItemsRef.current = compareItems;
 
     const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const runNowRef = useRef<() => Promise<void>>(async () => {});
-    const queueRef = useRef<Promise<unknown>>(Promise.resolve());
 
     const setActive = useCallback((next: boolean) => setActiveState(next), []);
     const setCompareActive = useCallback((next: boolean) => setCompareActiveState(next), []);
+    const setCompareItems = useCallback((ids: string[]) => setCompareItemsState(ids), []);
     const setRange = useCallback(
         (r: StatsRange) => {
             setRangeState(r);
@@ -168,43 +158,25 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
         [setSettings],
     );
 
-    // Grid change: reload the tracked set fresh (it carries `limit`; `/gridsettings` doesn't) and
-    // hard-reset everything else so a stale grid's cards never paint under the new selection - the
-    // poll effect below (restarting on `gridKey`) refetches history on top of this.
+    // Grid change: hard-reset so a stale grid's cards never paint under the new selection - the poll
+    // effect below (restarting on `gridKey`) refetches history on top of this.
     useEffect(() => {
-        let cancelled = false;
-        setTracked([]);
-        setTrackedLimit(0);
-        setTrackedNames({});
-        setTrackedError(null);
+        setNames({});
         setHistory(null);
         setHistoryError(null);
         setCompareHistory(null);
-        if (gridKey === null) {
-            setTrackedLoading(false);
-            return;
-        }
-        setTrackedLoading(true);
-        void getTrackedItems(gridKey)
-            .then((res) => {
-                if (cancelled) return;
-                setTracked(res.tracked);
-                setTrackedLimit(res.limit);
-                setTrackedNames(res.names ?? {});
-            })
-            .catch((e) => {
-                if (cancelled) return;
-                setTrackedError(e instanceof ApiError ? e.status : e instanceof Error ? e.message : String(e));
-            })
-            .finally(() => {
-                if (!cancelled) setTrackedLoading(false);
-            });
-        return () => {
-            cancelled = true;
-        };
     }, [gridKey]);
 
-    // Poll loop for the card bundle - restarts cleanly on a grid or range change (mirroring
+    const fetchBundle = useCallback(
+        async (grid: GridKey, r: StatsRange, points: number, items: string[], minutes: number) => {
+            const result = await getItemHistory(grid, r, points, items, minutes);
+            setNames((current) => ({ ...current, ...result.names }));
+            return toBundle(result);
+        },
+        [],
+    );
+
+    // Poll loop for the card bundle - restarts cleanly on a grid, range or pinned-set change (mirroring
     // cpus.tsx's restart-on-selection-change), so no separate "force an immediate fetch" effect is
     // needed for either. `active`/`compareActive`/`compareRange` are read from refs each cycle and
     // get their own small trigger effects below instead, since they shouldn't tear down the timer.
@@ -219,15 +191,13 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             }
             setHistoryLoading(true);
             try {
-                const result = await getItemHistory(
-                    gridKey,
-                    rangeRef.current,
-                    CARD_POINTS,
-                    undefined,
-                    customMinutesRef.current,
-                );
+                const items = pinnedRef.current;
+                const bundle =
+                    items.length === 0
+                        ? null
+                        : await fetchBundle(gridKey, rangeRef.current, CARD_POINTS, items, customMinutesRef.current);
                 if (!stopped) {
-                    setHistory(toBundle(result));
+                    setHistory(bundle);
                     setHistoryError(null);
                 }
             } catch (e) {
@@ -238,17 +208,17 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
                 if (!stopped) setHistoryLoading(false);
             }
 
-            if (!stopped && compareActiveRef.current) {
+            if (!stopped && compareActiveRef.current && compareItemsRef.current.length > 0) {
                 setCompareLoading(true);
                 try {
-                    const result = await getItemHistory(
+                    const bundle = await fetchBundle(
                         gridKey,
                         compareRangeRef.current,
                         COMPARE_POINTS,
-                        undefined,
+                        compareItemsRef.current,
                         compareCustomMinutesRef.current,
                     );
-                    if (!stopped) setCompareHistory(toBundle(result));
+                    if (!stopped) setCompareHistory(bundle);
                 } catch {
                     // The compare modal has its own error surface; keep the last-good bundle rather
                     // than blanking an open chart on one transient failure.
@@ -279,7 +249,7 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             clearTimeout(timerRef.current);
             document.removeEventListener("visibilitychange", onVisibilityChange);
         };
-    }, [gridKey, range, customMinutes]);
+    }, [gridKey, range, customMinutes, pinnedKey, fetchBundle]);
 
     // Becoming the active section (or the compare modal opening/changing its own range) should
     // refetch immediately rather than waiting out whatever's left of the 60s interval. Both fire on
@@ -290,77 +260,27 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
     }, [active]);
     useEffect(() => {
         if (compareActive) void runNowRef.current();
-    }, [compareActive, compareRange, compareCustomMinutes]);
+    }, [compareActive, compareRange, compareCustomMinutes, compareItems]);
 
     const refresh = useCallback(() => runNowRef.current(), []);
 
-    const applyTrackedMutation = useCallback(
-        (mutate: () => Promise<TrackedItemsResult>) => {
-            const gid = gridIdForMutationRef.current;
-            if (gid === null) return Promise.resolve();
-            const previous = trackedRef.current;
-            const run = queueRef.current.then(async () => {
-                if (gridIdForMutationRef.current !== gid) return; // grid switched while queued
-                try {
-                    const res = await mutate();
-                    if (gridIdForMutationRef.current !== gid) return;
-                    setTracked(res.tracked);
-                    setTrackedLimit(res.limit);
-                    setTrackedNames(res.names ?? {});
-                    void runNowRef.current();
-                } catch (e) {
-                    if (gridIdForMutationRef.current !== gid) return;
-                    setTracked(previous);
-                    toast(describeApiError(e, "Couldn't update tracked items"));
-                    if (e instanceof ApiError && e.status === "TRACKED_LIMIT_REACHED") {
-                        // Two-tab race: resync with the server's authoritative list.
-                        try {
-                            const res = await getTrackedItems(gid);
-                            if (gridIdForMutationRef.current === gid) {
-                                setTracked(res.tracked);
-                                setTrackedLimit(res.limit);
-                                setTrackedNames(res.names ?? {});
-                            }
-                        } catch {
-                            // Best-effort resync only; the next grid change or manual refresh recovers.
-                        }
-                    }
-                }
-            });
-            queueRef.current = run;
-            return run;
-        },
-        [toast],
-    );
-
-    const addTracked = useCallback(
+    const pin = useCallback(
         (itemid: string) => {
-            const gid = gridIdForMutationRef.current;
-            if (gid === null) return Promise.resolve();
-            setTracked((prev) => (prev.includes(itemid) ? prev : [...prev, itemid]));
-            return applyTrackedMutation(() => addTrackedItem(gid, itemid));
+            if (gridKey === null || pinned.includes(itemid) || pinned.length >= MAX_PINNED) return;
+            setStatsPinned(gridKey, [...pinned, itemid]);
         },
-        [applyTrackedMutation],
+        [gridKey, pinned, setStatsPinned],
     );
 
-    const removeTracked = useCallback(
+    const unpin = useCallback(
         (itemid: string) => {
-            const gid = gridIdForMutationRef.current;
-            if (gid === null) return Promise.resolve();
-            setTracked((prev) => prev.filter((x) => x !== itemid));
-            return applyTrackedMutation(() => removeTrackedItem(gid, itemid));
+            if (gridKey === null) return;
+            setStatsPinned(
+                gridKey,
+                pinned.filter((id) => id !== itemid),
+            );
         },
-        [applyTrackedMutation],
-    );
-
-    const setTrackedSet = useCallback(
-        (itemids: string[]) => {
-            const gid = gridIdForMutationRef.current;
-            if (gid === null) return Promise.resolve();
-            setTracked(itemids);
-            return applyTrackedMutation(() => apiSetTrackedItems(gid, itemids));
-        },
-        [applyTrackedMutation],
+        [gridKey, pinned, setStatsPinned],
     );
 
     const value = useMemo<StatsContextValue>(
@@ -370,11 +290,8 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             setRange,
             customMinutes,
             setCustomMinutes,
-            tracked,
-            trackedLimit,
-            trackedNames,
-            trackedLoading,
-            trackedError,
+            pinned,
+            names,
             history,
             historyLoading,
             historyError,
@@ -385,21 +302,18 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             compareHistory,
             compareLoading,
             setCompareActive,
+            setCompareItems,
             setActive,
             refresh,
-            addTracked,
-            removeTracked,
-            setTrackedSet,
+            pin,
+            unpin,
         }),
         [
             gridKey,
             range,
             customMinutes,
-            tracked,
-            trackedLimit,
-            trackedNames,
-            trackedLoading,
-            trackedError,
+            pinned,
+            names,
             history,
             historyLoading,
             historyError,
@@ -408,11 +322,11 @@ export function StatsProvider({ children }: { children?: ComponentChildren }) {
             compareHistory,
             compareLoading,
             setCompareActive,
+            setCompareItems,
             setActive,
             refresh,
-            addTracked,
-            removeTracked,
-            setTrackedSet,
+            pin,
+            unpin,
         ],
     );
 

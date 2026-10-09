@@ -64,7 +64,7 @@ public final class GTEngine {
 
     public static void loadData() {
         GTMachineRegistry.loadData();
-        GTPowerHistoryStore.loadData();
+        GTPowerHistoryStore.clear();
         GTProductionLog.loadData();
     }
 
@@ -88,7 +88,6 @@ public final class GTEngine {
             GTPowerHistoryStore.prune(nowMillis);
             GTProductionLog.prune(nowMillis);
             GTMachineRegistry.flushIfDirty();
-            GTPowerHistoryStore.flushIfDirty();
             GTProductionLog.flushIfDirty();
         }
     }
@@ -136,13 +135,12 @@ public final class GTEngine {
 
     public static void onServerStopping() {
         GTMachineRegistry.saveNow();
-        GTPowerHistoryStore.saveNow();
         GTProductionLog.saveNow();
     }
 
     /**
      * Resets scheduling only. The provider stays registered (it is registered once at mod init, not per
-     * world) and stored data stays in memory, like {@code ItemHistoryStore}.
+     * world) and in-memory GregTech state stays.
      */
     public static synchronized void onServerStopped() {
         scanScheduled = false;

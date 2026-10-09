@@ -16,7 +16,7 @@ import pl.kuba6000.ae2webintegration.core.CoreEngine;
 import pl.kuba6000.ae2webintegration.core.ae2request.async.IAsyncRequest;
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
 import pl.kuba6000.ae2webintegration.core.config.Config;
-import pl.kuba6000.ae2webintegration.core.grid.GridPersistentData;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
 import pl.kuba6000.ae2webintegration.core.http.contract.Endpoint;
@@ -26,14 +26,15 @@ import pl.kuba6000.ae2webintegration.core.http.contract.QueryParam;
 import pl.kuba6000.ae2webintegration.core.tracking.ItemHistoryStore;
 
 /**
- * Reads sampled stored-count history of tracked items.
+ * Reads sampled stored-count history of any items of the grid.
  *
  * @pathParam gridKey Persistent grid identifier.
  * @response 200 {@link Response} Successful response.
  * @response 400 {@link ErrorResponse} BAD_PARAM: malformed path value, query parameter or body.
  * @response 401 {@link ErrorResponse} UNAUTHORIZED: no valid session was provided.
  * @response 403 {@link ErrorResponse} NO_PERMISSIONS: the user cannot access this grid.
- * @response 404 {@link ErrorResponse} GRID_NOT_FOUND: the grid does not exist.
+ * @response 404 {@link ErrorResponse} GRID_NOT_FOUND: the grid does not exist. HISTORY_DISABLED: no history
+ *           database is configured.
  * @response 500 {@link ErrorResponse} INTERNAL_ERROR: the request could not be completed.
  * @responseExample 400 {"status":"BAD_PARAM","data":null}
  * @responseExample 401 {"status":"UNAUTHORIZED","data":null}
@@ -46,6 +47,7 @@ public final class GetItemHistory extends IAsyncRequest {
 
     private static final int DEFAULT_POINTS = 120;
     private static final int MAX_POINTS = 500;
+    private static final int MAX_ITEMS = 50;
 
     /**
      * Successful operation result.
@@ -72,10 +74,9 @@ public final class GetItemHistory extends IAsyncRequest {
     @OptionalInput
     private int points = DEFAULT_POINTS;
 
-    /** Comma-separated item ids; all tracked items when omitted or empty. */
+    /** Comma-separated item ids (1-50). */
     @QueryParam("items")
-    @OptionalInput
-    private @Nullable String items;
+    private String items;
 
     @Override
     public void handle() {
@@ -83,9 +84,13 @@ public final class GetItemHistory extends IAsyncRequest {
             deny(ApiStatus.GRID_NOT_FOUND);
             return;
         }
-        GridPersistentData data = CoreEngine.GRID_IDENTITIES.getPersistentData(gridKey);
-        if (data == null) {
+        if (CoreEngine.GRID_IDENTITIES.getPersistentData(gridKey) == null) {
             deny(ApiStatus.GRID_NOT_FOUND);
+            return;
+        }
+        HistoryDb db = HistoryDb.get();
+        if (db == null) {
+            deny(ApiStatus.HISTORY_DISABLED);
             return;
         }
 
@@ -100,28 +105,22 @@ public final class GetItemHistory extends IAsyncRequest {
         } else {
             spanMillis = rangeToMillis(range);
         }
-        if (spanMillis == null || points < 1) {
+        List<String> itemids = parseItemIds(items);
+        if (spanMillis == null || points < 1 || itemids.isEmpty() || itemids.size() > MAX_ITEMS) {
             deny(ApiStatus.BAD_PARAM);
             return;
         }
 
-        List<String> itemids = resolveItemIds(
-            items,
-            data.getSettings()
-                .getTrackedItems());
         long now = System.currentTimeMillis();
         respond(
             HttpURLConnection.HTTP_OK,
             new Response(
                 ApiStatus.OK,
                 ItemHistoryStore
-                    .readSeries(gridKey.toString(), itemids, now - spanMillis, now, Math.min(points, MAX_POINTS))));
+                    .readSeries(db, gridKey.toString(), itemids, now - spanMillis, now, Math.min(points, MAX_POINTS))));
     }
 
-    private static List<String> resolveItemIds(@Nullable String csv, Set<String> tracked) {
-        if (csv == null || csv.isEmpty()) {
-            return new ArrayList<>(tracked);
-        }
+    private static List<String> parseItemIds(String csv) {
         Set<String> requested = new LinkedHashSet<>();
         for (String raw : csv.split(",")) {
             String itemid = raw.trim();

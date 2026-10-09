@@ -11,6 +11,7 @@ const THRESHOLDS_KEY = "ae2.thresholds";
 const NOTIFY_KEY = "ae2.notifyEnabled";
 const BROWSER_FILTERS_KEY = "ae2.browserFilters";
 const STATS_VIEWS_KEY = "ae2.statsViews";
+const STATS_PINNED_KEY = "ae2.statsPinned";
 const MACHINE_FILTERS_KEY = "ae2.machineFilters";
 const MAIN_POWER_SOURCE_KEY = "ae2.mainPowerSource";
 const PASSIVE_MACHINES_KEY = "ae2.passiveMachines";
@@ -113,6 +114,9 @@ export interface StatsView {
     range: StatsRange;
 }
 
+/** The items each grid's Statistics page shows as cards, by grid key, in display order. */
+export type StatsPinned = Record<GridKey, string[]>;
+
 /** App-wide display/behavior knobs (M11's Settings modal) - one blob rather than one key each, since
  *  none of these need independent migration and a single object is one read/write pair to reason about. */
 export interface Settings {
@@ -167,7 +171,7 @@ function writeJSON(key: string, value: unknown): void {
 
 /**
  * The subset of prefs that follows a player across devices (M13) - favourites, thresholds, the Browser
- * toolbar filters, saved Statistics views and the GT Machines filters. Deliberately excludes
+ * toolbar filters, saved Statistics views and pinned items, and the GT Machines filters. Deliberately excludes
  * `notifyEnabled` and `settings` (M11): those are this device's own display/notification preferences,
  * not account data, and syncing e.g. `tileMin` across a phone and a desktop would fight whichever one
  * saved last. The server never
@@ -181,6 +185,7 @@ interface SyncedPrefs {
     thresholds: Record<string, Thresholds>;
     browserFilters: BrowserFilters;
     statsViews: StatsView[];
+    statsPinned: StatsPinned;
     machineFilters: MachineFilters;
     /** The Power tab's pinned main LSC (a `/gt/power` source id) - `null` picks the largest one. */
     mainPowerSource: string | null;
@@ -203,6 +208,8 @@ function parseSyncedPrefs(raw: string): SyncedPrefs | null {
             thresholds: parsed.thresholds ?? {},
             browserFilters: { ...DEFAULT_BROWSER_FILTERS, ...parsed.browserFilters },
             statsViews: parsed.statsViews ?? [],
+            statsPinned:
+                parsed.statsPinned !== null && typeof parsed.statsPinned === "object" ? parsed.statsPinned : {},
             machineFilters: { ...DEFAULT_MACHINE_FILTERS, ...parsed.machineFilters },
             mainPowerSource: typeof parsed.mainPowerSource === "string" ? parsed.mainPowerSource : null,
             passiveMachines:
@@ -241,6 +248,9 @@ export interface PrefsContextValue {
     statsViews: StatsView[];
     addStatsView: (view: Omit<StatsView, "id">) => void;
     removeStatsView: (id: string) => void;
+    statsPinned: StatsPinned;
+    /** Replaces the pinned items of one grid. */
+    setStatsPinned: (gridKey: GridKey, itemids: string[]) => void;
     settings: Settings;
     setSettings: (update: (current: Settings) => Settings) => void;
 }
@@ -255,6 +265,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         readJSON(BROWSER_FILTERS_KEY, DEFAULT_BROWSER_FILTERS),
     );
     const [statsViews, setStatsViews] = useState<StatsView[]>(() => readJSON(STATS_VIEWS_KEY, []));
+    const [statsPinned, setStatsPinnedState] = useState<StatsPinned>(() => readJSON(STATS_PINNED_KEY, {}));
     const [machineFilters, setMachineFiltersState] = useState<MachineFilters>(() => ({
         ...DEFAULT_MACHINE_FILTERS,
         ...readJSON(MACHINE_FILTERS_KEY, {}),
@@ -293,6 +304,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                             thresholds,
                             browserFilters,
                             statsViews,
+                            statsPinned,
                             machineFilters,
                             mainPowerSource,
                             passiveMachines,
@@ -310,6 +322,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 writeJSON(BROWSER_FILTERS_KEY, parsed.browserFilters);
                 setStatsViews(parsed.statsViews);
                 writeJSON(STATS_VIEWS_KEY, parsed.statsViews);
+                setStatsPinnedState(parsed.statsPinned);
+                writeJSON(STATS_PINNED_KEY, parsed.statsPinned);
                 setMachineFiltersState(parsed.machineFilters);
                 writeJSON(MACHINE_FILTERS_KEY, parsed.machineFilters);
                 setMainPowerSourceState(parsed.mainPowerSource);
@@ -344,6 +358,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                     thresholds,
                     browserFilters,
                     statsViews,
+                    statsPinned,
                     machineFilters,
                     mainPowerSource,
                     passiveMachines,
@@ -351,7 +366,16 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             ).catch(() => {});
         }, PREFS_PUSH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [favorites, thresholds, browserFilters, statsViews, machineFilters, mainPowerSource, passiveMachines]);
+    }, [
+        favorites,
+        thresholds,
+        browserFilters,
+        statsViews,
+        statsPinned,
+        machineFilters,
+        mainPowerSource,
+        passiveMachines,
+    ]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
@@ -452,6 +476,16 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
+    const setStatsPinned = useCallback((gridKey: GridKey, itemids: string[]) => {
+        setStatsPinnedState((current) => {
+            const next = { ...current };
+            if (itemids.length === 0) delete next[gridKey];
+            else next[gridKey] = itemids;
+            writeJSON(STATS_PINNED_KEY, next);
+            return next;
+        });
+    }, []);
+
     const setSettings = useCallback((update: (current: Settings) => Settings) => {
         setSettingsState((current) => {
             const next = update(current);
@@ -481,6 +515,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             statsViews,
             addStatsView,
             removeStatsView,
+            statsPinned,
+            setStatsPinned,
             settings,
             setSettings,
         }),
@@ -504,6 +540,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             statsViews,
             addStatsView,
             removeStatsView,
+            statsPinned,
+            setStatsPinned,
             settings,
             setSettings,
         ],

@@ -17,6 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
 
 class GTPowerHistoryStoreTest {
 
@@ -75,28 +77,32 @@ class GTPowerHistoryStoreTest {
 
     @Test
     void readDownsamplesWithNewestValuePerWindowAndMarksGaps() {
+        HistoryDb db = GTTestSupport.startHistory();
         for (int i = 0; i < 4; i++) {
             GTPowerSourceSnapshot lsc = GTTestSupport.lsc(1, TEAM, 100 + i, 1000, 5L, 6L);
             GTPowerHistoryStore.recordSample(Collections.singletonList(lsc), NOW + i * 30 * SECOND);
         }
         String id = GTPowerSourceSnapshot.lscId(0, 1, 64, 0);
+        GTTestSupport.flushHistory();
 
-        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(id, NOW, NOW + 150 * SECOND, 120);
+        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(db, id, NOW, NOW + 150 * SECOND, 120);
 
         assertEquals("fine", series.resolution);
         assertArrayEquals(new long[] { 100, 101, 102, 103, -1, -1 }, series.stored);
         assertArrayEquals(new long[] { 5, 5, 5, 5, -1, -1 }, series.avgIn);
 
-        GTPowerHistoryStore.Series coarse = GTPowerHistoryStore.read(id, NOW, NOW + 150 * SECOND, 3);
+        GTPowerHistoryStore.Series coarse = GTPowerHistoryStore.read(db, id, NOW, NOW + 150 * SECOND, 3);
         assertArrayEquals(new long[] { 101, 103, -1 }, coarse.stored);
     }
 
     @Test
     void longRangesReadTheHourlyTier() {
+        HistoryDb db = GTTestSupport.startHistory();
         GTPowerSourceSnapshot lsc = GTTestSupport.lsc(1, TEAM, 7, 1000, null, null);
         GTPowerHistoryStore.recordSample(Collections.singletonList(lsc), NOW);
+        GTTestSupport.flushHistory();
 
-        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(lsc.id, NOW - 48 * HOUR, NOW, 500);
+        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(db, lsc.id, NOW - 48 * HOUR, NOW, 500);
 
         assertEquals("hourly", series.resolution);
         assertEquals(7, series.stored[series.stored.length - 1]);
@@ -112,17 +118,18 @@ class GTPowerHistoryStoreTest {
     }
 
     @Test
-    void persistenceRoundTripKeepsHistoryButNotLatest() {
+    void aRestartKeepsHistoryButNotLatest() {
+        GTTestSupport.startHistory();
         GTPowerSourceSnapshot lsc = GTTestSupport.lsc(1, TEAM, 77, 1000, 1L, 2L);
         GTPowerHistoryStore.updateLatest(Collections.singletonList(lsc), NOW);
         GTPowerHistoryStore.recordSample(Collections.singletonList(lsc), NOW);
-        GTPowerHistoryStore.saveNow();
+        GTTestSupport.flushHistory();
         GTPowerHistoryStore.clear();
 
-        GTPowerHistoryStore.loadData();
+        HistoryDb db = HistoryDbTestSupport.restart(HistoryDbTestSupport.Flavor.TIMESCALE);
 
-        assertNull(GTPowerHistoryStore.latest(lsc.id), "current state comes from the next scan, not disk");
-        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(lsc.id, NOW, NOW, 10);
+        assertNull(GTPowerHistoryStore.latest(lsc.id), "current state comes from the next scan");
+        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(db, lsc.id, NOW, NOW, 10);
         assertEquals(77, series.stored[0]);
     }
 }

@@ -30,6 +30,7 @@ class GTPassiveDetectorTest {
     void setUp() {
         Config.init(configRoot);
         GTTestSupport.reset();
+        GTTestSupport.startHistory();
     }
 
     @AfterEach
@@ -54,6 +55,7 @@ class GTPassiveDetectorTest {
         steady("m1", "ingot", 73);
         steady("m1", "dust", 73);
 
+        GTTestSupport.flushHistory();
         assertEquals(Collections.singleton("m1"), GTPassiveDetector.compute(NOW));
     }
 
@@ -62,6 +64,7 @@ class GTPassiveDetectorTest {
         steady("m1", "ingot", 73);
         record("m1", "plate", NOW - HOUR);
 
+        GTTestSupport.flushHistory();
         assertTrue(
             GTPassiveDetector.compute(NOW)
                 .isEmpty());
@@ -75,6 +78,7 @@ class GTPassiveDetectorTest {
             }
         }
 
+        GTTestSupport.flushHistory();
         assertTrue(
             GTPassiveDetector.compute(NOW)
                 .isEmpty());
@@ -84,6 +88,7 @@ class GTPassiveDetectorTest {
     void nothingIsSuggestedBeforeADayOfTracking() {
         steady("m1", "ingot", 20);
 
+        GTTestSupport.flushHistory();
         assertTrue(
             GTPassiveDetector.compute(NOW)
                 .isEmpty());
@@ -99,16 +104,20 @@ class GTPassiveDetectorTest {
             }
         }
 
+        GTTestSupport.flushHistory();
         assertEquals(Collections.singleton("m1"), GTPassiveDetector.compute(NOW));
     }
 
     @Test
     void candidatesAreCachedForTenMinutes() {
         steady("m1", "ingot", 73);
+        GTTestSupport.flushHistory();
         assertEquals(Collections.singleton("m1"), GTPassiveDetector.candidates(NOW));
 
         record("m1", "plate", NOW);
+        GTTestSupport.flushHistory();
         assertEquals(Collections.singleton("m1"), GTPassiveDetector.candidates(NOW + 9 * 60_000L));
+        GTTestSupport.flushHistory();
         assertTrue(
             GTPassiveDetector.candidates(NOW + GTPassiveDetector.CACHE_MILLIS)
                 .isEmpty());

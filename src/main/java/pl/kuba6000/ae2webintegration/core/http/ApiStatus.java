@@ -25,12 +25,13 @@ public enum ApiStatus {
     AMBIGUOUS_ITEM_KEY(HttpURLConnection.HTTP_CONFLICT),
     JOB_NOT_DONE(HttpURLConnection.HTTP_CONFLICT),
     FAIL(HttpURLConnection.HTTP_CONFLICT),
-    TRACKED_LIMIT_REACHED(HttpURLConnection.HTTP_CONFLICT),
     REQUEST_TOO_LARGE(HttpURLConnection.HTTP_ENTITY_TOO_LARGE),
     UNSUPPORTED_MEDIA_TYPE(HttpURLConnection.HTTP_UNSUPPORTED_TYPE),
     NOT_FOUND(HttpURLConnection.HTTP_NOT_FOUND),
     /** The feature behind the endpoint is not present on this server, e.g. GregTech pages without GregTech. */
     NOT_AVAILABLE(HttpURLConnection.HTTP_NOT_FOUND),
+    /** History (item statistics, GregTech power and production) needs {@code history.jdbc_url}, which is unset. */
+    HISTORY_DISABLED(HttpURLConnection.HTTP_NOT_FOUND),
     METHOD_NOT_ALLOWED(HttpURLConnection.HTTP_BAD_METHOD),
     TOO_MANY_REQUESTS(429), // NOPMD - HTTP Too Many Requests; Java 8 has no constant.
     INTERNAL_ERROR(HttpURLConnection.HTTP_INTERNAL_ERROR),

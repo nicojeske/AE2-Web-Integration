@@ -44,8 +44,8 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
         setCompareCustomMinutes,
         compareHistory,
         setCompareActive,
-        tracked,
-        trackedNames,
+        setCompareItems,
+        names,
     } = useStats();
 
     const [ids, setIds] = useState<string[]>(itemids.slice(0, MAX_COMPARE_SERIES));
@@ -57,6 +57,7 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
         setCompareActive(true);
         return () => setCompareActive(false);
     }, [setCompareActive]);
+    useEffect(() => setCompareItems(ids), [ids, setCompareItems]);
 
     const gridKey = selectedGrid?.key ?? null;
     const nameOf = useMemo(() => {
@@ -64,10 +65,10 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
         for (const item of items) {
             if (item.sourceGridKey === gridKey) byId.set(item.itemid, item.plainName);
         }
-        // Falls back to the server-remembered name (see state/stats.tsx's trackedNames) before the
-        // raw itemid - an emptied-out tracked item still gets a real name and a matching icon.
-        return (itemid: string) => byId.get(itemid) ?? trackedNames[itemid] ?? itemid;
-    }, [items, gridKey, trackedNames]);
+        // Falls back to the server-remembered name (see state/stats.tsx's names) before the raw itemid -
+        // an emptied-out item still gets a real name and a matching icon.
+        return (itemid: string) => byId.get(itemid) ?? names[itemid] ?? itemid;
+    }, [items, gridKey, names]);
 
     const series = useMemo(() => {
         return ids.map((id) => {
@@ -86,15 +87,18 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
 
     const flaggedModes = series.filter((s) => s.mode === "peak" || s.mode === "flat");
 
-    // Add-item dropdown lists only tracked items - an untracked id has no history at all, just an
-    // all-gap blank line (REDESIGN_MILESTONES.md's M8 decision).
+    // Add-item dropdown lists every item on this network - all of them have history.
     const addOptions = useMemo(() => {
         const q = addQuery.trim().toLowerCase();
-        return tracked
+        const candidates = new Set<string>();
+        for (const item of items) {
+            if (item.sourceGridKey === gridKey) candidates.add(item.itemid);
+        }
+        return [...candidates]
             .filter((id) => !ids.includes(id))
             .filter((id) => !q || nameOf(id).toLowerCase().includes(q) || id.toLowerCase().includes(q))
             .slice(0, 8);
-    }, [tracked, ids, addQuery, nameOf]);
+    }, [items, gridKey, ids, addQuery, nameOf]);
 
     const atCap = ids.length >= MAX_COMPARE_SERIES;
 

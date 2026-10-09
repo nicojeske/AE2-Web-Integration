@@ -6,8 +6,6 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
@@ -21,8 +19,6 @@ import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.config.CoreData;
 import pl.kuba6000.ae2webintegration.core.grid.GridData;
 import pl.kuba6000.ae2webintegration.core.grid.GridFilter;
-import pl.kuba6000.ae2webintegration.core.grid.GridPersistentData;
-import pl.kuba6000.ae2webintegration.core.grid.GridSettingsData;
 import pl.kuba6000.ae2webintegration.core.gt.GTEngine;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
@@ -89,9 +85,8 @@ public class CoreEngine {
 
     private static void loadData() {
         CoreData.loadData();
-        // Before the history stores load: with a database configured they import their JSON files into it.
+        // Before the GT stores load: they read their metadata from the database.
         HistoryDb.start();
-        ItemHistoryStore.loadData();
         GTEngine.loadData();
     }
 
@@ -206,7 +201,7 @@ public class CoreEngine {
     }
 
     /**
-     * One pass = one sample of every grid whose tracked-item set is non-empty, spread one grid per tick.
+     * One pass = one sample of every usable grid, spread one grid per tick; nothing without a history database.
      * A pass starts by snapshotting which grids currently qualify and stamping a single {@code nowMillis}
      * for the whole pass, so every grid it samples lands in the same bucket regardless of how many ticks
      * the pass takes to finish. Mirrors {@link #runPlanMaintenance}'s resumable-cursor shape.
@@ -239,14 +234,14 @@ public class CoreEngine {
         if (historyFlushScheduled && nowNanos - nextHistoryFlushNanos < 0) {
             return;
         }
-        ItemHistoryStore.flushIfDirty();
+        ItemHistoryStore.prune(System.currentTimeMillis());
         historyFlushScheduled = true;
         nextHistoryFlushNanos = nowNanos + HISTORY_FLUSH_INTERVAL_NANOS;
     }
 
     private static List<StableKey> trackedGridKeysSnapshot() {
         List<StableKey> keys = new ArrayList<>();
-        if (AE2Controller.AE2Interface == null || !GRID_IDENTITIES.isInitialized()) {
+        if (HistoryDb.get() == null || AE2Controller.AE2Interface == null || !GRID_IDENTITIES.isInitialized()) {
             return keys;
         }
         for (IAEGrid grid : AE2Controller.AE2Interface.web$getGrids()) {
@@ -254,41 +249,23 @@ public class CoreEngine {
                 continue;
             }
             StableKey key = GRID_IDENTITIES.getKey(grid);
-            GridSettingsData settings = key == null ? null : settingsOf(key);
-            if (settings == null || settings.getTrackedItems()
-                .isEmpty()) {
-                continue;
+            if (key != null) {
+                keys.add(key);
             }
-            keys.add(key);
         }
         return keys;
     }
 
-    private static @Nullable GridSettingsData settingsOf(StableKey key) {
-        GridPersistentData data = GRID_IDENTITIES.getPersistentData(key);
-        return data == null ? null : data.getSettings();
-    }
-
     private static void sampleOneGrid(StableKey gridKey, long nowMillis) {
-        GridSettingsData settings = settingsOf(gridKey);
         IAEGrid grid = GRID_IDENTITIES.getGrid(gridKey);
         // Grid went offline or unattachable between the pass snapshot and this tick - skip, the next pass
         // will pick it back up if it comes back.
-        if (settings == null || !GridFilter.isUsable(grid)) {
+        if (!GridFilter.isUsable(grid)) {
             return;
         }
-        Set<String> tracked = settings.getTrackedItems();
         IAEStorageGrid storageGrid = grid.web$getStorageGrid();
-        if (tracked.isEmpty() || storageGrid == null) {
-            return;
-        }
-        Map<String, String> observedNames = ItemHistoryStore
-            .sample(gridKey.toString(), tracked, storageGrid.web$getStorageList(), nowMillis);
-        settings.updateTrackedItemNames(observedNames);
-        try {
-            GRID_IDENTITIES.saveIfDirty();
-        } catch (IOException | IllegalStateException e) {
-            LOG.warn("Could not save tracked item names", e);
+        if (storageGrid != null) {
+            ItemHistoryStore.sample(gridKey.toString(), storageGrid.web$getStorageList(), nowMillis);
         }
     }
 
@@ -311,7 +288,6 @@ public class CoreEngine {
         // Authorization must not survive into the next world loaded in this JVM.
         GRID_IDENTITIES.clear();
         // Blocking here is fine - this runs during a deliberate shutdown, not inside the tick budget.
-        ItemHistoryStore.saveNow();
         GTEngine.onServerStopping();
         HistoryDb db = HistoryDb.get();
         if (db != null && !db.flush(TimeUnit.SECONDS.toMillis(10))) {
@@ -329,7 +305,6 @@ public class CoreEngine {
         GridData.clearRuntimeState();
         CoreEngine.GRID_IDENTITIES.clear();
         resetPlanMaintenance();
-        ItemHistoryStore.clearRuntimeState();
         resetHistorySampling();
         GTEngine.onServerStopped();
     }

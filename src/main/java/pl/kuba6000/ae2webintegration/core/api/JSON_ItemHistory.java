@@ -1,6 +1,8 @@
 package pl.kuba6000.ae2webintegration.core.api;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /** Wire shape for {@code GET /api/grids/{gridKey}/item-history}. Built by {@code ItemHistoryStore.readSeries}. */
 public class JSON_ItemHistory {
@@ -21,6 +23,7 @@ public class JSON_ItemHistory {
     public long to;
     public long stepMillis;
     public String resolution;
-    public int limit;
     public ArrayList<JSON_ItemSeries> series = new ArrayList<>();
+    /** Last display name seen in storage per requested item, for items that have one recorded. */
+    public Map<String, String> names = new LinkedHashMap<>();
 }

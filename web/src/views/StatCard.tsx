@@ -1,4 +1,4 @@
-// One tracked item's dashboard card (M8, chart-quality/derived-metrics pass). Lifted out of
+// One pinned item's dashboard card (M8, chart-quality/derived-metrics pass). Lifted out of
 // Statistics.tsx once that file grew past comfortably inlining a richer card - identity + delta badge
 // + chart + a metrics strip, all driven by props so the parent owns every cross-item computation
 // (statsModel's `seriesStats`/`timeToEmptyMillis`/`movingAverage`) exactly once per render instead of
@@ -26,12 +26,12 @@ import {
 
 export interface StatCardProps {
     itemid: string;
-    /** `undefined` when the tracked item is no longer present in the loaded item list. */
+    /** `undefined` when the pinned item is no longer present in the loaded item list. */
     item: BrowserItem | undefined;
     /** Last display name the server observed for this item while it was still in storage - the
      *  fallback once `item` goes `undefined` because the item emptied out. `undefined` if the server
-     *  never saw it in stock either (predates this field, or genuinely never stocked). */
-    trackedName: string | undefined;
+     *  never saw it in stock either. */
+    storedName: string | undefined;
     values: (number | null)[];
     timestamps: number[];
     range: StatsRange;
@@ -50,7 +50,7 @@ export interface StatCardProps {
 export function StatCard({
     itemid,
     item,
-    trackedName,
+    storedName,
     values,
     timestamps,
     range,
@@ -71,10 +71,10 @@ export function StatCard({
             : last != null
               ? formatNumber(last.value, numberFormat)
               : "—";
-    const name = item?.itemname ?? trackedName ?? itemid;
+    const name = item?.itemname ?? storedName ?? itemid;
     const rangeLabel = RANGE_OPTIONS.find((o) => o.value === range)?.label ?? range;
     const ariaLabel = `${name}, ${rangeLabel}`;
-    // A real `0` last sample (recorded even for a tracked item currently out of stock - see
+    // A real `0` last sample (recorded once an item that was stored runs out - see
     // ItemHistoryStore.sample) reads as "out of stock"; no sample at all is the only case that still
     // means "the server has never seen this item on this network".
     const statusTag = item ? null : last !== null && last.value === 0 ? "out of stock" : "not on this network";

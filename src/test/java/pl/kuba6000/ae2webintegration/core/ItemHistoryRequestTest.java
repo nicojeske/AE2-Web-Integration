@@ -1,9 +1,7 @@
 package pl.kuba6000.ae2webintegration.core;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -11,15 +9,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.google.gson.JsonObject;
-
 import pl.kuba6000.ae2webintegration.core.ae2request.async.IAsyncRequest;
-import pl.kuba6000.ae2webintegration.core.config.Config;
-import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.AddTrackedItem;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport.Flavor;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetItemHistory;
-import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetTrackedItems;
-import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.RemoveTrackedItem;
-import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.SetTrackedItems;
 import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 
 class ItemHistoryRequestTest extends GridTestScope {
@@ -34,32 +27,24 @@ class ItemHistoryRequestTest extends GridTestScope {
         TestGridFixtures.TestGrid grid = TestGridFixtures.grid(30L);
         key = TestGridFixtures.resolvedKey(grid);
         AE2Controller.AE2Interface = TestGridFixtures.ae(grid);
-        Config.INSTANCE.statistics.maxTrackedItemsPerGrid = 2;
+        HistoryDbTestSupport.start(Flavor.TIMESCALE);
     }
 
     @AfterEach
-    void resetConfig() {
-        Config.INSTANCE.statistics.maxTrackedItemsPerGrid = 24;
+    void tearDown() {
+        HistoryDbTestSupport.stop();
     }
 
-    private <T extends IAsyncRequest> T run(T request, WebPrincipal principal, String query, String itemid,
-        JsonObject body) {
+    private <T extends IAsyncRequest> T run(T request, WebPrincipal principal, String query) {
         Map<String, String> path = new HashMap<>();
         path.put("gridKey", key.toString());
-        if (itemid != null) path.put("itemid", itemid);
         request
-            .handle(new AE2Controller.RequestContext(new TestGridFixtures.TestExchange(query), principal, path, body));
+            .handle(new AE2Controller.RequestContext(new TestGridFixtures.TestExchange(query), principal, path, null));
         return request;
     }
 
     private <T extends IAsyncRequest> T run(T request, String query) {
-        return run(request, OWNER, query, null, null);
-    }
-
-    private static JsonObject items(String csv) {
-        JsonObject body = new JsonObject();
-        body.addProperty("items", csv);
-        return body;
+        return run(request, OWNER, query);
     }
 
     private static void assertStatus(String expected, IAsyncRequest request) {
@@ -73,36 +58,48 @@ class ItemHistoryRequestTest extends GridTestScope {
 
     @Test
     void itemHistoryDeniesAPlayerWithoutGridAccess() {
-        assertStatus("NO_PERMISSIONS", run(new GetItemHistory(), STRANGER, "", null, null));
+        assertStatus("NO_PERMISSIONS", run(new GetItemHistory(), STRANGER, "items=a"));
     }
 
     @Test
     void itemHistoryDeniesAnUnrecognisedRange() {
-        assertStatus("BAD_PARAM", run(new GetItemHistory(), "range=nonsense"));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "items=a&range=nonsense"));
     }
 
     @Test
     void itemHistoryDeniesANonNumericPointsParam() {
-        assertStatus("BAD_PARAM", run(new GetItemHistory(), "points=notanumber"));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "items=a&points=notanumber"));
+    }
+
+    @Test
+    void itemHistoryNeedsBetweenOneAndFiftyItems() {
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), ""));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "items=,"));
+        StringBuilder many = new StringBuilder("items=i0");
+        for (int i = 1; i <= 50; i++) {
+            many.append(",i")
+                .append(i);
+        }
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), many.toString()));
     }
 
     @Test
     void itemHistoryAcceptsTheFinerPresetRanges() {
-        assertStatus("OK", run(new GetItemHistory(), "range=15m"));
-        assertStatus("OK", run(new GetItemHistory(), "range=1h"));
-        assertStatus("OK", run(new GetItemHistory(), "range=6h"));
+        assertStatus("OK", run(new GetItemHistory(), "items=a&range=15m"));
+        assertStatus("OK", run(new GetItemHistory(), "items=a&range=1h"));
+        assertStatus("OK", run(new GetItemHistory(), "items=a&range=6h"));
     }
 
     @Test
     void itemHistoryCustomRangeDeniesAMissingOrInvalidMinutesParam() {
-        assertStatus("BAD_PARAM", run(new GetItemHistory(), "range=custom"));
-        assertStatus("BAD_PARAM", run(new GetItemHistory(), "range=custom&minutes=0"));
-        assertStatus("BAD_PARAM", run(new GetItemHistory(), "range=custom&minutes=notanumber"));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "items=a&range=custom"));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "items=a&range=custom&minutes=0"));
+        assertStatus("BAD_PARAM", run(new GetItemHistory(), "items=a&range=custom&minutes=notanumber"));
     }
 
     @Test
     void itemHistoryCustomRangeAcceptsAValidMinutesParam() {
-        assertStatus("OK", run(new GetItemHistory(), "range=custom&minutes=90"));
+        assertStatus("OK", run(new GetItemHistory(), "items=a&range=custom&minutes=90"));
     }
 
     @Test
@@ -115,69 +112,8 @@ class ItemHistoryRequestTest extends GridTestScope {
     }
 
     @Test
-    void itemHistoryDefaultsToTheTrackedItems() {
-        run(new SetTrackedItems(), OWNER, "", null, items("minecraft:iron_ingot"));
-
-        GetItemHistory request = run(new GetItemHistory(), "");
-
-        assertTrue(
-            request.getJSON()
-                .contains("\"itemid\":\"minecraft:iron_ingot\""),
-            request.getJSON());
-    }
-
-    // --- tracked-items ---
-
-    @Test
-    void trackedItemsDeniesAPlayerWithoutGridAccess() {
-        assertStatus("NO_PERMISSIONS", run(new GetTrackedItems(), STRANGER, "", null, null));
-    }
-
-    @Test
-    void addingABlankItemIsABadParam() {
-        assertStatus("BAD_PARAM", run(new AddTrackedItem(), OWNER, "", " ", null));
-    }
-
-    @Test
-    void trackedItemsDeniesExceedingTheConfiguredCap() {
-        // Cap is set to 2 in setUp().
-        assertStatus("TRACKED_LIMIT_REACHED", run(new SetTrackedItems(), OWNER, "", null, items("a,b,c")));
-        run(new AddTrackedItem(), OWNER, "", "a", null);
-        run(new AddTrackedItem(), OWNER, "", "b", null);
-        assertStatus("TRACKED_LIMIT_REACHED", run(new AddTrackedItem(), OWNER, "", "c", null));
-    }
-
-    @Test
-    void setAddAndRemoveRoundTripThroughTheSettings() {
-        assertStatus("OK", run(new SetTrackedItems(), OWNER, "", null, items("minecraft:iron_ingot")));
-        assertStatus("OK", run(new AddTrackedItem(), OWNER, "", "minecraft:gold_ingot", null));
-        assertEquals(Arrays.asList("minecraft:iron_ingot", "minecraft:gold_ingot"), trackedItems());
-
-        assertStatus("OK", run(new RemoveTrackedItem(), OWNER, "", "minecraft:iron_ingot", null));
-        assertEquals(Arrays.asList("minecraft:gold_ingot"), trackedItems());
-
-        GetTrackedItems read = run(new GetTrackedItems(), "");
-        assertTrue(
-            read.getJSON()
-                .contains("\"tracked\":[\"minecraft:gold_ingot\"]"),
-            read.getJSON());
-    }
-
-    @Test
-    void anEmptySetClearsTheTrackedItems() {
-        run(new SetTrackedItems(), OWNER, "", null, items("minecraft:iron_ingot"));
-
-        assertStatus("OK", run(new SetTrackedItems(), OWNER, "", null, items("")));
-
-        assertTrue(trackedItems().isEmpty());
-    }
-
-    private java.util.List<String> trackedItems() {
-        synchronized (CoreEngine.GRID_IDENTITIES) {
-            return new java.util.ArrayList<>(
-                CoreEngine.GRID_IDENTITIES.getPersistentData(key)
-                    .getSettings()
-                    .getTrackedItems());
-        }
+    void itemHistoryWithoutADatabaseIsDisabled() {
+        HistoryDbTestSupport.stop();
+        assertStatus("HISTORY_DISABLED", run(new GetItemHistory(), "items=a"));
     }
 }

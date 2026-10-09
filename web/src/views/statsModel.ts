@@ -257,25 +257,25 @@ export function retentionNote(from: number, to: number): string {
     return `All time = the last ${days} days the server keeps`;
 }
 
-export interface TrackableSource {
+export interface PinnableSource {
     itemid: string;
     name: string;
-    /** `null` when the item is tracked but no longer present in the loaded item list. */
+    /** `null` when the item is pinned but no longer present in the loaded item list. */
     quantity: number | null;
 }
 
-export interface TrackableRow extends TrackableSource {
-    tracked: boolean;
+export interface PinnableRow extends PinnableSource {
+    pinned: boolean;
 }
 
-/** Tracked items sort first, then by plain name; filters on both name and itemid. */
-export function buildTrackableRows(rows: TrackableSource[], tracked: string[], query: string): TrackableRow[] {
-    const trackedSet = new Set(tracked);
+/** Pinned items sort first, then by plain name; filters on both name and itemid. */
+export function buildPinnableRows(rows: PinnableSource[], pinned: string[], query: string): PinnableRow[] {
+    const pinnedSet = new Set(pinned);
     const q = query.trim().toLowerCase();
     return rows
         .filter((r) => !q || r.name.toLowerCase().includes(q) || r.itemid.toLowerCase().includes(q))
-        .map((r) => ({ ...r, tracked: trackedSet.has(r.itemid) }))
-        .sort((a, b) => Number(b.tracked) - Number(a.tracked) || a.name.localeCompare(b.name));
+        .map((r) => ({ ...r, pinned: pinnedSet.has(r.itemid) }))
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name));
 }
 
 // --- Dashboard metrics (chart-quality/derived-metrics improvement pass) ---
@@ -302,7 +302,7 @@ export interface SeriesStats {
      *  that isn't a trend). See {@link isTrendSignificant}. */
     rSquared: number | null;
     /** Non-gap span covered by the fit, in hours - `lastNonGap.index - firstNonGap.index`, not the
-     *  whole requested window, so a recently tracked item isn't judged over its own leading gaps.
+     *  whole requested window, so a recently stored item isn't judged over its own leading gaps.
      *  `null` under the same conditions as `slopePerHour`. */
     spanHours: number | null;
     /** `last - first` (non-gap); `null` under the same conditions as `deltaPercent`. */

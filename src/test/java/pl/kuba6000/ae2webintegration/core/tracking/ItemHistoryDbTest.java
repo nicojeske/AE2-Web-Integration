@@ -1,48 +1,39 @@
 package pl.kuba6000.ae2webintegration.core.tracking;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.File;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import pl.kuba6000.ae2webintegration.core.api.JSON_ItemHistory;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport.Flavor;
+import pl.kuba6000.ae2webintegration.core.history.HistoryTable;
+import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 
-/**
- * {@link ItemHistoryStore} with a history database: the same samples must read back exactly as they do from
- * the in-memory rings, and {@code itemhistory.json} must import without changing what the API answers.
- */
+/** {@link ItemHistoryStore} sampling every item of a grid into the history database and reading it back. */
 class ItemHistoryDbTest {
 
     private static final String IRON = "minecraft:iron_ingot";
     private static final String GOLD = "minecraft:gold_ingot";
     private static final long HOUR = TimeUnit.HOURS.toMillis(1);
     private static final long START = 490_000 * HOUR;
-
-    private static long nextGridKey = 980_000L;
-
-    @TempDir
-    File configRoot;
+    private static final String GRID = "grid";
 
     @BeforeEach
     void setUp() {
-        Config.init(configRoot);
         Config.INSTANCE.statistics.sampleIntervalMinutes = 60; // 1h fine buckets
         Config.INSTANCE.statistics.fineRetentionDays = 1; // 24 fine buckets
         Config.INSTANCE.statistics.hourlyRetentionDays = 10;
@@ -56,36 +47,23 @@ class ItemHistoryDbTest {
         Config.INSTANCE.statistics.hourlyRetentionDays = 365;
     }
 
-    private static Set<String> tracked() {
-        return new HashSet<>(Arrays.asList(IRON, GOLD));
+    private static void sample(int hour, IStackList storage) {
+        ItemHistoryStore.sample(GRID, storage, START + hour * HOUR + 60_000L);
     }
 
-    /** Twelve hourly samples with value changes, an item missing from storage and a three-hour outage. */
-    private static void sampleScenario(String gridKey) {
+    /** Twelve hourly samples with value changes, an item appearing late and a three-hour outage. */
+    private static void sampleScenario() {
         long[] iron = { 5, 5, 6, 6, 6, -1, -1, -1, 6, 9, 9, 9 };
         for (int h = 0; h < iron.length; h++) {
             if (iron[h] < 0) {
                 continue; // server offline
             }
-            ItemHistoryStore.sample(
-                gridKey,
-                tracked(),
+            sample(
+                h,
                 h < 4 ? TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, iron[h]))
                     : TrackingTestFakes
-                        .stackList(TrackingTestFakes.stack(IRON, iron[h]), TrackingTestFakes.stack(GOLD, 2)),
-                START + h * HOUR + 60_000L);
+                        .stackList(TrackingTestFakes.stack(IRON, iron[h]), TrackingTestFakes.stack(GOLD, 2)));
         }
-    }
-
-    private static List<String> readScenario(String gridKey) {
-        List<String> answers = new ArrayList<>();
-        List<String> items = Arrays.asList(IRON, GOLD, "minecraft:never_tracked");
-        long end = START + 11 * HOUR + 60_000L;
-        answers.add(describe(ItemHistoryStore.readSeries(gridKey, items, START - 2 * HOUR, end, 100)));
-        answers.add(describe(ItemHistoryStore.readSeries(gridKey, items, START, end, 4)));
-        // Longer than the fine tier's day: the hourly tier answers.
-        answers.add(describe(ItemHistoryStore.readSeries(gridKey, items, end - 3 * 24 * HOUR, end, 20)));
-        return answers;
     }
 
     private static String describe(JSON_ItemHistory history) {
@@ -100,75 +78,105 @@ class ItemHistoryDbTest {
         return text.toString();
     }
 
-    private static void flush() {
-        HistoryDbTestSupport.flush();
+    private static JSON_ItemHistory read(List<String> items, long from, long to, int points) {
+        return ItemHistoryStore.readSeries(HistoryDb.get(), GRID, items, from, to, points);
     }
 
     @ParameterizedTest
     @EnumSource(Flavor.class)
-    void theDatabaseAnswersExactlyLikeTheInMemoryRings(Flavor flavor) {
-        String memoryGrid = Long.toString(nextGridKey++);
-        sampleScenario(memoryGrid);
-        List<String> expected = readScenario(memoryGrid);
-        // Guards the comparison itself: gaps, changes and the late-appearing item are really in there.
+    void changesGapsAndLateItemsReadBack(Flavor flavor) {
+        HistoryDbTestSupport.start(flavor);
+        sampleScenario();
+        HistoryDbTestSupport.flush();
+
+        List<String> items = Arrays.asList(IRON, GOLD, "minecraft:never_stored");
+        long end = START + 11 * HOUR + 60_000L;
         assertEquals(
             "fine -7200000..39600000/3600000" + " minecraft:iron_ingot=[-1, -1, 5, 5, 6, 6, 6, -1, -1, -1, 6, 9, 9, 9]"
-                + " minecraft:gold_ingot=[-1, -1, 0, 0, 0, 0, 2, -1, -1, -1, 2, 2, 2, 2]"
-                + " minecraft:never_tracked=[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]",
-            expected.get(0));
-
-        HistoryDbTestSupport.start(flavor);
-        String dbGrid = Long.toString(nextGridKey++);
-        sampleScenario(dbGrid);
-        flush();
-
-        assertEquals(expected, readScenario(dbGrid));
+                + " minecraft:gold_ingot=[-1, -1, -1, -1, -1, -1, 2, -1, -1, -1, 2, 2, 2, 2]"
+                + " minecraft:never_stored=[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]",
+            describe(read(items, START - 2 * HOUR, end, 100)));
+        // Downsampled: each window reports the value at its newest sampled bucket.
+        assertEquals(
+            "fine 0..39600000/10800000" + " minecraft:iron_ingot=[6, 6, 6, 9]"
+                + " minecraft:gold_ingot=[-1, 2, 2, 2]"
+                + " minecraft:never_stored=[-1, -1, -1, -1]",
+            describe(read(items, START, end, 4)));
+        // Longer than the fine tier's day: the hourly tier answers.
+        JSON_ItemHistory hourly = read(items, end - 3 * 24 * HOUR, end, 20);
+        assertEquals("hourly", hourly.resolution);
+        long[] ironHourly = hourly.series.get(0).points;
+        assertEquals(9, ironHourly[ironHourly.length - 1]);
     }
 
-    @ParameterizedTest
-    @EnumSource(Flavor.class)
-    void pruneToDropsUntrackedItemsLikeTheRingsDo(Flavor flavor) {
-        String memoryGrid = Long.toString(nextGridKey++);
-        sampleScenario(memoryGrid);
-        ItemHistoryStore.pruneTo(memoryGrid, Collections.singleton(IRON));
-        List<String> expected = readScenario(memoryGrid);
+    @Test
+    void anItemThatLeavesStorageReadsZeroNotItsLastCount() {
+        HistoryDbTestSupport.start(Flavor.TIMESCALE);
+        sample(0, TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, 5)));
+        sample(1, TrackingTestFakes.stackList());
+        sample(2, TrackingTestFakes.stackList());
+        HistoryDbTestSupport.flush();
 
-        HistoryDbTestSupport.start(flavor);
-        String dbGrid = Long.toString(nextGridKey++);
-        sampleScenario(dbGrid);
-        ItemHistoryStore.pruneTo(dbGrid, Collections.singleton(IRON));
-        flush();
-
-        assertEquals(expected, readScenario(dbGrid));
+        assertEquals(
+            "[5, 0, 0]",
+            Arrays.toString(read(Collections.singletonList(IRON), START, START + 2 * HOUR, 10).series.get(0).points));
     }
 
-    @ParameterizedTest
-    @EnumSource(Flavor.class)
-    void theJsonFileIsImportedOnceAndKeptUnderANewName(Flavor flavor) {
-        String gridKey = Long.toString(nextGridKey++);
-        sampleScenario(gridKey);
-        List<String> expected = readScenario(gridKey);
-        ItemHistoryStore.saveNow();
-        File json = Config.getConfigFile("itemhistory.json");
-        assertTrue(json.exists());
+    @Test
+    void anItemThatLeftWhileTheServerWasDownReadsZeroAfterARestart() {
+        HistoryDbTestSupport.start(Flavor.TIMESCALE);
+        sample(0, TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, 5)));
+        HistoryDbTestSupport.flush();
 
-        HistoryDbTestSupport.start(flavor);
-        ItemHistoryStore.loadData();
-        flush();
+        HistoryDbTestSupport.restart(Flavor.TIMESCALE);
+        // The writer learns the known series once it connected; a flush waits for that.
+        HistoryDbTestSupport.flush();
+        sample(1, TrackingTestFakes.stackList(TrackingTestFakes.stack(GOLD, 1)));
+        HistoryDbTestSupport.flush();
 
-        assertEquals(expected, readScenario(gridKey));
-        assertFalse(json.exists(), "the imported file is renamed");
-        assertTrue(new File(json.getParentFile(), "itemhistory.json.migrated").exists());
+        assertEquals(
+            "[5, 0]",
+            Arrays.toString(read(Collections.singletonList(IRON), START, START + HOUR, 10).series.get(0).points));
+    }
 
-        // Sampling continues seamlessly on top of the imported history.
-        ItemHistoryStore.sample(
-            gridKey,
-            tracked(),
-            TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, 9)),
-            START + 12 * HOUR + 60_000L);
-        flush();
-        JSON_ItemHistory latest = ItemHistoryStore
-            .readSeries(gridKey, Collections.singletonList(IRON), START + 11 * HOUR, START + 12 * HOUR, 10);
-        assertEquals("[9, 9]", Arrays.toString(latest.series.get(0).points));
+    @Test
+    void aCraftOnlyEntryCreatesNoSeries() {
+        HistoryDbTestSupport.start(Flavor.TIMESCALE);
+        sample(0, TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, 0)));
+        HistoryDbTestSupport.flush();
+
+        assertEquals(0, HistoryDbTestSupport.rowCount(Flavor.TIMESCALE, HistoryTable.ITEM_FINE));
+        assertTrue(
+            HistoryDb.get()
+                .knownKeys(HistoryTable.ITEM_FINE, GRID)
+                .isEmpty());
+    }
+
+    @Test
+    void unchangedCountsAreNotWrittenAgain() {
+        HistoryDbTestSupport.start(Flavor.TIMESCALE);
+        for (int h = 0; h < 4; h++) {
+            sample(h, TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, 5)));
+        }
+        HistoryDbTestSupport.flush();
+
+        assertEquals(1, HistoryDbTestSupport.rowCount(Flavor.TIMESCALE, HistoryTable.ITEM_FINE));
+    }
+
+    @Test
+    void theLastSeenNameIsKeptAfterTheItemLeft() {
+        HistoryDbTestSupport.start(Flavor.TIMESCALE);
+        sample(0, TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, 5, "Iron Ingot")));
+        sample(1, TrackingTestFakes.stackList());
+        HistoryDbTestSupport.flush();
+
+        JSON_ItemHistory history = read(Arrays.asList(IRON, GOLD), START, START + HOUR, 10);
+        assertEquals(Collections.singletonMap(IRON, "Iron Ingot"), history.names);
+    }
+
+    @Test
+    void withoutADatabaseSamplingIsANoOp() {
+        HistoryDbTestSupport.stop();
+        assertDoesNotThrow(() -> sample(0, TrackingTestFakes.stackList(TrackingTestFakes.stack(IRON, 5))));
     }
 }

@@ -8,9 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -186,26 +186,35 @@ class HistoryDbTest {
 
     @ParameterizedTest
     @EnumSource(Flavor.class)
-    void retainKeysDeletesTheOtherSeriesOfThatScopeOnly(Flavor flavor) {
+    void knownKeysListTheSeriesOfOneScopeAcrossARestart(Flavor flavor) {
         HistoryDb db = HistoryDbTestSupport.start(flavor);
         sample(db, "g1", "iron", BASE, 1);
         sample(db, "g1", "gold", BASE, 2);
         sample(db, "g2", "gold", BASE, 3);
+        assertEquals(new HashSet<>(Arrays.asList("iron", "gold")), db.knownKeys(HistoryTable.ITEM_FINE, "g1"));
         HistoryDbTestSupport.flush();
 
-        db.retainKeys(HistoryTable.ITEM_FINE, "g1", Collections.singleton("iron"));
+        db = HistoryDbTestSupport.restart(flavor);
+        HistoryDbTestSupport.flush();
+        assertEquals(new HashSet<>(Arrays.asList("iron", "gold")), db.knownKeys(HistoryTable.ITEM_FINE, "g1"));
+        assertEquals(Collections.singleton("gold"), db.knownKeys(HistoryTable.ITEM_FINE, "g2"));
+        assertTrue(
+            db.knownKeys(HistoryTable.ITEM_HOURLY, "g1")
+                .isEmpty());
+    }
+
+    @ParameterizedTest
+    @EnumSource(Flavor.class)
+    void seriesNamesAreStoredPerScope(Flavor flavor) {
+        HistoryDb db = HistoryDbTestSupport.start(flavor);
+        db.putName(HistoryTable.ITEM_FINE, "g1", "iron", "Iron Ingot");
+        db.putName(HistoryTable.ITEM_FINE, "g1", "iron", "Iron Ingot (renamed)");
+        db.putName(HistoryTable.ITEM_FINE, "g2", "iron", "Other grid");
         HistoryDbTestSupport.flush();
 
-        assertArrayEquals(new long[] { 1 }, db.readGauge(HistoryTable.ITEM_FINE, "g1", "iron", BASE, BASE, 1, FINE));
-        assertArrayEquals(new long[] { N }, db.readGauge(HistoryTable.ITEM_FINE, "g1", "gold", BASE, BASE, 1, FINE));
-        assertArrayEquals(new long[] { 3 }, db.readGauge(HistoryTable.ITEM_FINE, "g2", "gold", BASE, BASE, 1, FINE));
-
-        // Tracked again with the same value: it must be written again, not skipped as unchanged.
-        sample(db, "g1", "gold", BASE + 1, 2);
-        HistoryDbTestSupport.flush();
-        assertArrayEquals(
-            new long[] { N, 2 },
-            db.readGauge(HistoryTable.ITEM_FINE, "g1", "gold", BASE, BASE + 1, 1, FINE));
+        assertEquals(
+            Collections.singletonMap("iron", "Iron Ingot (renamed)"),
+            db.readNames(HistoryTable.ITEM_FINE, "g1", Arrays.asList("iron", "gold")));
     }
 
     @ParameterizedTest
@@ -220,28 +229,6 @@ class HistoryDbTest {
         HistoryDbTestSupport.flush();
 
         assertEquals(1, HistoryDbTestSupport.rowCount(flavor, HistoryTable.PRODUCTION_HOURLY));
-    }
-
-    @ParameterizedTest
-    @EnumSource(Flavor.class)
-    void anImportRunsOnceButItsFollowUpRunsEveryTime(Flavor flavor) {
-        HistoryDb db = HistoryDbTestSupport.start(flavor);
-        AtomicInteger followUps = new AtomicInteger();
-        for (int i = 0; i < 2; i++) {
-            HistoryDb.Import rows = new HistoryDb.Import();
-            rows.counter(HistoryTable.PRODUCTION_DAILY, "m1", "a", NOW, 5);
-            db.importOnce("test.json", rows, followUps::incrementAndGet);
-        }
-        HistoryDbTestSupport.flush();
-
-        assertEquals(2, followUps.get());
-        long day = NOW / DAY;
-        assertEquals(
-            5,
-            total(
-                db.readCounterTotals(HistoryTable.PRODUCTION_DAILY, Collections.singletonList("m1"), day, day, DAY),
-                "m1",
-                "a"));
     }
 
     @ParameterizedTest

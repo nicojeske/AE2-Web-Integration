@@ -19,7 +19,6 @@ import type {
     OrderResult,
     PrefsResult,
     StatsRange,
-    TrackedItemsResult,
     TrackingDetail,
     TrackingHistoryElement,
 } from "./types";
@@ -142,41 +141,22 @@ export function setGridTracking(gridKey: GridKey, track: boolean): Promise<GridS
     return apiRequest("PATCH", `${grid(gridKey)}/settings`, { isTracked: track });
 }
 
-/**
- * Omitting `items` asks the server for its own tracked set - the fetch strategy this client uses
- * everywhere, to avoid ever sending a client-side tracked-item list that could drift from the server's.
- */
+/** Every item of a grid is sampled server-side; `items` (1-50 itemids) picks which series come back. */
 export function getItemHistory(
     gridKey: GridKey,
     range: StatsRange,
     points: number,
-    items?: string[],
+    items: string[],
     customMinutes?: number,
 ): Promise<ItemHistoryResult> {
     return apiGet(
         `${grid(gridKey)}/item-history${query({
             range,
             points,
-            items: items?.join(","),
+            items: items.join(","),
             minutes: range === "custom" ? customMinutes : undefined,
         })}`,
     );
-}
-
-export function getTrackedItems(gridKey: GridKey): Promise<TrackedItemsResult> {
-    return apiGet(`${grid(gridKey)}/tracked-items`);
-}
-
-export function setTrackedItems(gridKey: GridKey, items: string[]): Promise<TrackedItemsResult> {
-    return apiRequest("PUT", `${grid(gridKey)}/tracked-items`, { items: items.join(",") });
-}
-
-export function addTrackedItem(gridKey: GridKey, itemid: string): Promise<TrackedItemsResult> {
-    return apiRequest("PUT", `${grid(gridKey)}/tracked-items/${seg(itemid)}`);
-}
-
-export function removeTrackedItem(gridKey: GridKey, itemid: string): Promise<TrackedItemsResult> {
-    return apiRequest("DELETE", `${grid(gridKey)}/tracked-items/${seg(itemid)}`);
 }
 
 /** Prefs follow the logged-in principal, not any one grid. */

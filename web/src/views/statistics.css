@@ -1,4 +1,4 @@
-/* Statistics section, chart cards, Manage Tracked modal, Compare modal (M8) */
+/* Statistics section, chart cards, Pinned Items modal, Compare modal (M8) */
 
 .stats {
     display: flex;
@@ -384,7 +384,7 @@
     z-index: 1;
 }
 
-/* Manage Tracked modal */
+/* Pinned Items modal */
 .tracked__search input {
     width: 100%;
     background: var(--bg-sunken);
@@ -436,19 +436,6 @@
     margin-left: 6px;
     font-size: 10.5px;
     color: var(--text-dim);
-}
-
-.tracked__confirm {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    margin: 2px 0;
-    background: var(--bg-sunken);
-    border: 1px solid var(--red);
-    border-radius: var(--radius-sm);
-    font-size: 11.5px;
-    color: var(--text-secondary);
 }
 
 /* Compare modal */

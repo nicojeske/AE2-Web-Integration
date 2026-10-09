@@ -9,7 +9,7 @@ import { parseHash } from "../shell/route";
 const SELECTED_GRID_STORAGE_KEY = "ae2.selectedGrid";
 
 /** `"all"` fans requests out across every accessible grid - the reason Statistics (state/stats.tsx) is
- *  single-grid only: its tracked-item set and cap are per-grid server-side, with no sane "all" story. */
+ *  single-grid only: item history is per grid server-side, with no sane "all" story. */
 export type GridSelection = "all" | GridKey;
 
 export interface NetworkContextValue {

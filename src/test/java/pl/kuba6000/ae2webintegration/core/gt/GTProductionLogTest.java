@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
 
 class GTProductionLogTest {
 
@@ -33,6 +34,10 @@ class GTProductionLogTest {
     void setUp() {
         Config.init(configRoot);
         GTTestSupport.reset();
+        GTTestSupport.startHistory();
+        GTProductionLog.loadData();
+        // Names are only written back once the stored ones were read.
+        GTTestSupport.flushHistory();
     }
 
     @AfterEach
@@ -52,6 +57,7 @@ class GTProductionLogTest {
         record("m1", ALICE, "gregtech:ingot:1", 1000, NOW - 3 * HOUR);
         record("m2", ALICE, "gregtech:ingot:1", 7, NOW);
 
+        GTTestSupport.flushHistory();
         List<GTProductionLog.Row> rows = GTProductionLog
             .totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, owner -> true, null);
 
@@ -74,6 +80,7 @@ class GTProductionLogTest {
         record("m1", ALICE, "a", 1, NOW);
         record("m2", BOB, "a", 1, NOW);
 
+        GTTestSupport.flushHistory();
         List<GTProductionLog.Row> rows = GTProductionLog
             .totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, ALICE::equals, null);
 
@@ -88,6 +95,7 @@ class GTProductionLogTest {
         GTProductionLog.record(GTFlow.PRODUCED, null, null, ALICE, "a", null, 5, false, NOW);
         GTProductionLog.record(GTFlow.PRODUCED, "m1", null, ALICE, null, null, 5, false, NOW);
 
+        GTTestSupport.flushHistory();
         assertTrue(
             GTProductionLog.totals(GTFlow.PRODUCED, NOW - DAY, NOW, NOW, o -> true, null)
                 .isEmpty());
@@ -100,27 +108,13 @@ class GTProductionLogTest {
         record("m1", ALICE, "a", 3, NOW - 5 * DAY);
         record("m1", ALICE, "a", 4, NOW);
 
+        GTTestSupport.flushHistory();
         assertTrue(GTProductionLog.useHourly(NOW - HOUR, NOW));
         assertTrue(!GTProductionLog.useHourly(NOW - 10 * DAY, NOW));
         assertEquals(
             7,
             GTProductionLog.totals(GTFlow.PRODUCED, NOW - 10 * DAY, NOW, NOW, o -> true, null)
                 .get(0).total);
-    }
-
-    @Test
-    void pruneDropsExpiredBucketsAndEmptyMachines() {
-        Config.INSTANCE.gregtech.productionHourlyRetentionDays = 1;
-        Config.INSTANCE.gregtech.productionDailyRetentionDays = 2;
-        record("old", ALICE, "a", 3, NOW - 10 * DAY);
-        record("new", ALICE, "a", 4, NOW);
-
-        GTProductionLog.prune(NOW);
-
-        List<GTProductionLog.Row> rows = GTProductionLog
-            .totals(GTFlow.PRODUCED, NOW - 90 * DAY, NOW, NOW, o -> true, null);
-        assertEquals(1, rows.size());
-        assertEquals("new", rows.get(0).machineId);
     }
 
     @Test
@@ -131,6 +125,7 @@ class GTProductionLogTest {
         record("m1", ALICE, "b", 100, NOW);
         record("m3", BOB, "a", 1000, NOW);
 
+        GTTestSupport.flushHistory();
         GTProductionLog.Series series = GTProductionLog
             .series(GTFlow.PRODUCED, "a", null, NOW - 2 * HOUR, NOW, NOW, 120, ALICE::equals);
 
@@ -144,6 +139,7 @@ class GTProductionLogTest {
         for (int h = 0; h < 6; h++) {
             record("m1", ALICE, "a", 1, NOW - h * HOUR);
         }
+        GTTestSupport.flushHistory();
         GTProductionLog.Series series = GTProductionLog
             .series(GTFlow.PRODUCED, "a", "m1", NOW - 5 * HOUR, NOW, NOW, 3, o -> true);
 
@@ -157,6 +153,7 @@ class GTProductionLogTest {
         GTProductionLog.record(GTFlow.CONSUMED, "m1", "EBF m1", ALICE, "dust", "Name of dust", 20, false, NOW);
         GTProductionLog.record(GTFlow.CONSUMED, "m1", "EBF m1", ALICE, "oxygen", "Oxygen", 1000, true, NOW);
 
+        GTTestSupport.flushHistory();
         List<GTProductionLog.Row> produced = GTProductionLog
             .totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, o -> true, null);
         List<GTProductionLog.Row> consumed = GTProductionLog
@@ -175,13 +172,16 @@ class GTProductionLogTest {
     }
 
     @Test
-    void persistenceRoundTrip() {
+    void namesAndCountersSurviveARestart() {
         record("m1", ALICE, "a", 42, NOW);
         GTProductionLog.record(GTFlow.CONSUMED, "m1", "EBF m1", ALICE, "b", "Name of b", 7, false, NOW);
         GTProductionLog.saveNow();
+        GTTestSupport.flushHistory();
         GTProductionLog.clear();
 
+        HistoryDbTestSupport.restart(HistoryDbTestSupport.Flavor.TIMESCALE);
         GTProductionLog.loadData();
+        GTTestSupport.flushHistory();
 
         List<GTProductionLog.Row> rows = GTProductionLog.totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, o -> true, null);
         assertEquals(1, rows.size());
@@ -193,5 +193,16 @@ class GTProductionLogTest {
             .totals(GTFlow.CONSUMED, NOW - HOUR, NOW, NOW, o -> true, null);
         assertEquals(1, consumed.size());
         assertEquals(7, consumed.get(0).total);
+    }
+
+    @Test
+    void withoutADatabaseNothingIsRecorded() {
+        HistoryDbTestSupport.stop();
+        record("m1", ALICE, "a", 42, NOW);
+
+        assertEquals(0L, GTProductionLog.trackingSinceMillis());
+        assertTrue(
+            GTProductionLog.totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, o -> true, null)
+                .isEmpty());
     }
 }

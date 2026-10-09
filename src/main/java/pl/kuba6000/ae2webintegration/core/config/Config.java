@@ -7,7 +7,7 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,7 +99,8 @@ public class Config {
     }
 
     /** Settings that no longer exist, dropped from an existing file so it doesn't advertise them. */
-    private static final List<String> REMOVED_KEYS = Collections.singletonList("general.item_icon_directory");
+    private static final List<String> REMOVED_KEYS = Arrays
+        .asList("general.item_icon_directory", "statistics.max_tracked_items_per_grid");
 
     @Deprecated
     private static final Map<String, String> LEGACY_KEYS = new LinkedHashMap<>();

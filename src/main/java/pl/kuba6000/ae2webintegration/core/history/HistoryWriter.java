@@ -1,13 +1,11 @@
 package pl.kuba6000.ae2webintegration.core.history;
 
-import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -73,17 +71,15 @@ final class HistoryWriter implements Runnable {
         }
     }
 
-    /** Deletes every series of {@code scope} in {@code table} whose key is not in {@code keep}. */
-    static final class RetainOp extends Op {
+    /** The display name a series is labelled with, e.g. an item's last-seen name. */
+    static final class NameOp extends Op {
 
-        final HistoryTable table;
-        final String scope;
-        final String[] keep;
+        final SeriesKey series;
+        final String name;
 
-        RetainOp(HistoryTable table, String scope, String[] keep) {
-            this.table = table;
-            this.scope = scope;
-            this.keep = keep;
+        NameOp(SeriesKey series, String name) {
+            this.series = series;
+            this.name = name;
         }
     }
 
@@ -199,6 +195,17 @@ final class HistoryWriter implements Runnable {
                     .interrupt();
             }
         }
+    }
+
+    /** Keys of every series of {@code scope} in {@code table} the database knows about (once connected). */
+    Set<String> keysOf(HistoryTable table, String scope) {
+        Set<String> keys = new HashSet<>();
+        for (SeriesKey series : seriesIds.keySet()) {
+            if (series.table == table && series.scope.equals(scope)) {
+                keys.add(series.key);
+            }
+        }
+        return keys;
     }
 
     boolean isTimescale() {
@@ -320,9 +327,8 @@ final class HistoryWriter implements Runnable {
                 pending.add((CoverageOp) op);
             } else if (op instanceof MetaOp) {
                 pending.meta.put(((MetaOp) op).name, ((MetaOp) op).value);
-            } else if (op instanceof RetainOp) {
-                pending.write(c, this);
-                retain(c, (RetainOp) op);
+            } else if (op instanceof NameOp) {
+                pending.names.put(((NameOp) op).series, ((NameOp) op).name);
             } else if (op instanceof PruneOp) {
                 pending.write(c, this);
                 prune(c, (PruneOp) op);
@@ -376,29 +382,13 @@ final class HistoryWriter implements Runnable {
         }
     }
 
-    /** Writes a list of operations inside the caller's transaction - used by import tasks. */
-    void writeAll(Connection c, List<? extends Op> ops) throws SQLException {
-        Pending pending = new Pending();
-        for (Op op : ops) {
-            if (op instanceof SampleOp) {
-                pending.add((SampleOp) op);
-            } else if (op instanceof CoverageOp) {
-                pending.add((CoverageOp) op);
-            } else if (op instanceof MetaOp) {
-                pending.meta.put(((MetaOp) op).name, ((MetaOp) op).value);
-            } else {
-                throw new IllegalArgumentException("Unsupported import operation " + op.getClass());
-            }
-        }
-        pending.write(c, this);
-    }
-
     /** Coalesced writes waiting for the next statement batch. */
     private static final class Pending {
 
         final Map<HistoryTable, LinkedHashMap<SampleKey, Long>> samples = new LinkedHashMap<>();
         final LinkedHashMap<CoverageKey, long[]> coverage = new LinkedHashMap<>();
         final LinkedHashMap<String, String> meta = new LinkedHashMap<>();
+        final LinkedHashMap<SeriesKey, String> names = new LinkedHashMap<>();
 
         void add(SampleOp op) {
             LinkedHashMap<SampleKey, Long> table = samples.computeIfAbsent(op.series.table, k -> new LinkedHashMap<>());
@@ -451,6 +441,18 @@ final class HistoryWriter implements Runnable {
                     ps.executeBatch();
                 }
                 meta.clear();
+            }
+            if (!names.isEmpty()) {
+                writer.resolveSeriesIds(c, new ArrayList<>(names.keySet()));
+                try (PreparedStatement ps = c.prepareStatement("UPDATE ae2wi_series SET name = ? WHERE id = ?")) {
+                    for (Map.Entry<SeriesKey, String> entry : names.entrySet()) {
+                        ps.setString(1, entry.getValue());
+                        ps.setInt(2, writer.seriesIds.get(entry.getKey()));
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+                names.clear();
             }
         }
     }
@@ -572,25 +574,6 @@ final class HistoryWriter implements Runnable {
         }
     }
 
-    private void retain(Connection c, RetainOp op) throws SQLException {
-        Array keep = c.createArrayOf("text", op.keep);
-        try (PreparedStatement samples = c.prepareStatement(
-            "DELETE FROM " + op.table.sqlName()
-                + " WHERE series_id IN (SELECT id FROM ae2wi_series WHERE tbl = ? AND scope = ? AND NOT (key = ANY(?)))");
-            PreparedStatement series = c
-                .prepareStatement("DELETE FROM ae2wi_series WHERE tbl = ? AND scope = ? AND NOT (key = ANY(?))")) {
-            for (PreparedStatement ps : new PreparedStatement[] { samples, series }) {
-                ps.setString(1, op.table.id);
-                ps.setString(2, op.scope);
-                ps.setArray(3, keep);
-                ps.executeUpdate();
-            }
-        }
-        Set<String> kept = new HashSet<>(Arrays.asList(op.keep));
-        seriesIds.keySet()
-            .removeIf(k -> k.table == op.table && k.scope.equals(op.scope) && !kept.contains(k.key));
-    }
-
     private void prune(Connection c, PruneOp op) throws SQLException {
         if (timescale) {
             // Drops whole chunks only, so up to one chunk interval of older data can outlive the cutoff.
@@ -655,6 +638,7 @@ final class HistoryWriter implements Runnable {
             st.execute(
                 "CREATE TABLE IF NOT EXISTS ae2wi_series (id SERIAL PRIMARY KEY, tbl TEXT NOT NULL,"
                     + " scope TEXT NOT NULL, key TEXT NOT NULL, UNIQUE (tbl, scope, key))");
+            st.execute("ALTER TABLE ae2wi_series ADD COLUMN IF NOT EXISTS name TEXT");
             st.execute(
                 "CREATE TABLE IF NOT EXISTS ae2wi_coverage (tbl TEXT NOT NULL, scope TEXT NOT NULL,"
                     + " from_ts TIMESTAMPTZ NOT NULL, to_ts TIMESTAMPTZ NOT NULL, PRIMARY KEY (tbl, scope, from_ts))");

@@ -198,18 +198,19 @@ By default, the panel is available at `http://your-server-ip-or-domain:2324/`. T
 In public mode, a player can create an account from the login page. After choosing a password, the page displays
 an `/ae2webintegration auth <token>` command. The player must run that command in game to finish registration.
 
-## History database (optional)
+## History database
 
-By default, item statistics and GregTech power/production history are stored in JSON files next to the config
-(`itemhistory.json`, `gtpower.json`, `gtproduction.json`). For long retention or many tracked items you can store
-them in PostgreSQL instead. If the [TimescaleDB](https://www.timescale.com/) extension is installed in that
-database, the tables become compressed hypertables automatically. Plain PostgreSQL works too.
+Item statistics and GregTech power/production history are stored in PostgreSQL. Without a configured database
+the mod works as before, but records no history: the Statistics page and the GregTech history charts stay empty.
+Statistics record the stored count of every item in every network; the Statistics page only picks which items
+it shows. If the [TimescaleDB](https://www.timescale.com/) extension is installed in that database, the tables
+become compressed hypertables automatically. Plain PostgreSQL works too.
 
 Configure it in the `[history]` section of `config.toml`:
 
 | Key | Environment override | Meaning |
 |---|---|---|
-| `jdbc_url` | `AE2WEB_HISTORY_JDBC_URL` | e.g. `jdbc:postgresql://db-host:5432/ae2web`. Empty = JSON files. |
+| `jdbc_url` | `AE2WEB_HISTORY_JDBC_URL` | e.g. `jdbc:postgresql://db-host:5432/ae2web`. Empty = no history. |
 | `db_user` | `AE2WEB_HISTORY_DB_USER` | Database user, unless the URL carries one. |
 | `db_password` | `AE2WEB_HISTORY_DB_PASSWORD` | Database password. Prefer the environment variable over writing it into the config. |
 
@@ -218,8 +219,8 @@ Things to know:
 - The database is picked up at server start, so restart the server after changing these settings.
 - The mod creates its own tables. It does **not** install TimescaleDB itself: to get hypertables, run
   `CREATE EXTENSION IF NOT EXISTS timescaledb;` in that database as a superuser before the first start.
-- On the first start with a database, existing JSON history is imported once and the files are renamed to
-  `*.json.migrated`. To go back to JSON storage, clear `jdbc_url` and rename the files back.
+- History from older versions' JSON files (`itemhistory.json`, `gtpower.json`, `gtproduction.json`) is not
+  imported; those files can be deleted.
 - If the database is unreachable, writes are queued and retried on a background thread, so the server tick is
   never blocked. Charts show no data until the database is back.
 

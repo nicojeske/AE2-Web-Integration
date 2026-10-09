@@ -87,13 +87,13 @@ items, and `fluid.getName()` for fluids. Fluid amounts are in mB (L).
 - Every 15 minutes (first run 15 minutes after start) it prunes and saves dirty stores on the background
   writer. `onServerStopping` saves synchronously.
 
-## 3. Stored files (in `config/ae2webintegration/`, written atomically like `itemhistory.json`)
+## 3. Stored data
 
 | file | content |
 |---|---|
 | `gtmachines.json` | `{schemaVersion:1, machines:{id → GTMachineSnapshot}}`. Reloaded entries start as `loaded:false`. |
-| `gtpower.json` | `{schemaVersion:1, sources:{id → {fineBucketMillis, fineStored, fineIn, fineOut, hourlyStored, hourlyIn, hourlyOut}}}`, each series a sparse `{bucket → long}` map. Values are saturated at Long.MAX. The fine tier is dropped if the sample interval changed. Current values (`latest`) are not persisted. |
-| `gtproduction.json` | `{schemaVersion:1, trackingSinceMillis, machines:{id → {name, owner, stacks:{stackId → {hourly, daily}}}}, stacks:{stackId → {name, fluid}}}` |
+| history database `ae2wi_power_fine`/`_hourly` | One row per power source, key (`stored`, `avg_in`, `avg_out`) and sample. Values are saturated at Long.MAX. Current values (`latest`) are not persisted. |
+| history database `ae2wi_production_*`/`ae2wi_consumption_*` | Hourly and daily counters per (machine, stack); machine names/owners, stack names and `trackingSinceMillis` are the `gtproduction` row of `ae2wi_meta`. |
 
 ## 4. Visibility (`core/gt/GTVisibility`)
 

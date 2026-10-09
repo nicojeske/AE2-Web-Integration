@@ -54,7 +54,8 @@ the web frontend in `web/`, whose *build output* is committed into the Java reso
 - `npm run dev` — Vite dev server against `src/dev/mock-server.ts` (fixture data, no real server needed;
   serves the terminal at `/webpage.html` and the login page at `/login.html`). The GregTech sections are on by
   default; `MOCK_GT=0` (or `?gt=0` on the page URL) simulates a server without GT, `MOCK_GT=na` (`?gt=na`) one
-  whose `/api/gt/*` endpoints answer `NOT_AVAILABLE`
+  whose `/api/gt/*` endpoints answer `NOT_AVAILABLE`; `MOCK_HISTORY=0` (`?history=0`) one without a history
+  database (item history answers `HISTORY_DISABLED`)
 - `npm run build` — `tsc --noEmit` + two Vite builds (terminal, then `--mode login`); **writes directly into
   `../src/main/resources/assets/`** (`webpage.html` and `login.html`) and copies each on to
   `../example_website/` too — see Architecture below
@@ -79,7 +80,7 @@ anything touching live AE2 state, not just the mock server.
 
 Every JSON endpoint is a class annotated `@Endpoint(method, path)` under `core/http/endpoint/<category>/`,
 registered in `AE2Controller.startHTTPServer()` on the one `ApiRouter` mounted at `/api`. Routes are REST-shaped:
-`/api/grids/{gridKey}/items`, `.../cpus/{cpuKey}`, `.../crafting-plans/{planId}/submit`, `.../tracked-items`,
+`/api/grids/{gridKey}/items`, `.../cpus/{cpuKey}`, `.../crafting-plans/{planId}/submit`, `.../item-history`,
 `/api/gt/*`, `/api/prefs`, `/api/auth/*`. Inputs bind by annotation (`RequestInputs`): `@PathParam`,
 `@QueryParam` (fork addition; `@OptionalInput` makes it optional), and one `@Body` DTO of **scalar** JSON
 members only. Bodies are capped at `@Endpoint.maxBodyBytes` (8 KB default; prefs raise it). Responses are
@@ -94,7 +95,7 @@ Each endpoint picks its execution thread by its base class:
   `CoreEngine.onServerTick()` drains, on the server thread, inside a 5ms-per-tick budget
   (`CoreEngine.DRAIN_BUDGET_NANOS`). The HTTP worker waits (10s) or answers `SERVER_BUSY`/`TIMEOUT`/
   `SERVER_STOPPING`. Never add a synced request that isn't cheap enough to fit in that budget.
-- **`IAsyncRequest`** (crafting history, settings, item history, tracked items, `gt/*`, prefs) — answered on
+- **`IAsyncRequest`** (crafting history, settings, item history, `gt/*`, prefs) — answered on
   the HTTP worker thread from stored data, never live AE2 state. A `{gridKey}` path param is resolved and
   authorized in `IAsyncRequest.init` (`GridAccess.allows`); without one (GT, prefs) the request isn't
   grid-scoped. Live state belongs in a synced request - don't blur the split.
@@ -124,26 +125,27 @@ and swaps them into `config/ae2webintegration/icons/` (`Config.iconDirectory()`)
 `<itemid>.png` each. `http/IconHandler` serves them as `/icon?id=<itemid>`.
 
 Persistence: `CoreData` (`webdata.json`: accounts, prefs blobs), per-grid settings in `GridSettingsData`
-(tracking flag, tracked statistics items and their last-seen names) inside the grid-identity file, and
+(the crafting-tracking flag) inside the grid-identity file, and
 runtime-only `grid/GridData` (crafting plans, job tracking - not persisted across restarts).
 
-Sampled history (`ItemHistoryStore`, `GTPowerHistoryStore`, `GTProductionLog`) has two backends. Without
-`history.jdbc_url` it is the original in-memory rings/buckets persisted to `itemhistory.json`/`gtpower.json`/
-`gtproduction.json`. With it (env `AE2WEB_HISTORY_JDBC_URL`/`_DB_USER`/`_DB_PASSWORD` override the config) it
-goes to PostgreSQL via `core/history/HistoryDb`: hypertables with compression when TimescaleDB is installed,
-plain tables otherwise. Each store branches on `HistoryDb.get() != null` at its write/read/prune points and
-must answer identically in both modes (`ItemHistoryDbTest`/`GTHistoryDbTest` compare them). Item history is
-keyed by grid key + `itemid`. Item counts are stored change-only plus a per-grid `ae2wi_coverage` interval
-table, so "unchanged" and "offline" stay distinguishable. Writes only enqueue for the single `HistoryWriter`
+Sampled history (`ItemHistoryStore`, `GTPowerHistoryStore`, `GTProductionLog`) lives only in PostgreSQL, via
+`core/history/HistoryDb` (`history.jdbc_url`; env `AE2WEB_HISTORY_JDBC_URL`/`_DB_USER`/`_DB_PASSWORD` override
+the config): hypertables with compression when TimescaleDB is installed, plain tables otherwise. There is no
+JSON fallback - without a database nothing is sampled and the history endpoints answer `HISTORY_DISABLED`
+(live GT state such as current power stays in memory). Item statistics sample **every** item of every usable
+grid; which ones the Statistics page shows is the per-player `statsPinned` prefs entry, not server state.
+Item history is keyed by grid key + `itemid`; `ae2wi_series.name` keeps each item's last-seen display name.
+Item counts are stored change-only plus a per-grid `ae2wi_coverage` interval table, so "unchanged" and
+"offline" stay distinguishable; an item that leaves storage gets one `0` row (known series come from
+`HistoryDb.knownKeys`). Writes only enqueue for the single `HistoryWriter`
 thread (never blocks a tick, retries while the DB is down); reads run on HTTP workers and degrade to no data.
-Existing JSON files are imported once (`importOnce`, guarded by a meta marker) and renamed to `*.json.migrated`.
-DB tests use Testcontainers and skip without Docker; `AE2WEB_SCALE_TEST=1` enables the 30k-item
+Every history test uses Testcontainers and skips without Docker; `AE2WEB_SCALE_TEST=1` enables the 30k-item
 `HistoryDbScaleTest`. pgjdbc is core's only extra runtime dependency: the version branch shades core with
 `transitive = false`, so it must shade `org.postgresql:postgresql` explicitly (and exclude it from 1.7.10's
 shadow minimization).
 
 `/api/prefs` (`GetPrefs`/`PutPrefs`) syncs the web terminal's favourites/thresholds/browser filters/saved stats
-views across a player's devices — an opaque JSON blob (sent as the string member `blob`) per principal in
+views and pinned Statistics items across a player's devices — an opaque JSON blob (sent as the string member `blob`) per principal in
 `CoreData`, keyed by `WebPrincipal.prefsKey()` (a reserved UUID for ADMIN/LOCALHOST, which have no player
 identity of their own). `CoreData` never parses the blob's contents, so a frontend-only change to what it syncs
 never needs a matching server change. `/icon` (`http/IconHandler`) is the one non-`/api` data route, since it

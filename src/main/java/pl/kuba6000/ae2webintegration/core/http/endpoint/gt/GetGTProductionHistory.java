@@ -10,6 +10,7 @@ import com.github.bsideup.jabel.Desugar;
 import pl.kuba6000.ae2webintegration.core.WebPrincipal;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.gt.GTProductionLog;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
 import pl.kuba6000.ae2webintegration.core.http.contract.Endpoint;
@@ -27,6 +28,7 @@ import pl.kuba6000.ae2webintegration.core.http.contract.QueryParam;
  * @responseExample 400 {"status":"BAD_PARAM","data":null}
  * @response 401 {@link ErrorResponse} UNAUTHORIZED: no valid session was provided.
  * @response 404 {@link ErrorResponse} NOT_AVAILABLE: GregTech is not installed or its pages are disabled.
+ *           HISTORY_DISABLED when no history database is configured.
  * @response 500 {@link ErrorResponse} INTERNAL_ERROR: the request could not be completed.
  * @responseExample 401 {"status":"UNAUTHORIZED","data":null}
  * @responseExample 404 {"status":"NOT_AVAILABLE","data":null}
@@ -82,6 +84,10 @@ public final class GetGTProductionHistory extends GTRequest {
         GTFlow flow = GTFlow.fromParam(this.flow);
         if (span == null || points == null || flow == null) {
             deny(ApiStatus.BAD_PARAM);
+            return;
+        }
+        if (HistoryDb.get() == null) {
+            deny(ApiStatus.HISTORY_DISABLED);
             return;
         }
         long now = System.currentTimeMillis();

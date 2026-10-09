@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 
 class GTEngineTest {
 
@@ -143,6 +144,7 @@ class GTEngineTest {
 
     @Test
     void powerSamplesFollowTheirOwnInterval() {
+        HistoryDb db = GTTestSupport.startHistory();
         GTEngine.registerProvider(provider);
         provider.next.powerSources.add(GTTestSupport.lsc(1, ALICE, 10, 100, 1L, 1L));
         long t = 1_000 * SECOND_NANOS;
@@ -153,7 +155,8 @@ class GTEngineTest {
         GTEngine.onServerTick(t + 10 * SECOND_NANOS, NOW + 10_000);
 
         assertEquals(20, GTPowerHistoryStore.latest(id).stored.longValue(), "latest follows every scan");
-        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(id, NOW, NOW + 10_000, 10);
+        GTTestSupport.flushHistory();
+        GTPowerHistoryStore.Series series = GTPowerHistoryStore.read(db, id, NOW, NOW + 10_000, 10);
         assertEquals(10, series.stored[0], "but history only got the first, 30 s sample");
     }
 

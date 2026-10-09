@@ -13,6 +13,7 @@ import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.gt.GTPowerHistoryStore;
 import pl.kuba6000.ae2webintegration.core.gt.GTVisibility;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
 import pl.kuba6000.ae2webintegration.core.http.contract.Endpoint;
@@ -34,6 +35,7 @@ import pl.kuba6000.ae2webintegration.core.http.contract.QueryParam;
  * @response 401 {@link ErrorResponse} UNAUTHORIZED: no valid session was provided.
  * @response 404 {@link ErrorResponse} NOT_AVAILABLE: GregTech is not installed or its pages are disabled. NOT_FOUND
  *           when the power source does not exist or is not visible.
+ *           HISTORY_DISABLED when no history database is configured.
  * @response 500 {@link ErrorResponse} INTERNAL_ERROR: the request could not be completed.
  * @responseExample 401 {"status":"UNAUTHORIZED","data":null}
  * @responseExample 404 {"status":"NOT_AVAILABLE","data":null}
@@ -87,9 +89,14 @@ public final class GetGTPowerHistory extends GTRequest {
             deny(ApiStatus.NOT_FOUND);
             return;
         }
+        HistoryDb db = HistoryDb.get();
+        if (db == null) {
+            deny(ApiStatus.HISTORY_DISABLED);
+            return;
+        }
         long now = System.currentTimeMillis();
         respond(
             HttpURLConnection.HTTP_OK,
-            new Response(ApiStatus.OK, GTPowerHistoryStore.read(sourceId, now - span, now, points)));
+            new Response(ApiStatus.OK, GTPowerHistoryStore.read(db, sourceId, now - span, now, points)));
     }
 }
