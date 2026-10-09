@@ -45,6 +45,11 @@ public class GTMachineSnapshot {
     public List<String> maintenanceIssues = new ArrayList<>();
     /** Outputs of the recipe in progress; empty when idle. */
     public List<GTStack> outputs = new ArrayList<>();
+    /**
+     * What the recipe in progress took when it started (times its parallels); empty when idle, or when the
+     * machine does not use GregTech's {@code ProcessingLogic} or started its recipe before a restart.
+     */
+    public List<GTStack> inputs = new ArrayList<>();
 
     /** Set by core: when this machine was last part of a scan. */
     public long lastSeenMillis;
@@ -77,6 +82,7 @@ public class GTMachineSnapshot {
         copy.efficiency = efficiency;
         copy.maintenanceIssues = maintenanceIssues == null ? new ArrayList<>() : new ArrayList<>(maintenanceIssues);
         copy.outputs = outputs == null ? new ArrayList<>() : new ArrayList<>(outputs);
+        copy.inputs = inputs == null ? new ArrayList<>() : new ArrayList<>(inputs);
         copy.lastSeenMillis = lastSeenMillis;
         copy.loaded = loaded;
         return copy;

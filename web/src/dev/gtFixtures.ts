@@ -62,9 +62,11 @@ const STEAM = { id: "steam", name: "Steam", fluid: true };
 type StackDef = { id: string; name: string; fluid: boolean };
 
 interface MockMachine {
-    base: Omit<GTMachine, "id" | "lastSeenMillis" | "loaded" | "outputs" | "progressTicks">;
+    base: Omit<GTMachine, "id" | "lastSeenMillis" | "loaded" | "outputs" | "inputs" | "progressTicks">;
     /** Per-recipe outputs while running. */
     outputs: (StackDef & { amount: number })[];
+    /** Per-recipe inputs while running; empty like a recipe started before a restart. */
+    inputs: (StackDef & { amount: number })[];
     /** Average production per hour - what feeds `/gt/production`. */
     produces: (StackDef & { perHour: number })[];
     /** Average recipe inputs per hour - `/gt/production?flow=consumed`. Empty like a machine without
@@ -81,6 +83,7 @@ function machine(
     status: GTMachineStatus,
     extra: Partial<Omit<MockMachine["base"], "owner" | "ownerName">> & {
         outputs?: MockMachine["outputs"];
+        inputs?: MockMachine["inputs"];
         produces?: MockMachine["produces"];
         consumes?: MockMachine["consumes"];
         unloadedFor?: number;
@@ -88,7 +91,7 @@ function machine(
     } = {},
 ): MockMachine {
     const [dim, x, y, z] = pos;
-    const { outputs = [], produces = [], consumes = [], unloadedFor, by = DEV, ...rest } = extra;
+    const { outputs = [], inputs = [], produces = [], consumes = [], unloadedFor, by = DEV, ...rest } = extra;
     return {
         base: {
             dim,
@@ -110,6 +113,7 @@ function machine(
             ...rest,
         },
         outputs,
+        inputs,
         produces,
         consumes,
         unloadedFor,
@@ -122,6 +126,10 @@ const MOCK_MACHINES: MockMachine[] = [
         euPerTick: 7680,
         voltageTier: 5,
         outputs: [{ ...TITANIUM, amount: 1 }],
+        inputs: [
+            { ...TITANIUM_DUST, amount: 1 },
+            { ...NITROGEN, amount: 1000 },
+        ],
         produces: [{ ...TITANIUM, perHour: 24 }],
         consumes: [
             { ...TITANIUM_DUST, perHour: 24 },
@@ -186,6 +194,7 @@ const MOCK_MACHINES: MockMachine[] = [
             voltageTier: 4,
             efficiency: 10000,
             outputs: [{ ...IRON_DUST, amount: 16 }],
+            inputs: [{ ...IRON_ORE, amount: 8 }],
             produces: [{ ...IRON_DUST, perHour: 900 }],
             consumes: [{ ...IRON_ORE, perHour: 450 }],
         },
@@ -212,6 +221,15 @@ const MOCK_MACHINES: MockMachine[] = [
         euPerTick: 491520,
         voltageTier: 7,
         outputs: [{ ...TUNGSTENSTEEL, amount: 48 }],
+        // More inputs than a card shows, so the "+N" slot is exercisable.
+        inputs: [
+            { ...TUNGSTEN_DUST, amount: 24 },
+            { id: "gregtech:gt.metaitem.01:2032", name: "Steel Dust", fluid: false, amount: 24 },
+            { id: "gregtech:gt.metaitem.01:2028", name: "Titanium Dust", fluid: false, amount: 4 },
+            { id: "gregtech:gt.metaitem.01:2086", name: "Gold Dust", fluid: false, amount: 2 },
+            { ...NITROGEN, amount: 48_000 },
+            { ...OXYGEN, amount: 12_000 },
+        ],
         produces: [{ ...TUNGSTENSTEEL, perHour: 48 }],
         consumes: [{ ...TUNGSTEN_DUST, perHour: 48 }],
     }),
@@ -236,6 +254,7 @@ const MOCK_MACHINES: MockMachine[] = [
         voltageTier: 3,
         by: KUBA,
         outputs: [{ ...ALUMINIUM, amount: 2 }],
+        inputs: [{ ...ALUMINIUM_DUST, amount: 2 }],
         produces: [{ ...ALUMINIUM, perHour: 64 }],
         consumes: [{ ...ALUMINIUM_DUST, perHour: 64 }],
     }),
@@ -275,6 +294,9 @@ function toMachine(m: MockMachine, now: number): GTMachine {
     const outputs: GTStack[] = running
         ? m.outputs.map(({ id, name, amount, fluid }) => ({ id, name, amount, fluid }))
         : [];
+    const inputs: GTStack[] = running
+        ? m.inputs.map(({ id, name, amount, fluid }) => ({ id, name, amount, fluid }))
+        : [];
     return {
         ...m.base,
         id: machineId(m),
@@ -282,6 +304,7 @@ function toMachine(m: MockMachine, now: number): GTMachine {
         progressTicks,
         euPerTick: running || m.base.status === "IDLE" ? m.base.euPerTick : 0,
         outputs,
+        inputs,
         lastSeenMillis: lastSeen,
         loaded,
     };

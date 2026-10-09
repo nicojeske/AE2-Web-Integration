@@ -23,6 +23,7 @@ import { ItemIcon } from "../ui/ItemIcon";
 import { ProgressBar } from "../ui/ProgressBar";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { GTPollState, useNow } from "./gtCommon";
+import { RecipeDetail, RecipeStrip } from "./RecipeFlow";
 import {
     coordsText,
     dimensionKey,
@@ -364,16 +365,12 @@ function MachineCard({
                 </div>
             )}
 
-            {m.outputs.length > 0 && (
-                <div className="machine-card__outputs">
-                    {m.outputs.map((o) => (
-                        <span key={o.id} className="machine-card__output" title={o.name}>
-                            <ItemIcon itemid={o.id} name={o.name} size={20} />
-                            {formatGTAmount(o.amount, o.fluid, numberFormat)}
-                        </span>
-                    ))}
-                </div>
-            )}
+            <RecipeStrip
+                inputs={m.inputs}
+                outputs={m.outputs}
+                progress={m.maxProgressTicks > 0 ? progress / m.maxProgressTicks : 0}
+                numberFormat={numberFormat}
+            />
 
             <div className="machine-card__foot">
                 <button
@@ -518,14 +515,12 @@ function MachineDrawer({
             {m.outputs.length > 0 && (
                 <>
                     <h3 className="machine-drawer__heading">Current recipe</h3>
-                    <div className="machine-card__outputs">
-                        {m.outputs.map((o) => (
-                            <span key={o.id} className="machine-card__output">
-                                <ItemIcon itemid={o.id} name={o.name} size={20} />
-                                {formatGTAmount(o.amount, o.fluid, fmt)} {o.name}
-                            </span>
-                        ))}
-                    </div>
+                    <RecipeDetail
+                        inputs={m.inputs}
+                        outputs={m.outputs}
+                        progress={m.maxProgressTicks > 0 ? progress / m.maxProgressTicks : 0}
+                        numberFormat={fmt}
+                    />
                 </>
             )}
 
@@ -558,7 +553,7 @@ function MachineDrawer({
 
             {consumption !== null && (
                 <>
-                    <h3 className="machine-drawer__heading">Inputs</h3>
+                    <h3 className="machine-drawer__heading">Consumed</h3>
                     {consumption.rows.length === 0 ? (
                         <div className="machine-drawer__empty">No recipe inputs recorded in this range.</div>
                     ) : (

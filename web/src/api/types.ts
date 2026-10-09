@@ -308,6 +308,8 @@ export interface GTMachine {
     efficiency: number;
     maintenanceIssues: string[];
     outputs: GTStack[];
+    /** What the running recipe took when it started; empty when idle or unknown. */
+    inputs: GTStack[];
     lastSeenMillis: number;
     loaded: boolean;
 }
