@@ -7,7 +7,10 @@ import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.command.WrongUsageException;
 
-/** Client-side {@code /ae2webicons export [size]}: starts an {@link IconExporter} run. */
+/**
+ * Client-side {@code /ae2webicons export [size]}: renders every icon and uploads it to the connected server (needs
+ * op there), see {@link IconExporter}.
+ */
 public class IconExportCommand extends CommandBase {
 
     private static final String USAGE = "/ae2webicons export [size in px, multiple of 16, default 64]";

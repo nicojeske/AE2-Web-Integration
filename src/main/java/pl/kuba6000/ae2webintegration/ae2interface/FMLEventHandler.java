@@ -12,6 +12,7 @@ import pl.kuba6000.ae2webintegration.core.CoreEngine;
 import pl.kuba6000.ae2webintegration.core.UpdateNotifier;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.commands.CommandBootstrap;
+import pl.kuba6000.ae2webintegration.core.icons.IconUpload;
 
 public class FMLEventHandler {
 
@@ -33,6 +34,15 @@ public class FMLEventHandler {
             messenger,
             identity,
             player.canCommandSenderUseCommand(CommandBootstrap.ADMIN_PERMISSION_LEVEL, "seed"));
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        // An upload cut short by a disconnect is dropped; the icons installed before stay.
+        IconUpload.get()
+            .abort(
+                event.player.getUniqueID()
+                    .toString());
     }
 
     @SubscribeEvent

@@ -16,6 +16,7 @@ import pl.kuba6000.ae2webintegration.ae2interface.FMLEventHandler;
 import pl.kuba6000.ae2webintegration.ae2interface.commands.BaseCommandHandler;
 import pl.kuba6000.ae2webintegration.ae2interface.commands.CommandBuilder;
 import pl.kuba6000.ae2webintegration.ae2interface.implementations.AE;
+import pl.kuba6000.ae2webintegration.ae2interface.network.AE2WebNetwork;
 import pl.kuba6000.ae2webintegration.ae2interface.platform.Platform;
 import pl.kuba6000.ae2webintegration.core.CoreEngine;
 import pl.kuba6000.ae2webintegration.core.commands.CommandBootstrap;
@@ -34,6 +35,7 @@ public class CommonProxy {
             .bus()
             .register(eventHandler);
         MinecraftForge.EVENT_BUS.register(eventHandler);
+        AE2WebNetwork.init();
     }
 
     // load "Do your mod setup. Build whatever data structures you care about. Register recipes." (Remove if not needed)

@@ -1,13 +1,15 @@
 package pl.kuba6000.ae2webintegration.ae2interface.client;
 
 import java.awt.image.BufferedImage;
-import java.io.File;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -39,82 +41,91 @@ import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import cpw.mods.fml.common.registry.GameData;
+import io.netty.channel.Channel;
 import pl.kuba6000.ae2webintegration.ae2interface.AE2WebIntegration;
 import pl.kuba6000.ae2webintegration.ae2interface.gt.GTIconStacks;
+import pl.kuba6000.ae2webintegration.ae2interface.network.AE2WebNetwork;
+import pl.kuba6000.ae2webintegration.ae2interface.network.IconUploadMessages;
 import pl.kuba6000.ae2webintegration.ae2interface.util.StackIds;
-import pl.kuba6000.ae2webintegration.core.icons.IconFileNames;
 
 /**
- * Renders every item and fluid the client knows about to PNGs for the web terminal's icons, one file per itemid
- * (see {@link IconFileNames}), which the server's {@code general.item_icon_directory} then points at. Unlike NEI's
- * item panel dump this enumerates the registries themselves, so items hidden from NEI and plain fluids are
- * included, and files are keyed by the same itemid the web terminal uses instead of a display name.
+ * Renders every item and fluid the client knows about and uploads them to the server the player is connected to,
+ * which installs them as the web terminal's icons (core's {@code IconUpload}), one per itemid. A dedicated server
+ * can't render anything itself - no textures, no GL - so this is the only way icons get there. Unlike NEI's item
+ * panel dump this enumerates the registries themselves, so items hidden from NEI and plain fluids are included.
  * <p>
  * Rendering happens on the client thread, one grid of icons per frame into an off-screen framebuffer, so the game
- * stays responsive; PNG encoding runs on a background thread, one batch at a time.
+ * stays responsive; PNG encoding runs on a background thread. Uploading is paced by the connection's own
+ * writability, so a slow uplink never queues up enough to starve the keep-alive.
  */
 public final class IconExporter {
-
-    public static final String OUTPUT_DIRECTORY = "dumps/ae2webintegration_icons";
 
     /** Pixel edge of one batch's framebuffer: {@code 1024 / size} icons per row and column. */
     private static final int BATCH_PIXELS = 1024;
     /** GUI units an item renders into. */
     private static final int CELL = 16;
+    private static final long SERVER_ANSWER_TIMEOUT_MILLIS = 10_000;
+    private static final int MAX_CHUNKS_PER_FRAME = 8;
 
     private static final RenderItem ITEM_RENDER = new RenderItem();
 
+    /** Server answers, received on the network thread and handled on the client thread. */
+    private static final Queue<IconUploadMessages.Status> STATUSES = new ConcurrentLinkedQueue<>();
+
     private static IconExporter active;
 
-    private final File directory;
     private final int size;
     private final int grid;
     private final List<Icon> icons;
-    private final ExecutorService writer = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "ae2webintegration-icon-writer");
+    private final ExecutorService encoder = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "ae2webintegration-icon-encoder");
         thread.setDaemon(true);
         return thread;
     });
-    private final AtomicInteger written = new AtomicInteger();
+    private final Queue<Encoded> outbox = new ConcurrentLinkedQueue<>();
     private final AtomicInteger empty = new AtomicInteger();
-    private final AtomicInteger writeFailures = new AtomicInteger();
+    private final AtomicInteger tooLarge = new AtomicInteger();
+    private final AtomicInteger encodeFailures = new AtomicInteger();
+    private final long startedAt = System.currentTimeMillis();
+    private boolean accepted;
     private Framebuffer framebuffer;
-    private Future<?> pendingWrite;
+    private Future<?> pendingEncode;
     private int next;
+    private int sent;
     private int renderFailures;
     private int nextProgressPercent = 25;
 
-    private IconExporter(File directory, int size, List<Icon> icons) {
-        this.directory = directory;
+    private IconExporter(int size, List<Icon> icons) {
         this.size = size;
         this.grid = BATCH_PIXELS / size;
         this.icons = icons;
     }
 
-    /** Starts an export at {@code size} pixels per icon. Returns an error message, or {@code null} once started. */
+    /**
+     * Asks the server to accept an upload and, once it does, renders and sends icons at {@code size} pixels.
+     * Returns an error message, or {@code null} once started.
+     */
     public static String start(int size) {
         if (active != null) {
             return "An icon export is already running.";
         }
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.thePlayer == null || mc.getNetHandler() == null) {
+            return "Join the server (or a world) whose web terminal should get the icons first.";
+        }
         if (!OpenGlHelper.isFramebufferEnabled()) {
             return "Icon export needs framebuffer support (fboEnable:true in options.txt).";
         }
-        File directory = new File(Minecraft.getMinecraft().mcDataDir, OUTPUT_DIRECTORY);
-        if (!directory.isDirectory() && !directory.mkdirs()) {
-            return "Can't create " + directory;
-        }
-        File[] old = directory.listFiles((dir, name) -> name.endsWith(IconFileNames.EXTENSION));
-        if (old != null) {
-            for (File file : old) {
-                // noinspection ResultOfMethodCallIgnored
-                file.delete();
-            }
-        }
-        List<Icon> icons = collect();
-        active = new IconExporter(directory, size, icons);
-        AE2WebIntegration.LOG.info("Exporting {} icons at {}px to {}", icons.size(), size, directory);
-        chat(EnumChatFormatting.GREEN + "Exporting " + icons.size() + " item and fluid icons to " + OUTPUT_DIRECTORY);
+        STATUSES.clear();
+        active = new IconExporter(size, collect());
+        AE2WebNetwork.CHANNEL.sendToServer(new IconUploadMessages.Begin());
+        chat(EnumChatFormatting.GRAY + "Asking the server to accept " + active.icons.size() + " icons...");
         return null;
+    }
+
+    /** Called on the network thread when the server answers. */
+    public static void onStatus(IconUploadMessages.Status status) {
+        STATUSES.add(status);
     }
 
     private static List<Icon> collect() {
@@ -180,8 +191,49 @@ public final class IconExporter {
         }
     }
 
+    private static void handleStatuses() {
+        IconUploadMessages.Status status;
+        while ((status = STATUSES.poll()) != null) {
+            switch (status.kind) {
+                case ACCEPTED -> {
+                    if (active != null && !active.accepted) {
+                        active.accepted = true;
+                        chat(EnumChatFormatting.GREEN + "Uploading " + active.icons.size() + " item and fluid icons");
+                    }
+                }
+                case REJECTED -> {
+                    if (active != null && !active.accepted) {
+                        active.stop();
+                    }
+                    chat(EnumChatFormatting.RED + status.message);
+                }
+                case RESULT -> chat(EnumChatFormatting.GREEN + status.message);
+            }
+        }
+    }
+
     private void tick() {
-        if (pendingWrite != null && !pendingWrite.isDone()) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.getNetHandler() == null) {
+            AE2WebIntegration.LOG.info("Icon export cancelled: disconnected");
+            stop();
+            return;
+        }
+        if (!accepted) {
+            if (System.currentTimeMillis() - startedAt > SERVER_ANSWER_TIMEOUT_MILLIS) {
+                stop();
+                chat(
+                    EnumChatFormatting.RED
+                        + "The server didn't answer - it needs a matching version of AE2 Web Integration.");
+            }
+            return;
+        }
+        send(
+            mc.getNetHandler()
+                .getNetworkManager()
+                .channel());
+        boolean encoding = pendingEncode != null && !pendingEncode.isDone();
+        if (encoding || outbox.size() > 2 * grid * grid) {
             return;
         }
         if (next < icons.size()) {
@@ -191,8 +243,41 @@ public final class IconExporter {
                 chat(EnumChatFormatting.GRAY + "Icon export: " + percent + "%");
                 nextProgressPercent = (percent / 25 + 1) * 25;
             }
-        } else {
-            finish();
+        } else if (outbox.isEmpty()) {
+            AE2WebNetwork.CHANNEL.sendToServer(new IconUploadMessages.End());
+            String summary = "Sent " + sent
+                + " icons ("
+                + empty.get()
+                + " rendered empty, "
+                + tooLarge.get()
+                + " too large, "
+                + (renderFailures + encodeFailures.get())
+                + " failed); the server is installing them...";
+            AE2WebIntegration.LOG.info("Icon export: {}", summary);
+            chat(EnumChatFormatting.GRAY + summary);
+            stop();
+        }
+    }
+
+    /** Sends queued icons while the connection keeps up. */
+    private void send(Channel channel) {
+        for (int chunks = 0; chunks < MAX_CHUNKS_PER_FRAME && channel.isWritable() && !outbox.isEmpty(); chunks++) {
+            IconUploadMessages.Chunk chunk = new IconUploadMessages.Chunk();
+            Encoded icon;
+            while ((icon = outbox.peek()) != null && chunk.fits(icon.id, icon.png)) {
+                outbox.poll();
+                chunk.add(icon.id, icon.png);
+            }
+            sent += chunk.itemids.size();
+            AE2WebNetwork.CHANNEL.sendToServer(chunk);
+        }
+    }
+
+    private void stop() {
+        active = null;
+        encoder.shutdownNow();
+        if (framebuffer != null) {
+            framebuffer.deleteFramebuffer();
         }
     }
 
@@ -248,7 +333,7 @@ public final class IconExporter {
 
         int[] argb = new int[BATCH_PIXELS * BATCH_PIXELS];
         buffer.get(argb);
-        pendingWrite = writer.submit(() -> writeBatch(argb, batch));
+        pendingEncode = encoder.submit(() -> encodeBatch(argb, batch));
     }
 
     /** Undoes what a render that threw half-way may have left behind, so it doesn't break the rest of the batch. */
@@ -265,7 +350,7 @@ public final class IconExporter {
         GL11.glColor4f(1, 1, 1, 1);
     }
 
-    private void writeBatch(int[] argb, List<Icon> batch) {
+    private void encodeBatch(int[] argb, List<Icon> batch) {
         for (int i = 0; i < batch.size(); i++) {
             BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
             int left = i % grid * size;
@@ -286,31 +371,19 @@ public final class IconExporter {
                 continue;
             }
             try {
-                ImageIO.write(image, "png", new File(directory, IconFileNames.fileName(id)));
-                written.incrementAndGet();
+                ByteArrayOutputStream png = new ByteArrayOutputStream();
+                ImageIO.write(image, "png", png);
+                byte[] bytes = png.toByteArray();
+                if (IconUploadMessages.Chunk.encodedSize(id, bytes) > IconUploadMessages.MAX_CHUNK_BYTES) {
+                    tooLarge.incrementAndGet();
+                    continue;
+                }
+                outbox.add(new Encoded(id, bytes));
             } catch (IOException e) {
-                writeFailures.incrementAndGet();
-                AE2WebIntegration.LOG.warn("Icon export: writing {} failed", id, e);
+                encodeFailures.incrementAndGet();
+                AE2WebIntegration.LOG.warn("Icon export: encoding {} failed", id, e);
             }
         }
-    }
-
-    private void finish() {
-        active = null;
-        writer.shutdown();
-        if (framebuffer != null) {
-            framebuffer.deleteFramebuffer();
-        }
-        String summary = "Exported " + written.get()
-            + " icons to "
-            + OUTPUT_DIRECTORY
-            + " ("
-            + empty.get()
-            + " rendered empty, "
-            + (renderFailures + writeFailures.get())
-            + " failed). Copy the directory to the server and point general.item_icon_directory at it.";
-        AE2WebIntegration.LOG.info(summary);
-        chat(EnumChatFormatting.GREEN + summary);
     }
 
     private static void chat(String message) {
@@ -325,9 +398,22 @@ public final class IconExporter {
 
         @SubscribeEvent
         public void onRenderTick(TickEvent.RenderTickEvent event) {
-            if (event.phase == TickEvent.Phase.END && active != null) {
+            if (event.phase != TickEvent.Phase.END) return;
+            handleStatuses();
+            if (active != null) {
                 active.tick();
             }
+        }
+    }
+
+    private static final class Encoded {
+
+        final String id;
+        final byte[] png;
+
+        Encoded(String id, byte[] png) {
+            this.id = id;
+            this.png = png;
         }
     }
 
