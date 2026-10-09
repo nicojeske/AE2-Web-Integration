@@ -174,6 +174,7 @@ public class GTProvider implements IGTProvider {
         if (is(id, ShutDownReasonRegistry.ITEM_OUTPUT_FAILED) || is(id, ShutDownReasonRegistry.FLUID_OUTPUT_FAILED)) {
             return GTStatusMapper.Reason.OUTPUT;
         }
+        if (is(id, ShutDownReasonRegistry.NO_REPAIR)) return GTStatusMapper.Reason.MAINTENANCE;
         return GTStatusMapper.Reason.OTHER;
     }
 

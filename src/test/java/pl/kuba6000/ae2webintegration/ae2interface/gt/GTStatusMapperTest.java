@@ -75,6 +75,38 @@ class GTStatusMapperTest {
     }
 
     @Test
+    void powerAndOutputShutdownsBeatMaintenance() {
+        Input in = healthy();
+        in.wrench = false;
+        in.allowedToWork = false;
+        in.reason = Reason.POWER;
+        in.reasonDisplay = "Power loss";
+        Result r = GTStatusMapper.map(in);
+        assertEquals(GTMachineStatus.NO_POWER, r.status);
+        assertEquals("Power loss", r.detail);
+        assertEquals(Arrays.asList("Wrench"), GTStatusMapper.maintenanceIssues(in));
+        in.reason = Reason.OUTPUT;
+        assertEquals(GTMachineStatus.OUTPUT_FULL, GTStatusMapper.map(in).status);
+    }
+
+    @Test
+    void maintenanceBeatsOtherShutdowns() {
+        Input in = healthy();
+        in.wrench = false;
+        in.allowedToWork = false;
+        in.reason = Reason.OTHER;
+        assertEquals(GTMachineStatus.MAINTENANCE, GTStatusMapper.map(in).status);
+    }
+
+    @Test
+    void noRepairStopIsMaintenance() {
+        Input in = healthy();
+        in.allowedToWork = false;
+        in.reason = Reason.MAINTENANCE;
+        assertEquals(GTMachineStatus.MAINTENANCE, GTStatusMapper.map(in).status);
+    }
+
+    @Test
     void disabledWithoutReason() {
         Input in = healthy();
         in.allowedToWork = false;

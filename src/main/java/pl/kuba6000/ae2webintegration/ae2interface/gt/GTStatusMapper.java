@@ -19,6 +19,8 @@ public final class GTStatusMapper {
         POWER,
         /** {@code ITEM_OUTPUT_FAILED} / {@code FLUID_OUTPUT_FAILED}. */
         OUTPUT,
+        /** {@code NO_REPAIR}: every maintenance tool is missing. */
+        MAINTENANCE,
         /** Anything else. */
         OTHER
     }
@@ -65,21 +67,24 @@ public final class GTStatusMapper {
         return issues;
     }
 
-    /** First matching rule wins; see docs/gt-hub/phase-3-adapter-1.7.10.md §3. */
+    /**
+     * First matching rule wins; see docs/gt-hub/phase-3-adapter-1.7.10.md §3. Power and output shutdowns come
+     * before maintenance: GT keeps a machine running with some tools missing, so leftover maintenance flags
+     * must not hide the reason it actually stopped.
+     */
     public static Result map(Input in) {
         if (!in.formed) return new Result(GTMachineStatus.STRUCTURE_INCOMPLETE, "Structure incomplete");
-        if (!maintenanceIssues(in).isEmpty()) return new Result(GTMachineStatus.MAINTENANCE, "Maintenance required");
+        if (!in.allowedToWork && in.reason == Reason.POWER)
+            return new Result(GTMachineStatus.NO_POWER, in.reasonDisplay);
+        if (!in.allowedToWork && in.reason == Reason.OUTPUT) {
+            return new Result(GTMachineStatus.OUTPUT_FULL, in.reasonDisplay);
+        }
+        if (!maintenanceIssues(in).isEmpty() || !in.allowedToWork && in.reason == Reason.MAINTENANCE) {
+            return new Result(GTMachineStatus.MAINTENANCE, "Maintenance required");
+        }
         if (!in.allowedToWork) {
-            switch (in.reason) {
-                case POWER:
-                    return new Result(GTMachineStatus.NO_POWER, in.reasonDisplay);
-                case OUTPUT:
-                    return new Result(GTMachineStatus.OUTPUT_FULL, in.reasonDisplay);
-                case OTHER:
-                    return new Result(GTMachineStatus.STOPPED, in.reasonDisplay);
-                default:
-                    return new Result(GTMachineStatus.DISABLED, "Disabled");
-            }
+            return in.reason == Reason.OTHER ? new Result(GTMachineStatus.STOPPED, in.reasonDisplay)
+                : new Result(GTMachineStatus.DISABLED, "Disabled");
         }
         if (in.maxProgressTicks > 0 || in.active) return new Result(GTMachineStatus.RUNNING, null);
         return new Result(GTMachineStatus.IDLE, in.failedRecipeCheck);
