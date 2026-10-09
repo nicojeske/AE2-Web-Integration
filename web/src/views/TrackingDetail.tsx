@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 
 import { getTracking } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { useOrder } from "../state/order";
 import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
 import { Timeline } from "../ui/Timeline";
@@ -25,6 +26,7 @@ export interface TrackingDetailProps {
 export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
     const [detail, setDetail] = useState<TrackingDetailData | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const { startOrder } = useOrder();
 
     useEffect(() => {
         let cancelled = false;
@@ -127,6 +129,22 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
                     ))}
                 </section>
             )}
+
+            <section className="craft-detail__actions">
+                <Button
+                    variant="primary"
+                    onClick={() =>
+                        startOrder({
+                            sourceGridKey: gridKey,
+                            itemid: detail.finalOutput.itemid,
+                            itemname: detail.finalOutput.itemname,
+                            quantity: detail.finalOutput.quantity,
+                        })
+                    }
+                >
+                    Craft again
+                </Button>
+            </section>
 
             <ConsumedSection rows={view.consumed} />
 

@@ -81,7 +81,6 @@ export function Favorites() {
                     onCraft={() =>
                         startOrder({
                             sourceGridKey: row.gridKey,
-                            gridLabel: row.gridLabel,
                             itemid: row.itemid,
                             itemname: row.itemname,
                         })

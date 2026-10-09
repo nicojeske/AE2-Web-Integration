@@ -47,6 +47,14 @@ function cpuState(cpu: CpuLike, valid: boolean): OrderCpuState {
     return cpu.isBusy ? "mergeable" : "idle";
 }
 
+/** Why a CPU can't take this plan - the tag on its disabled row. */
+function invalidReason(cpu: CpuLike, bytesTotal: number, outputItemid: string): string {
+    if (!cpu.isBusy) return `Needs ${formatBytes(bytesTotal - cpu.availableStorage)} more`;
+    if (cpu.finalOutput?.itemid !== outputItemid) return "Busy with another item";
+    if (cpu.usedStorage === -1) return "Busy";
+    return `Needs ${formatBytes(cpu.usedStorage + bytesTotal - cpu.availableStorage)} more to merge`;
+}
+
 function storageDetail(cpu: CpuLike): string {
     const used = cpu.usedStorage === -1 ? "—" : formatBytes(cpu.usedStorage);
     return cpu.isBusy
@@ -54,12 +62,7 @@ function storageDetail(cpu: CpuLike): string {
         : `${formatBytes(cpu.availableStorage)} - ${cpu.coProcessors} co-proc${cpu.coProcessors === 1 ? "" : "s"}`;
 }
 
-export function cpuRow(
-    cpu: CpuLike,
-    bytesTotal: number,
-    outputItemid: string,
-    selectedKey: string | null,
-): OrderCpuRow {
+function cpuRow(cpu: CpuLike, bytesTotal: number, outputItemid: string, selectedKey: string | null): OrderCpuRow {
     const valid = isValidCpuForPlan(cpu, bytesTotal, outputItemid);
     const state = cpuState(cpu, valid);
     return {
@@ -68,18 +71,49 @@ export function cpuRow(
         state,
         selected: valid && selectedKey === cpu.cpuKey,
         selectable: valid,
-        tag: state === "invalid" ? "Not enough storage" : state === "mergeable" ? "Merge into job" : "Idle",
+        tag:
+            state === "invalid"
+                ? invalidReason(cpu, bytesTotal, outputItemid)
+                : state === "mergeable"
+                  ? "Merge into job"
+                  : "Idle",
         detail: storageDetail(cpu),
     };
 }
 
-/** First valid CPU in list order, mirroring `webpage.html:1177-1181`'s `updateCPUListForJob` - it takes
- *  whichever comes first (merge or idle), not the smallest or fastest fit. */
-export function pickDefaultCpu(cpus: CpuLike[], bytesTotal: number, outputItemid: string): string | null {
-    for (const cpu of cpus) {
-        if (isValidCpuForPlan(cpu, bytesTotal, outputItemid)) return cpu.cpuKey;
+/** CPU rows for the picker, in the order `pickDefaultCpu` ranks them, unusable ones last. */
+export function cpuRows(
+    cpus: CpuLike[],
+    bytesTotal: number,
+    outputItemid: string,
+    selectedKey: string | null,
+): OrderCpuRow[] {
+    const rank = (c: CpuLike) => cpuRank(c, bytesTotal, outputItemid);
+    return [...cpus]
+        .sort((a, b) => compareRank(rank(a), rank(b)))
+        .map((c) => cpuRow(c, bytesTotal, outputItemid, selectedKey));
+}
+
+/** `[group, -coProcessors, availableStorage]`: idle before merge before unusable, then the CPU that
+ *  crafts fastest, then the tightest fit so the big CPUs stay free for big jobs. */
+function cpuRank(cpu: CpuLike, bytesTotal: number, outputItemid: string): number[] {
+    const group = !isValidCpuForPlan(cpu, bytesTotal, outputItemid) ? 2 : cpu.isBusy ? 1 : 0;
+    return [group, -cpu.coProcessors, cpu.availableStorage];
+}
+
+function compareRank(a: number[], b: number[]): number {
+    for (let i = 0; i < a.length; i++) {
+        const d = a[i]! - b[i]!;
+        if (d !== 0) return d;
     }
-    return null;
+    return 0;
+}
+
+/** The best usable CPU (see `cpuRank`), or `null` when none can take the plan. Merging into a busy CPU
+ *  is only picked when no idle one fits - an idle CPU runs the job in parallel instead of after. */
+export function pickDefaultCpu(cpus: CpuLike[], bytesTotal: number, outputItemid: string): string | null {
+    const best = cpuRows(cpus, bytesTotal, outputItemid, null)[0];
+    return best?.selectable ? best.cpuKey : null;
 }
 
 /**
@@ -91,6 +125,22 @@ export function clampQuantity(raw: number): number {
     if (!Number.isFinite(raw)) return 1;
     const truncated = Math.trunc(raw);
     return Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, truncated));
+}
+
+export interface PlanBuckets {
+    /** Rows AE2 couldn't source, most missing first (the server's own order). */
+    missing: JobPlanItem[];
+    toCraft: JobPlanItem[];
+    fromStorage: JobPlanItem[];
+}
+
+export function bucketPlan(job: JobData): PlanBuckets {
+    const plan = job.plan ?? [];
+    return {
+        missing: plan.filter((r) => r.missing > 0),
+        toCraft: plan.filter((r) => r.missing === 0 && r.requested > 0),
+        fromStorage: plan.filter((r) => r.missing === 0 && r.requested === 0 && r.stored > 0),
+    };
 }
 
 export interface PlanDetailView {
@@ -126,9 +176,7 @@ function planRow(item: JobPlanItem, badgeText: string): CraftDetailItemRow {
  */
 export function buildPlanDetail(job: JobData): PlanDetailView {
     const plan = job.plan ?? [];
-    const missing = plan.filter((r) => r.missing > 0);
-    const toCraft = plan.filter((r) => r.missing === 0 && r.requested > 0);
-    const fromStorage = plan.filter((r) => r.missing === 0 && r.requested === 0 && r.stored > 0);
+    const { missing, toCraft, fromStorage } = bucketPlan(job);
     const steps = plan.reduce((sum, r) => sum + r.steps, 0);
 
     const columns: CraftDetailColumn[] = [

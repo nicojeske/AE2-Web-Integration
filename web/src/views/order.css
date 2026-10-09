@@ -7,6 +7,7 @@
 
 .order-modal__heading {
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 2px;
     min-width: 0;
@@ -33,7 +34,7 @@
     gap: 8px;
 }
 .order-modal__section + .order-modal__section {
-    margin-top: 4px;
+    margin-top: 12px;
 }
 
 .order-modal__label {
@@ -155,13 +156,97 @@
     opacity: 0.8;
 }
 
-.order-modal__bytes {
+.order-modal__error {
+    font-size: 12px;
+    color: var(--red);
+}
+
+.order-modal__topup {
+    align-self: flex-start;
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-btn-sm);
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+.order-modal__topup:hover {
+    border-color: var(--accent);
+    color: var(--accent-selected-text);
+}
+
+/* Plan summary: one chip per bucket, coloured like the plan page's columns. */
+.order-modal__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.order-modal__chip {
     font-family: var(--font-mono);
+    font-size: 11.5px;
+    border-radius: 5px;
+    padding: 3px 8px;
+    color: var(--text-muted);
+    background: rgba(154, 161, 184, 0.133);
+}
+.order-modal__chip--purple {
+    color: var(--accent);
+    background: rgba(139, 123, 245, 0.133);
+}
+.order-modal__chip--teal {
+    color: var(--teal);
+    background: rgba(63, 215, 196, 0.133);
+}
+.order-modal__chip--red {
+    color: var(--red);
+    background: rgba(242, 96, 107, 0.133);
+}
+
+.order-modal__missing {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card-sm);
+    padding: 10px 12px;
+}
+
+.order-modal__missing-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.order-modal__missing-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.order-modal__missing-amount {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--red);
+    white-space: nowrap;
+}
+
+.order-modal__missing-more {
     font-size: 11.5px;
     color: var(--text-dim);
 }
 
-.order-modal__error {
-    font-size: 12px;
-    color: var(--red);
+.order-modal__error-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }

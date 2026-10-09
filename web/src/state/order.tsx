@@ -17,7 +17,6 @@ export type OrderPhase = "quantity" | "calculating" | "plan" | "submitting";
 
 export interface OrderFlow {
     gridKey: GridKey;
-    gridLabel: string;
     itemid: string;
     /** Raw, possibly §-formatted item name - render via `<FormattedText>`, never as a plain string. */
     itemname: string;
@@ -36,10 +35,14 @@ export interface OrderFlow {
 
 export interface StartOrderItem {
     sourceGridKey: GridKey;
-    gridLabel: string;
     itemid: string;
     itemname: string;
+    /** Prefilled quantity ("Craft again"); defaults to a stack. */
+    quantity?: number;
 }
+
+/** How long the quantity has to settle before the plan is (re)calculated on its own. */
+const AUTO_CALCULATE_DELAY_MS = 600;
 
 const DEFAULT_QUANTITY = 64;
 
@@ -110,10 +113,9 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
         generationRef.current++;
         setFlow({
             gridKey: item.sourceGridKey,
-            gridLabel: item.gridLabel,
             itemid: item.itemid,
             itemname: item.itemname,
-            quantity: DEFAULT_QUANTITY,
+            quantity: clampQuantity(item.quantity ?? DEFAULT_QUANTITY),
             phase: "quantity",
             jobId: null,
             job: null,
@@ -180,6 +182,18 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
             }
         })();
     }, [refreshCpus]);
+
+    // Calculates on its own once the quantity settles - a fresh order, a stepper click or typing. An
+    // error stops it until the quantity changes again (or the modal's Retry), so a plan that keeps
+    // failing isn't recomputed in a loop.
+    const phase = flow?.phase;
+    const quantity = flow?.quantity;
+    const hasError = !!flow?.error;
+    useEffect(() => {
+        if (phase !== "quantity" || hasError) return;
+        const id = setTimeout(calculate, AUTO_CALCULATE_DELAY_MS);
+        return () => clearTimeout(id);
+    }, [phase, quantity, hasError, calculate]);
 
     const selectCpu = useCallback((cpuKey: string) => {
         setFlow((f) => (f && f.phase === "plan" ? { ...f, selectedCpu: cpuKey } : f));

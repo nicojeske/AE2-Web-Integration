@@ -5,6 +5,7 @@ import { skipSpecialFormat } from "../api/format";
 import type { GridKey } from "../api/types";
 import { useCpus } from "../state/cpus";
 import { useNetwork } from "../state/network";
+import { useOrder } from "../state/order";
 import { useToast } from "../state/toast";
 import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
@@ -25,6 +26,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
     const { cpus, suppressCompletion, refresh } = useCpus();
     const { selected } = useNetwork();
     const toast = useToast();
+    const { startOrder } = useOrder();
 
     const [now, setNow] = useState(Date.now());
     const [bottleneckOpen, setBottleneckOpen] = useState(false);
@@ -177,9 +179,24 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
 
             <section className="craft-detail__actions">
                 {view.finished ? (
-                    <Button variant="secondary" onClick={onClose}>
-                        Back to jobs
-                    </Button>
+                    <>
+                        <Button variant="secondary" onClick={onClose}>
+                            Back to jobs
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={() =>
+                                startOrder({
+                                    sourceGridKey: gridKey,
+                                    itemid: view.outputItemid,
+                                    itemname: view.outputName,
+                                    quantity: view.outputQty,
+                                })
+                            }
+                        >
+                            Craft again
+                        </Button>
+                    </>
                 ) : (
                     <Button variant="danger" onClick={() => setConfirmOpen(true)}>
                         Cancel job

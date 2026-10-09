@@ -3,6 +3,7 @@ import { useMemo, useState } from "preact/hooks";
 import { formatDuration, formatNumber, formatTimestamp } from "../api/format";
 import { useHistory } from "../state/history";
 import { useNetwork } from "../state/network";
+import { useOrder } from "../state/order";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -24,6 +25,7 @@ const OVERSCAN_ROWS = 6;
 export function History({ onOpen }: HistoryProps) {
     const { entries, loading, error, failedGrids, refresh } = useHistory();
     const { selected, selectedGrid } = useNetwork();
+    const { startOrder } = useOrder();
     // Not persisted (unlike the Browser toolbar's filters) - a simple view toggle scoped to this visit,
     // matching how Statistics' own compare-range is also left as ephemeral local state.
     const [cancelledOnly, setCancelledOnly] = useState(false);
@@ -102,7 +104,7 @@ export function History({ onOpen }: HistoryProps) {
                             <ItemIcon itemid={entry.finalOutput.itemid} name={entry.finalOutput.itemname} size={32} />
                             <div className="history-row__main">
                                 <span className="history-row__item">
-                                    <FormattedText text={entry.finalOutput.itemname} />x
+                                    <FormattedText text={entry.finalOutput.itemname} /> x
                                     {formatNumber(entry.finalOutput.quantity)}
                                     {isAllGrids && (
                                         <span className="history-row__grid-label"> - {entry.gridLabel}</span>
@@ -116,6 +118,21 @@ export function History({ onOpen }: HistoryProps) {
                             <Badge variant={entry.wasCancelled ? "red" : "green"} size="sm">
                                 {entry.wasCancelled ? "Cancelled" : "Completed"}
                             </Badge>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={(e) => {
+                                    e.stopPropagation(); // the row itself opens the detail page
+                                    startOrder({
+                                        sourceGridKey: entry.sourceGridKey,
+                                        itemid: entry.finalOutput.itemid,
+                                        itemname: entry.finalOutput.itemname,
+                                        quantity: entry.finalOutput.quantity,
+                                    });
+                                }}
+                            >
+                                Craft again
+                            </Button>
                         </Card>
                     ))}
                 </section>

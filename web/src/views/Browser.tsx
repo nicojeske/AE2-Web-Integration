@@ -84,7 +84,6 @@ export function Browser({ search }: BrowserProps) {
     const onCraft = (item: BrowserItem) => {
         startOrder({
             sourceGridKey: item.sourceGridKey,
-            gridLabel: item.gridLabel,
             itemid: item.itemid,
             itemname: item.itemname,
         });
