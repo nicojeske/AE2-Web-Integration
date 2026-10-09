@@ -124,6 +124,19 @@ export function cancelJob(gridKey: GridKey, jobId: number): Promise<null> {
     return apiRequest("DELETE", `${grid(gridKey)}/crafting-plans/${jobId}`);
 }
 
+/**
+ * `cancelJob` for a `pagehide` handler: `keepalive` lets the request outlive the page. Not `sendBeacon`,
+ * which can only POST and can't carry the CSRF marker. Fire-and-forget - the page is going away.
+ */
+export function cancelJobOnUnload(gridKey: GridKey, jobId: number): void {
+    void fetch(`api/${grid(gridKey)}/crafting-plans/${jobId}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+        keepalive: true,
+        headers: { "X-AE2-Request": "true" },
+    }).catch(() => {});
+}
+
 /** `cpuKey` undefined lets AE2 pick any free CPU. */
 export function submitJob(gridKey: GridKey, jobId: number, cpuKey?: string): Promise<null> {
     return apiRequest("POST", `${grid(gridKey)}/crafting-plans/${jobId}/submit`, cpuKey ? { cpuKey } : {});

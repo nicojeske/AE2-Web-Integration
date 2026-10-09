@@ -21,7 +21,6 @@ public enum ApiStatus {
     TRACKING_NOT_FOUND(HttpURLConnection.HTTP_NOT_FOUND),
     INVALID_ID(HttpURLConnection.HTTP_NOT_FOUND),
     CPU_NOT_BUSY(HttpURLConnection.HTTP_CONFLICT),
-    ALL_CPU_BUSY(HttpURLConnection.HTTP_CONFLICT),
     AMBIGUOUS_ITEM_KEY(HttpURLConnection.HTTP_CONFLICT),
     JOB_NOT_DONE(HttpURLConnection.HTTP_CONFLICT),
     FAIL(HttpURLConnection.HTTP_CONFLICT),

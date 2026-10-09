@@ -2,16 +2,13 @@ import { ApiError } from "./client";
 
 /**
  * Readable copy for the server's error codes, used anywhere an order/job/craft action can fail -
- * introduced in M4 since this is the first milestone where a denial is common enough (`ALL_CPU_BUSY`,
- * `FAIL` from AE2 itself) to need more than a raw status code in a toast.
+ * since a denial (`FAIL` from AE2 itself, a vanished item) needs more than a raw status code in a toast.
  */
 export function describeApiError(e: unknown, fallback: string): string {
     if (!(e instanceof ApiError)) {
         return e instanceof Error ? e.message : fallback;
     }
     switch (e.status) {
-        case "ALL_CPU_BUSY":
-            return "Every crafting CPU is busy - cancel a job or wait for one to finish";
         case "FAIL":
             // web$submitJob's own message (SubmitCraftingPlan.java) - the only status where the payload is
             // meant to be shown to the user rather than just logged.

@@ -331,7 +331,6 @@ async function handleApi(
             if (!Number.isInteger(quantity) || quantity < 1) return respond(res, "INVALID_QUANTITY", null);
             const found = findItemByKey(body.itemKey);
             if (!found || !found.item.craftable) return respond(res, "ITEM_NOT_FOUND", null);
-            if (grid.idleCpus.length === 0) return respond(res, "ALL_CPU_BUSY", null);
             return respond(res, "OK", { jobID: createJob(grid.key, body.itemKey, quantity).id }, 202);
         }
         case "GET crafting-plans/{id}": {

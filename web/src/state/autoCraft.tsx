@@ -5,7 +5,7 @@
 import type { ComponentChildren } from "preact";
 import { useCallback, useEffect, useRef } from "preact/hooks";
 
-import { cancelJob, submitJob } from "../api/client";
+import { cancelJob, cancelJobOnUnload, submitJob } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
 import { pickDefaultCpu } from "../views/orderModel";
 import { computePlan } from "./craftChain";
@@ -19,7 +19,7 @@ import type { Thresholds } from "./prefs";
 import { useToast } from "./toast";
 import type { GridKey } from "../api/types";
 
-/** Don't retry a failed candidate (simulating plan, no valid CPU, ALL_CPU_BUSY, timeout, ...) for 5
+/** Don't retry a failed candidate (simulating plan, no valid CPU, timeout, ...) for 5
  *  minutes - the milestone's required guard against a retry storm on a plan that keeps simulating. */
 const BACKOFF_MS = 5 * 60_000;
 
@@ -114,10 +114,7 @@ export function AutoCraftProvider({ children }: { children?: ComponentChildren }
     useEffect(() => {
         const onPageHide = () => {
             const pending = pendingRef.current;
-            if (!pending) return;
-            const url = `job?grid=${pending.gridKey}&id=${pending.jobId}&cancel`;
-            if (navigator.sendBeacon) navigator.sendBeacon(url);
-            else void fetch(url, { keepalive: true }).catch(() => {});
+            if (pending) cancelJobOnUnload(pending.gridKey, pending.jobId);
         };
         window.addEventListener("pagehide", onPageHide);
         return () => window.removeEventListener("pagehide", onPageHide);

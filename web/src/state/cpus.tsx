@@ -234,10 +234,9 @@ export function CpusProvider({ children }: { children?: ComponentChildren }) {
                                 cpu.fetchedAt = Date.now();
                                 cpu.progressPct = estimateProgress(detail, cpu.hasTrackingInfo);
                             } catch {
-                                // Transient: e.g. GetCPU.java's craftsPerSec can be a NaN right after a
-                                // job starts, which throws server-side and drops the whole response
-                                // (no error envelope at all) - keep this CPU without fresh detail this
-                                // cycle rather than surfacing an error; the next cycle usually succeeds.
+                                // Transient (SERVER_BUSY, TIMEOUT, the job finishing mid-cycle) - keep
+                                // this CPU without fresh detail this cycle rather than surfacing an
+                                // error; the next cycle usually succeeds.
                             }
                         }
                     }

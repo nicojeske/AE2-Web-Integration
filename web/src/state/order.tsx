@@ -5,7 +5,7 @@ import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { cancelJob, submitJob } from "../api/client";
+import { cancelJob, cancelJobOnUnload, submitJob } from "../api/client";
 import { describeApiError } from "../api/errors";
 import type { GridKey, JobData } from "../api/types";
 import { clampQuantity, pickDefaultCpu } from "../views/orderModel";
@@ -95,15 +95,12 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
         // Intentionally empty deps: this effect's cleanup only ever needs to run once, on unmount.
     }, []);
 
-    // Best-effort cleanup if the tab closes mid-plan - GridData's job map has no idle expiry, so a
-    // computed-but-abandoned plan would otherwise sit there until the server restarts.
+    // Best-effort cleanup if the tab closes mid-plan, so an abandoned plan doesn't hold one of the grid's
+    // few plan slots (CraftingPlanRegistry) until it expires.
     useEffect(() => {
         const onPageHide = () => {
             const current = flowRef.current;
-            if (!current || current.jobId === null) return;
-            const url = `job?grid=${current.gridKey}&id=${current.jobId}&cancel`;
-            if (navigator.sendBeacon) navigator.sendBeacon(url);
-            else void fetch(url, { keepalive: true }).catch(() => {});
+            if (current && current.jobId !== null) cancelJobOnUnload(current.gridKey, current.jobId);
         };
         window.addEventListener("pagehide", onPageHide);
         return () => window.removeEventListener("pagehide", onPageHide);

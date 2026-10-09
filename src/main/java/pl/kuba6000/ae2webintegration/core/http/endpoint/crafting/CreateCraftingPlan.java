@@ -21,7 +21,6 @@ import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAECraftingJob;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
-import pl.kuba6000.ae2webintegration.core.interfaces.ICraftingCPUCluster;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAECraftingGrid;
 
 /**
@@ -39,7 +38,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.service.IAECraftingGrid;
  *           craftable resource does not exist.
  * @response 405 {@link ErrorResponse} METHOD_NOT_ALLOWED: this path does not support the method; Allow lists
  *           supported methods.
- * @response 409 {@link ErrorResponse} ALL_CPU_BUSY or AMBIGUOUS_ITEM_KEY: the request conflicts with current state.
+ * @response 409 {@link ErrorResponse} AMBIGUOUS_ITEM_KEY: the item key matches more than one resource.
  * @response 413 {@link ErrorResponse} REQUEST_TOO_LARGE: the request body exceeds 8192 bytes.
  * @response 415 {@link ErrorResponse} UNSUPPORTED_MEDIA_TYPE: a nonempty request body requires Content-Type:
  *           application/json.
@@ -53,7 +52,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.service.IAECraftingGrid;
  * @responseExample 403 {"status":"NO_PERMISSIONS","data":null}
  * @responseExample 404 {"status":"GRID_NOT_FOUND","data":null}
  * @responseExample 405 {"status":"METHOD_NOT_ALLOWED","data":null}
- * @responseExample 409 {"status":"ALL_CPU_BUSY","data":null}
+ * @responseExample 409 {"status":"AMBIGUOUS_ITEM_KEY","data":null}
  * @responseExample 413 {"status":"REQUEST_TOO_LARGE","data":null}
  * @responseExample 415 {"status":"UNSUPPORTED_MEDIA_TYPE","data":null}
  * @responseExample 429 {"status":"TOO_MANY_REQUESTS","data":null}
@@ -136,21 +135,9 @@ public final class CreateCraftingPlan extends ISyncedRequest {
             deny(ApiStatus.ITEM_NOT_FOUND);
             return;
         }
-        boolean allBusy = true;
-        for (ICraftingCPUCluster cpu : craftingGrid.web$getCPUs()) {
-            if (!cpu.web$isBusy()) {
-                allBusy = false;
-                break;
-            }
-        }
-        if (!allBusy) {
-            Future<IAECraftingJob> job = craftingGrid.web$beginCraftingJob(grid, itemKey, input.quantity);
-
-            int jobID = gridData.addJob(job);
-            respond(HttpURLConnection.HTTP_ACCEPTED, new Response(ApiStatus.OK, new PlanCreated(jobID)));
-        } else {
-            deny(ApiStatus.ALL_CPU_BUSY);
-        }
+        Future<IAECraftingJob> job = craftingGrid.web$beginCraftingJob(grid, itemKey, input.quantity);
+        int jobID = gridData.addJob(job);
+        respond(HttpURLConnection.HTTP_ACCEPTED, new Response(ApiStatus.OK, new PlanCreated(jobID)));
     }
 
 }
