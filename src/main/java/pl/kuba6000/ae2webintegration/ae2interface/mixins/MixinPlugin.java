@@ -65,6 +65,9 @@ public class MixinPlugin implements IMixinConfigPlugin {
         // but mod discovery has not run yet: look for the classes rather than asking Loader.
         if (hasClass("gregtech/api/metatileentity/implementations/MTEMultiBlockBase.class")) {
             mixins.add("GT.MTEMultiBlockBaseProductionMixin");
+            if (hasClass("gregtech/api/logic/ProcessingLogic.class")) {
+                mixins.add("GT.ProcessingLogicConsumptionMixin");
+            }
             if (hasClass("tectech/thing/metaTileEntity/multi/base/TTMultiblockBase.class")) {
                 mixins.add("GT.TTMultiblockBaseProductionMixin");
             }

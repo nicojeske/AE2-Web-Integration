@@ -1,6 +1,7 @@
 package pl.kuba6000.ae2webintegration.ae2interface.gt;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -152,6 +153,7 @@ public class GTProvider implements IGTProvider {
                 : mte.mEUt;
             m.euPerTick = -eut;
             GTStacks.addAll(mte.mOutputItems, mte.mOutputFluids, m.outputs);
+            m.inputs = new ArrayList<>(GTProductionHook.currentInputs(mte));
         }
         m.efficiency = mte.mEfficiency;
         long maxVoltage = mte.getMaxInputVoltage();

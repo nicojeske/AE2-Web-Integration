@@ -13,4 +13,9 @@ public interface AECraftingPatternDetailsMixin extends IAECraftingPatternDetails
     default IAEGenericStack[] web$getCondensedOutputs() {
         return (IAEGenericStack[]) ((ICraftingPatternDetails) (Object) this).getCondensedAEOutputs();
     }
+
+    @Override
+    default IAEGenericStack[] web$getCondensedInputs() {
+        return (IAEGenericStack[]) ((ICraftingPatternDetails) (Object) this).getCondensedAEInputs();
+    }
 }
