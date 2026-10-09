@@ -1,8 +1,8 @@
 package pl.kuba6000.ae2webintegration.core.api.gt;
 
 /**
- * Coarse machine state, derived by the provider. Ordered from "needs attention" to "fine", which is the
- * order the web UI groups machines in - so declaration order is part of the contract.
+ * Coarse machine state, derived by the provider. Ordered problems first, then working, then deliberately off,
+ * which is the order the web UI groups machines in - so declaration order is part of the contract.
  */
 public enum GTMachineStatus {
     /** The multiblock structure is not formed. */
@@ -15,10 +15,10 @@ public enum GTMachineStatus {
     OUTPUT_FULL,
     /** Shut down for any other reason; {@link GTMachineSnapshot#statusDetail} says which. */
     STOPPED,
-    /** Switched off by a player (soft mallet, cover, controller toggle). */
-    DISABLED,
+    /** Running a recipe. */
+    RUNNING,
     /** Formed, enabled and healthy, but no recipe is running. */
     IDLE,
-    /** Running a recipe. */
-    RUNNING
+    /** Switched off by a player (soft mallet, cover, controller toggle). */
+    DISABLED
 }

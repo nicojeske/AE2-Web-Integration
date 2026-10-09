@@ -272,9 +272,9 @@ export interface PrefsResult {
 
 // ---- GregTech hub (`/api/gt/*`) - mirrors docs/gt-hub/phase-1-core.md §5, which is the contract. ----
 
-/** Declaration order is the UI sort order (problems first) - same as `GTMachineStatus.java`. */
+/** Declaration order is the UI sort order (problems, then running, idle, disabled) - same as `GTMachineStatus.java`. */
 export type GTMachineStatus =
-    "STRUCTURE_INCOMPLETE" | "MAINTENANCE" | "NO_POWER" | "OUTPUT_FULL" | "STOPPED" | "DISABLED" | "IDLE" | "RUNNING";
+    "STRUCTURE_INCOMPLETE" | "MAINTENANCE" | "NO_POWER" | "OUTPUT_FULL" | "STOPPED" | "RUNNING" | "IDLE" | "DISABLED";
 
 export const GT_STATUS_ORDER: GTMachineStatus[] = [
     "STRUCTURE_INCOMPLETE",
@@ -282,9 +282,9 @@ export const GT_STATUS_ORDER: GTMachineStatus[] = [
     "NO_POWER",
     "OUTPUT_FULL",
     "STOPPED",
-    "DISABLED",
-    "IDLE",
     "RUNNING",
+    "IDLE",
+    "DISABLED",
 ];
 
 /** Statuses that count towards the sidebar's Machines badge. DISABLED is deliberate, so it isn't one. */

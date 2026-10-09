@@ -76,14 +76,16 @@ output code in `runMachine` was rewritten, so mixins written against 2.7 bytecod
 
 ## 3. Status derivation (`GTStatusMapper`)
 
-Check in this order. The first match wins:
+Check in this order. The first match wins. Power and output shutdowns come before maintenance: GT keeps a
+machine running with some tools missing (at lower efficiency), so leftover maintenance flags must not hide
+the reason it actually stopped. `maintenanceIssues` is filled either way:
 
 | # | condition | status | statusDetail |
 |---|---|---|---|
 | 1 | `!mte.mMachine` | `STRUCTURE_INCOMPLETE` | "Structure incomplete" |
-| 2 | maintenance enabled for this machine && `getRepairStatus() < getIdealStatus()` | `MAINTENANCE` | "Maintenance required" |
-| 3 | `!igte.isAllowedToWork()` && reason ∈ {`POWER_LOSS`, `INSUFFICIENT_DYNAMO`} | `NO_POWER` | `reason.getDisplayString()` |
-| 4 | `!igte.isAllowedToWork()` && reason ∈ {`ITEM_OUTPUT_FAILED`, `FLUID_OUTPUT_FAILED`} | `OUTPUT_FULL` | display string |
+| 2 | `!igte.isAllowedToWork()` && reason ∈ {`POWER_LOSS`, `INSUFFICIENT_DYNAMO`} | `NO_POWER` | `reason.getDisplayString()` |
+| 3 | `!igte.isAllowedToWork()` && reason ∈ {`ITEM_OUTPUT_FAILED`, `FLUID_OUTPUT_FAILED`} | `OUTPUT_FULL` | display string |
+| 4 | maintenance enabled for this machine && `getRepairStatus() < getIdealStatus()`, or stopped with `NO_REPAIR` | `MAINTENANCE` | "Maintenance required" |
 | 5 | `!igte.isAllowedToWork()` && reason is not `NONE` or `CRITICAL_NONE` | `STOPPED` | display string |
 | 6 | `!igte.isAllowedToWork()` | `DISABLED` | "Disabled" |
 | 7 | `mMaxProgresstime > 0` (or `igte.isActive()`) | `RUNNING` | null |

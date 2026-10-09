@@ -52,8 +52,8 @@ public interface IGTProvider {
 | `outputs` | List&lt;GTStack&gt; | outputs of the recipe in progress |
 | `lastSeenMillis`, `loaded` | long, boolean | **set by core** (the provider leaves them alone) |
 
-`GTMachineStatus` lists problems first. **Declaration order is the UI sort order:**
-`STRUCTURE_INCOMPLETE, MAINTENANCE, NO_POWER, OUTPUT_FULL, STOPPED, DISABLED, IDLE, RUNNING`.
+`GTMachineStatus` lists problems first, then running, idle and disabled. **Declaration order is the UI sort order:**
+`STRUCTURE_INCOMPLETE, MAINTENANCE, NO_POWER, OUTPUT_FULL, STOPPED, RUNNING, IDLE, DISABLED`.
 
 `GTStack { String id; String name; long amount; boolean fluid; }`. `id` uses the same format as AE2's
 `IAEKey.web$getItemID()` on 1.7.10: `GameRegistry.findUniqueIdentifierFor(item) + ":" + damage` for
