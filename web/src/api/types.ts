@@ -170,6 +170,17 @@ export interface TrackingHistoryElement {
     timeDone: number;
     wasCancelled: boolean;
     finalOutput: ItemStack;
+    /** Player or web user who submitted the job; null for a machine or when unknown. */
+    requestedBy: string | null;
+}
+
+/** `GET /api/grids/{gridKey}/crafting-history` paging and filter. */
+export interface TrackingHistoryQuery {
+    /** Only jobs finished before this epoch millis - the oldest entry already shown. */
+    before?: number;
+    /** 1-500, server default 100. */
+    limit?: number;
+    itemid?: string;
 }
 
 export interface TrackingTiming {
@@ -211,6 +222,7 @@ export interface TrackingDetail {
     timeStarted: number;
     timeDone: number;
     wasCancelled: boolean;
+    requestedBy: string | null;
     items: TrackingItem[];
     /** Inputs of every pushed pattern, largest first. */
     consumed: ConsumedItem[];

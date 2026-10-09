@@ -101,6 +101,11 @@ public final class ConfigSettings {
             "and a notification is sent (0-1440). Zero disables stall detection." })
         public int stallMinutes = 15;
 
+        @Path("history_retention_days")
+        @Comment({ "Days to keep finished crafting jobs in the history database (1-3650). Without [history]",
+            "only the jobs since the last restart are kept, in memory." })
+        public int historyRetentionDays = 365;
+
     }
 
     public static final class Statistics {
@@ -190,6 +195,7 @@ public final class ConfigSettings {
             throw new IllegalArgumentException("Notification minimums must not be negative");
         }
         requireRange("tracking.stall_minutes", tracking.stallMinutes, 0, 1440);
+        requireRange("tracking.history_retention_days", tracking.historyRetentionDays, 1, 3650);
         requireRange("statistics.sample_interval_minutes", statistics.sampleIntervalMinutes, 1, 60);
         requireRange("statistics.fine_retention_days", statistics.fineRetentionDays, 1, 90);
         requireRange("statistics.hourly_retention_days", statistics.hourlyRetentionDays, 1, 3650);

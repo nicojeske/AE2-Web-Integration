@@ -80,7 +80,9 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
                 outputItemid={detail.finalOutput.itemid}
                 outputName={view.outputName}
                 outputQty={view.outputQty}
-                subtitle={detail.wasCancelled ? "This job was cancelled" : "Crafting history"}
+                subtitle={`${detail.wasCancelled ? "This job was cancelled" : "Crafting history"}${
+                    detail.requestedBy ? ` - requested by ${detail.requestedBy}` : ""
+                }`}
                 statusLabel={view.statusLabel}
                 statusVariant={view.statusVariant}
                 onClose={onClose}

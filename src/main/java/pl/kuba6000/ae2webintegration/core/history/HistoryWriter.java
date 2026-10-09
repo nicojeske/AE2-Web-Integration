@@ -642,6 +642,15 @@ final class HistoryWriter implements Runnable {
             st.execute(
                 "CREATE TABLE IF NOT EXISTS ae2wi_coverage (tbl TEXT NOT NULL, scope TEXT NOT NULL,"
                     + " from_ts TIMESTAMPTZ NOT NULL, to_ts TIMESTAMPTZ NOT NULL, PRIMARY KEY (tbl, scope, from_ts))");
+            st.execute(
+                "CREATE TABLE IF NOT EXISTS ae2wi_craft_job (id BIGSERIAL PRIMARY KEY, grid_key TEXT NOT NULL,"
+                    + " output_itemid TEXT NOT NULL, output_name TEXT NOT NULL, quantity BIGINT NOT NULL,"
+                    + " output_item_key TEXT, started TIMESTAMPTZ NOT NULL, done TIMESTAMPTZ NOT NULL,"
+                    + " cancelled BOOLEAN NOT NULL, requested_by TEXT, detail JSONB NOT NULL)");
+            st.execute("CREATE INDEX IF NOT EXISTS ae2wi_craft_job_grid ON ae2wi_craft_job (grid_key, done DESC)");
+            st.execute(
+                "CREATE INDEX IF NOT EXISTS ae2wi_craft_job_output ON ae2wi_craft_job"
+                    + " (grid_key, output_itemid, done DESC)");
             for (HistoryTable table : HistoryTable.values()) {
                 st.execute(
                     "CREATE TABLE IF NOT EXISTS " + table.sqlName()

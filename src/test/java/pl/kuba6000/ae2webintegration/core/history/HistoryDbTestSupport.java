@@ -64,7 +64,7 @@ public final class HistoryDbTestSupport {
                 for (HistoryTable table : HistoryTable.values()) {
                     st.execute("DROP TABLE IF EXISTS " + table.sqlName() + " CASCADE");
                 }
-                st.execute("DROP TABLE IF EXISTS ae2wi_series, ae2wi_coverage, ae2wi_meta CASCADE");
+                st.execute("DROP TABLE IF EXISTS ae2wi_series, ae2wi_coverage, ae2wi_meta, ae2wi_craft_job CASCADE");
             }
         });
         HistoryDb db = HistoryDb.start(container.getJdbcUrl(), container.getUsername(), container.getPassword());

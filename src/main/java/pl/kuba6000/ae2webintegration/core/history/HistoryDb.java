@@ -63,6 +63,8 @@ public final class HistoryDb {
     /** Open coverage interval per (table, scope): {fromMillis, toMillis}. */
     private final ConcurrentHashMap<String, long[]> coverage = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<HistoryTable, Long> nextPruneMillis = new ConcurrentHashMap<>();
+    /** Server thread only. */
+    private long nextCraftJobPruneMillis;
 
     private HistoryDb(String url, String user, String password) {
         this.url = url;
@@ -256,6 +258,117 @@ public final class HistoryDb {
     void forgetWrittenValues() {
         written.clear();
         writtenNames.clear();
+    }
+
+    // --- Crafting job history ---
+
+    /** A finished crafting job as stored; {@code detail} is the crafting-history detail JSON. */
+    public static final class CraftJob {
+
+        public final long id;
+        public final String outputItemid;
+        public final String outputName;
+        public final long quantity;
+        public final String outputItemKey;
+        public final long started;
+        public final long done;
+        public final boolean cancelled;
+        public final String requestedBy;
+
+        CraftJob(ResultSet rs) throws SQLException {
+            id = rs.getLong("id");
+            outputItemid = rs.getString("output_itemid");
+            outputName = rs.getString("output_name");
+            quantity = rs.getLong("quantity");
+            outputItemKey = rs.getString("output_item_key");
+            started = rs.getTimestamp("started", utc())
+                .getTime();
+            done = rs.getTimestamp("done", utc())
+                .getTime();
+            cancelled = rs.getBoolean("cancelled");
+            requestedBy = rs.getString("requested_by");
+        }
+    }
+
+    private static final String CRAFT_JOB_COLUMNS = "id, output_itemid, output_name, quantity, output_item_key, started,"
+        + " done, cancelled, requested_by";
+
+    /** Queues a finished job for the writer; it shows up in reads once committed. */
+    public void putCraftJob(String gridKey, String outputItemid, String outputName, long quantity, String outputItemKey,
+        long started, long done, boolean cancelled, String requestedBy, String detailJson) {
+        writer.enqueue(new HistoryWriter.TaskOp("craft job", (c, w) -> {
+            try (PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO ae2wi_craft_job (grid_key, output_itemid, output_name, quantity, output_item_key,"
+                    + " started, done, cancelled, requested_by, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)")) {
+                ps.setString(1, gridKey);
+                ps.setString(2, outputItemid);
+                ps.setString(3, outputName);
+                ps.setLong(4, quantity);
+                ps.setString(5, outputItemKey);
+                ps.setTimestamp(6, timestamp(started), utc());
+                ps.setTimestamp(7, timestamp(done), utc());
+                ps.setBoolean(8, cancelled);
+                ps.setString(9, requestedBy);
+                ps.setString(10, detailJson);
+                ps.executeUpdate();
+            }
+        }, null));
+    }
+
+    /**
+     * A grid's finished jobs, newest first: those done before {@code beforeMillis} ({@code Long.MAX_VALUE} for
+     * no bound), optionally only those producing {@code itemid}. Empty when the database is unreachable.
+     */
+    public List<CraftJob> readCraftJobs(String gridKey, String itemid, long beforeMillis, int limit) {
+        return read(c -> {
+            try (PreparedStatement ps = c.prepareStatement(
+                "SELECT " + CRAFT_JOB_COLUMNS
+                    + " FROM ae2wi_craft_job WHERE grid_key = ?"
+                    + (beforeMillis == Long.MAX_VALUE ? "" : " AND done < ?")
+                    + (itemid == null ? "" : " AND output_itemid = ?")
+                    + " ORDER BY done DESC LIMIT ?")) {
+                ps.setQueryTimeout(READ_TIMEOUT_SECONDS);
+                int i = 1;
+                ps.setString(i++, gridKey);
+                if (beforeMillis != Long.MAX_VALUE) ps.setTimestamp(i++, timestamp(beforeMillis), utc());
+                if (itemid != null) ps.setString(i++, itemid);
+                ps.setInt(i, limit);
+                List<CraftJob> jobs = new ArrayList<>();
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) jobs.add(new CraftJob(rs));
+                }
+                return jobs;
+            }
+        }, new ArrayList<>());
+    }
+
+    /** One job's detail JSON, or {@code null} when there is no such job on that grid or no database. */
+    public String readCraftJobDetail(String gridKey, long id) {
+        return read(c -> {
+            try (PreparedStatement ps = c
+                .prepareStatement("SELECT detail::text FROM ae2wi_craft_job WHERE grid_key = ? AND id = ?")) {
+                ps.setQueryTimeout(READ_TIMEOUT_SECONDS);
+                ps.setString(1, gridKey);
+                ps.setLong(2, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getString(1) : null;
+                }
+            }
+        }, null);
+    }
+
+    /** Drops jobs finished before {@code beforeMillis}; rate-limited like {@link #prune}. */
+    public void pruneCraftJobs(long beforeMillis, long nowMillis) {
+        if (nowMillis < nextCraftJobPruneMillis) {
+            return;
+        }
+        nextCraftJobPruneMillis = nowMillis + PRUNE_INTERVAL_MILLIS;
+        writer.enqueue(new HistoryWriter.TaskOp("prune craft jobs", (c, w) -> {
+            try (PreparedStatement ps = c.prepareStatement("DELETE FROM ae2wi_craft_job WHERE done < ?")) {
+                ps.setTimestamp(1, timestamp(beforeMillis), utc());
+                ps.executeUpdate();
+            }
+        }, null));
     }
 
     // --- Reading (HTTP worker threads) ---

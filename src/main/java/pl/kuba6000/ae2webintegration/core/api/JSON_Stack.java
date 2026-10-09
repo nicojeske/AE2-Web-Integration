@@ -44,6 +44,12 @@ public final class JSON_Stack {
         this.itemKey = itemKey;
     }
 
+    /** A stack read back from the history database. */
+    public static @NotNull JSON_Stack stored(@NotNull String itemid, @NotNull String itemname, long quantity,
+        @Nullable String itemKey) {
+        return new JSON_Stack(itemid, itemname, quantity, itemKey);
+    }
+
     public static @Nullable JSON_Stack capture(@NotNull IAEGrid grid, @Nullable IAEGenericStack stack) {
         if (stack == null) return null;
         IAEKey key = stack.web$what();

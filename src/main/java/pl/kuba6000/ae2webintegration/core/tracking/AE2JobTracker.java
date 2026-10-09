@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
@@ -17,10 +18,12 @@ import com.google.common.collect.MapMaker;
 import pl.kuba6000.ae2webintegration.core.AE2Controller;
 import pl.kuba6000.ae2webintegration.core.CoreEngine;
 import pl.kuba6000.ae2webintegration.core.api.DimensionalCoords;
+import pl.kuba6000.ae2webintegration.core.api.JSON_CompactedJobTrackingInfo;
 import pl.kuba6000.ae2webintegration.core.api.JSON_Stack;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.grid.GridData;
 import pl.kuba6000.ae2webintegration.core.grid.GridPersistentData;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAECraftingPatternDetails;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGenericStack;
@@ -32,6 +35,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.IStackList;
 import pl.kuba6000.ae2webintegration.core.notification.NotificationManager;
 import pl.kuba6000.ae2webintegration.core.notification.message.CraftingMessage;
 import pl.kuba6000.ae2webintegration.core.notification.message.StatusMessage;
+import pl.kuba6000.ae2webintegration.core.utils.GSONUtils;
 
 public class AE2JobTracker {
 
@@ -327,8 +331,25 @@ public class AE2JobTracker {
         info.startedWaitingFor.clear();
         info.isDone = true;
         info.timeDone = now;
-        GridData gridData = GridData.getOrCreate(key);
-        gridData.trackingInfo.trackingInfos.put(gridData.trackingInfo.nextFreeTrackingInfoID++, info);
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            JSON_Stack output = info.finalOutput;
+            db.putCraftJob(
+                key.toString(),
+                output.itemid,
+                output.itemname,
+                output.quantity,
+                output.itemKey,
+                info.timeStarted,
+                info.timeDone,
+                info.wasCancelled,
+                info.requestedBy,
+                GSONUtils.GSON_BUILDER.create()
+                    .toJson(new JSON_CompactedJobTrackingInfo(info)));
+        } else {
+            GridData gridData = GridData.getOrCreate(key);
+            gridData.trackingInfo.trackingInfos.put(gridData.trackingInfo.nextFreeTrackingInfoID++, info);
+        }
         long durationMillis = info.timeDone - info.timeStarted;
         long craftedAmount = info.finalOutput.quantity;
         if (!Config.INSTANCE.general.publicMode
@@ -352,6 +373,13 @@ public class AE2JobTracker {
         if (info == null) return;
         info.wasCancelled = true;
         completeCrafting(grid, cpu);
+    }
+
+    /** Drops finished jobs past {@code tracking.history_retention_days} from the history database. */
+    public static void pruneHistory(long nowMillis) {
+        HistoryDb db = HistoryDb.get();
+        if (db == null) return;
+        db.pruneCraftJobs(nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.tracking.historyRetentionDays), nowMillis);
     }
 
     /**

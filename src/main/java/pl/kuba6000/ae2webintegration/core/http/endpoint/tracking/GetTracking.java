@@ -5,9 +5,12 @@ import java.net.HttpURLConnection;
 import org.jetbrains.annotations.NotNull;
 
 import com.github.bsideup.jabel.Desugar;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 
 import pl.kuba6000.ae2webintegration.core.ae2request.async.IAsyncRequest;
 import pl.kuba6000.ae2webintegration.core.api.JSON_CompactedJobTrackingInfo;
+import pl.kuba6000.ae2webintegration.core.history.HistoryDb;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
 import pl.kuba6000.ae2webintegration.core.http.contract.Endpoint;
@@ -19,7 +22,7 @@ import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
  * Reads a crafting history entry.
  *
  * @pathParam gridKey Persistent grid identifier.
- * @pathParam entryId Runtime history entry identifier.
+ * @pathParam entryId History entry identifier from the crafting history list.
  * @response 200 {@link Response} Successful response.
  * @response 400 {@link ErrorResponse} BAD_PARAM: malformed path value, unexpected body, or invalid JSON/input
  *           fields.
@@ -55,23 +58,32 @@ public final class GetTracking extends IAsyncRequest {
     @Desugar
     public record Response(@NotNull ApiStatus status, @NotNull JSON_CompactedJobTrackingInfo data) {}
 
+    /** The stored detail is already this endpoint's JSON; it is passed through rather than re-parsed. */
+    @Desugar
+    private record StoredResponse(@NotNull ApiStatus status, @NotNull JsonElement data) {}
+
     @PathParam("entryId")
-    private int id;
+    private long id;
 
     @Override
     public void handle() {
-        if (grid == null) {
-            // The grid is real - access was checked - it simply has no tracking data at all.
-            deny(ApiStatus.TRACKING_NOT_FOUND);
+        HistoryDb db = HistoryDb.get();
+        if (db != null) {
+            String detail = db.readCraftJobDetail(gridKey.toString(), id);
+            if (detail == null) {
+                deny(ApiStatus.TRACKING_NOT_FOUND);
+                return;
+            }
+            respond(HttpURLConnection.HTTP_OK, new StoredResponse(ApiStatus.OK, new JsonParser().parse(detail)));
             return;
         }
-
-        AE2JobTracker.JobTrackingInfo info = grid.trackingInfo.trackingInfos.get(id);
+        // The grid is real - access was checked - it may simply have no tracking data at all.
+        AE2JobTracker.JobTrackingInfo info = grid == null || id > Integer.MAX_VALUE ? null
+            : grid.trackingInfo.trackingInfos.get((int) id);
         if (info == null) {
             deny(ApiStatus.TRACKING_NOT_FOUND);
             return;
         }
-
         respond(HttpURLConnection.HTTP_OK, new Response(ApiStatus.OK, new JSON_CompactedJobTrackingInfo(info)));
     }
 

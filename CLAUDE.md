@@ -126,7 +126,9 @@ and swaps them into `config/ae2webintegration/icons/` (`Config.iconDirectory()`)
 
 Persistence: `CoreData` (`webdata.json`: accounts, prefs blobs), per-grid settings in `GridSettingsData`
 (the crafting-tracking flag) inside the grid-identity file, and
-runtime-only `grid/GridData` (crafting plans, job tracking - not persisted across restarts).
+runtime-only `grid/GridData` (crafting plans, active job tracking - not persisted across restarts). Finished
+jobs go to the history database's `ae2wi_craft_job` table (detail stored as JSONB, passed through by
+`GetTracking`) when one is configured; without one they stay in `GridData` until restart.
 
 Sampled history (`ItemHistoryStore`, `GTPowerHistoryStore`, `GTProductionLog`) lives only in PostgreSQL, via
 `core/history/HistoryDb` (`history.jdbc_url`; env `AE2WEB_HISTORY_JDBC_URL`/`_DB_USER`/`_DB_PASSWORD` override

@@ -16,8 +16,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.github.bsideup.jabel.Desugar;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
 
 import pl.kuba6000.ae2webintegration.core.api.DimensionalCoords;
+import pl.kuba6000.ae2webintegration.core.grid.GridData;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.tracking.GetTrackingHistory;
 import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAE;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAECraftingPatternDetails;
@@ -55,6 +59,8 @@ class JobProgressTrackingTest extends GridTestScope {
     @AfterEach
     void tearDown() {
         AE2JobTracker.clearActiveJobs();
+        GridData data = GridData.find(CoreEngine.GRID_IDENTITIES.getKey(grid));
+        if (data != null) data.trackingInfo.clearHistory();
         AE2Controller.AE2Interface = previousAe;
     }
 
@@ -156,6 +162,50 @@ class JobProgressTrackingTest extends GridTestScope {
         assertEquals("Steve", AE2JobTracker.findActiveJob(player).requestedBy);
         assertEquals("Alex", AE2JobTracker.findActiveJob(web).requestedBy);
         assertNull(AE2JobTracker.findActiveJob(machine).requestedBy);
+    }
+
+    @Test
+    void historyWithoutADatabasePagesNewestFirst() throws Exception {
+        StableKey key = CoreEngine.GRID_IDENTITIES.getKey(grid);
+        for (int i = 0; i < 3; i++) {
+            PlanCpu cpu = new PlanCpu();
+            AE2JobTracker.addJob(cpu, grid, false, "Steve");
+            AE2JobTracker.findActiveJob(cpu).timeStarted -= 1000L * (3 - i);
+            AE2JobTracker.completeCrafting(grid, cpu);
+            Thread.sleep(2); // distinct completion times
+        }
+
+        JsonArray firstPage = history("grid=" + key + "&limit=2");
+        assertEquals(2, firstPage.size());
+        long oldestShown = firstPage.get(1)
+            .getAsJsonObject()
+            .get("timeDone")
+            .getAsLong();
+        assertEquals(
+            "Steve",
+            firstPage.get(0)
+                .getAsJsonObject()
+                .get("requestedBy")
+                .getAsString());
+        assertEquals(1, history("grid=" + key + "&limit=2&before=" + oldestShown).size());
+        assertEquals(0, history("grid=" + key + "&itemid=nothing:else").size());
+
+        GetTrackingHistory tooMany = new GetTrackingHistory();
+        tooMany.handle(TestGridFixtures.context(TestGridFixtures.OWNER_ID, "grid=" + key + "&limit=501"));
+        assertEquals(
+            "BAD_PARAM",
+            JsonParser.parseString(tooMany.getJSON())
+                .getAsJsonObject()
+                .get("status")
+                .getAsString());
+    }
+
+    private static JsonArray history(String query) {
+        GetTrackingHistory request = new GetTrackingHistory();
+        request.handle(TestGridFixtures.context(TestGridFixtures.OWNER_ID, query));
+        return JsonParser.parseString(request.getJSON())
+            .getAsJsonObject()
+            .getAsJsonArray("data");
     }
 
     private static void update(PlanCpu cpu, Resource resource) {

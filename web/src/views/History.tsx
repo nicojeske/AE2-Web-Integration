@@ -23,7 +23,7 @@ const ROW_HEIGHT_PX = 66;
 const OVERSCAN_ROWS = 6;
 
 export function History({ onOpen }: HistoryProps) {
-    const { entries, loading, error, failedGrids, refresh } = useHistory();
+    const { entries, loading, error, failedGrids, refresh, hasMore, loadingMore, loadMore } = useHistory();
     const { selected, selectedGrid } = useNetwork();
     const { startOrder } = useOrder();
     // Not persisted (unlike the Browser toolbar's filters) - a simple view toggle scoped to this visit,
@@ -110,7 +110,10 @@ export function History({ onOpen }: HistoryProps) {
                                         <span className="history-row__grid-label"> - {entry.gridLabel}</span>
                                     )}
                                 </span>
-                                <span className="history-row__timestamp">{formatTimestamp(entry.timeDone)}</span>
+                                <span className="history-row__timestamp">
+                                    {formatTimestamp(entry.timeDone)}
+                                    {entry.requestedBy && ` - by ${entry.requestedBy}`}
+                                </span>
                             </div>
                             <span className="history-row__duration">
                                 {formatDuration(entry.timeDone - entry.timeStarted)}
@@ -136,6 +139,14 @@ export function History({ onOpen }: HistoryProps) {
                         </Card>
                     ))}
                 </section>
+            )}
+
+            {hasMore && (
+                <div className="history-more">
+                    <Button variant="secondary" onClick={() => void loadMore()} disabled={loadingMore}>
+                        {loadingMore ? "Loading…" : "Load older jobs"}
+                    </Button>
+                </div>
             )}
         </>
     );

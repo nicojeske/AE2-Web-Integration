@@ -169,3 +169,8 @@
 .timeline__tooltip-line {
     display: block;
 }
+
+.history-more {
+    display: flex;
+    justify-content: center;
+}

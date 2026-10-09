@@ -371,6 +371,7 @@ export const mockGrids: MockGrid[] = [
                 timeStarted: serverStart - 3_600_000,
                 timeDone: serverStart - 3_348_000,
                 wasCancelled: false,
+                requestedBy: "Steve",
                 finalOutput: {
                     itemid: "appliedenergistics2:crystal_fluix",
                     itemname: "Fluix Crystal",
@@ -383,6 +384,7 @@ export const mockGrids: MockGrid[] = [
                 timeStarted: serverStart - 7_200_000,
                 timeDone: serverStart - 7_159_000,
                 wasCancelled: true,
+                requestedBy: "Steve",
                 finalOutput: {
                     itemid: "appliedenergistics2:sky_stone_block",
                     itemname: "Sky Stone Block",
@@ -395,6 +397,7 @@ export const mockGrids: MockGrid[] = [
                 timeStarted: serverStart - 1_800_000,
                 timeDone: serverStart - 1_200_000,
                 wasCancelled: false,
+                requestedBy: "Steve",
                 finalOutput: {
                     itemid: "appliedenergistics2:processor_calc",
                     itemname: "Calculation Processor",
@@ -410,6 +413,7 @@ export const mockGrids: MockGrid[] = [
                 timeStarted: serverStart - 10_800_000,
                 timeDone: serverStart - 10_740_000,
                 wasCancelled: false,
+                requestedBy: "Steve",
                 finalOutput: {
                     itemid: "minecraft:redstone",
                     itemname: "Redstone",
@@ -431,6 +435,7 @@ export const mockGrids: MockGrid[] = [
                     timeStarted: serverStart - 3_600_000,
                     timeDone: serverStart - 3_348_000,
                     wasCancelled: false,
+                    requestedBy: "Steve",
                     items: [
                         {
                             itemid: "appliedenergistics2:crystal_fluix",
@@ -491,6 +496,7 @@ export const mockGrids: MockGrid[] = [
                     timeStarted: serverStart - 1_800_000,
                     timeDone: serverStart - 1_200_000,
                     wasCancelled: false,
+                    requestedBy: "Steve",
                     items: [
                         {
                             itemid: "appliedenergistics2:crystal_fluix",
@@ -805,12 +811,14 @@ export function recordTracking(grid: MockGrid, cpu: MockBusyCpu, wasCancelled: b
     });
 
     const id = grid.history.reduce((max, h) => Math.max(max, h.id), 0) + 1;
-    grid.history.push({ id, timeStarted: cpu.startedAt, timeDone, wasCancelled, finalOutput: cpu.output });
+    const requestedBy = cpu.requestedBy ?? null;
+    grid.history.push({ id, timeStarted: cpu.startedAt, timeDone, wasCancelled, finalOutput: cpu.output, requestedBy });
     grid.trackingDetails.set(id, {
         finalOutput: cpu.output,
         timeStarted: cpu.startedAt,
         timeDone,
         wasCancelled,
+        requestedBy,
         items,
         consumed: mockConsumed(cpu, toCompactedItems(cpu)),
         interfaceShare: [

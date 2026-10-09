@@ -1,7 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { formatBytes, formatNumber } from "../api/format";
-import { useHistory } from "../state/history";
 import { useItems } from "../state/items";
 import { useOrder } from "../state/order";
 import { prefsKey, usePrefs } from "../state/prefs";
@@ -29,7 +28,6 @@ export interface OrderModalProps {
  */
 export function OrderModal({ onSubmitted }: OrderModalProps) {
     const order = useOrder();
-    const { entries: history } = useHistory();
     const { items } = useItems();
     const { thresholds, settings } = usePrefs();
     const { flow } = order;
@@ -60,14 +58,7 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
     const job = flow.phase === "plan" || flow.phase === "submitting" ? flow.job : null;
     const bytesTotal = job?.bytesTotal ?? 0;
     const buckets = job ? bucketPlan(job) : null;
-    // Only the plan's own grid - a run elsewhere says little about this network's machines.
-    const estimate = job
-        ? estimateDuration(
-              history.filter((h) => h.sourceGridKey === flow.gridKey),
-              flow.itemid,
-              flow.quantity,
-          )
-        : null;
+    const estimate = job && flow.pastRuns ? estimateDuration(flow.pastRuns, flow.itemid, flow.quantity) : null;
     const elapsedSeconds = Math.max(0, Math.round((now - flow.calcStartedAt) / 1000));
     const busy = flow.phase === "submitting";
     const canStart = flow.phase === "plan" && !!flow.selectedCpu && !job?.isSimulating;

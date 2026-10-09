@@ -5,9 +5,9 @@ import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { cancelJob, cancelJobOnUnload, submitJob } from "../api/client";
+import { cancelJob, cancelJobOnUnload, getTrackingHistory, submitJob } from "../api/client";
 import { describeApiError } from "../api/errors";
-import type { GridKey, JobData } from "../api/types";
+import type { GridKey, JobData, TrackingHistoryElement } from "../api/types";
 import { clampQuantity, pickDefaultCpu } from "../views/orderModel";
 import { computePlan } from "./craftChain";
 import { useCpus } from "./cpus";
@@ -31,7 +31,12 @@ export interface OrderFlow {
     /** `false` while the order modal is showing; `true` once "Preview plan" swaps in the full-page view. */
     previewing: boolean;
     calcStartedAt: number;
+    /** Recent finished runs of this item on this grid, for the duration estimate; null until loaded. */
+    pastRuns: TrackingHistoryElement[] | null;
 }
+
+/** Recent runs fetched per order - enough for `estimateDuration`'s newest five after cancelled ones drop. */
+const PAST_RUNS_FETCHED = 10;
 
 export interface StartOrderItem {
     sourceGridKey: GridKey;
@@ -123,7 +128,16 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
             error: null,
             previewing: false,
             calcStartedAt: 0,
+            pastRuns: null,
         });
+        // No history (untracked grid, no database yet) just means no estimate.
+        getTrackingHistory(item.sourceGridKey, { itemid: item.itemid, limit: PAST_RUNS_FETCHED })
+            .then((runs) =>
+                setFlow((f) =>
+                    f && f.gridKey === item.sourceGridKey && f.itemid === item.itemid ? { ...f, pastRuns: runs } : f,
+                ),
+            )
+            .catch(() => {});
     }, []);
 
     const setQuantity = useCallback(

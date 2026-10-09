@@ -27,7 +27,15 @@ export interface HistoryContextValue {
     /** Grid labels that failed during an All-Grids fan-out, so one bad grid doesn't blank the page. */
     failedGrids: string[];
     refresh: () => Promise<void>;
+    /** The server has older entries than the ones loaded (some grid returned a full page). */
+    hasMore: boolean;
+    loadingMore: boolean;
+    /** Appends the page of entries finished before the oldest one loaded. */
+    loadMore: () => Promise<void>;
 }
+
+/** Entries per grid per request. */
+const PAGE_SIZE = 100;
 
 const HistoryContext = createContext<HistoryContextValue | null>(null);
 
@@ -43,44 +51,68 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
     const [error, setError] = useState<string | null>(null);
     const [failedGrids, setFailedGrids] = useState<string[]>([]);
 
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+
+    /** One page from every selected grid, finished before `before` - merged newest first. */
+    const fetchPage = useCallback(
+        async (before: number | undefined) => {
+            const targets = selected === "all" ? grids : selectedGrid ? [selectedGrid] : [];
+            const rows: HistoryEntry[] = [];
+            const failed: string[] = [];
+            let full = false;
+            for (const grid of targets) {
+                try {
+                    const page = await getTrackingHistory(grid.key, { before, limit: PAGE_SIZE });
+                    full ||= page.length === PAGE_SIZE;
+                    rows.push(...toHistoryEntries(page, grid.key, gridOptionLabel(grid, grids)));
+                } catch (e) {
+                    // One bad grid shouldn't blank the page in All-Grids mode; a single grid reports it.
+                    if (selected !== "all") throw e;
+                    failed.push(gridOptionLabel(grid, grids));
+                }
+            }
+            rows.sort((a, b) => b.timeDone - a.timeDone);
+            return { rows, failed, full };
+        },
+        [grids, selected, selectedGrid],
+    );
+
     const refresh = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            let collected: HistoryEntry[];
-            if (selected === "all") {
-                const targets = grids;
-                const rows: HistoryEntry[] = [];
-                const failed: string[] = [];
-                for (const grid of targets) {
-                    try {
-                        const history = await getTrackingHistory(grid.key);
-                        rows.push(...toHistoryEntries(history, grid.key, gridOptionLabel(grid, grids)));
-                    } catch {
-                        failed.push(gridOptionLabel(grid, grids));
-                    }
-                }
-                setFailedGrids(failed);
-                collected = rows;
-            } else if (selectedGrid) {
-                setFailedGrids([]);
-                const history = await getTrackingHistory(selectedGrid.key);
-                collected = toHistoryEntries(history, selectedGrid.key, gridOptionLabel(selectedGrid, grids));
-            } else {
-                // A persisted selection can name a stale grid key - not fetchable (mirrors
-                // `state/items.tsx`).
-                setFailedGrids([]);
-                collected = [];
-            }
-            collected.sort((a, b) => b.timeDone - a.timeDone);
-            setEntries(collected);
+            const page = await fetchPage(undefined);
+            setEntries(page.rows);
+            setFailedGrids(page.failed);
+            setHasMore(page.full);
         } catch (e) {
             setError(e instanceof ApiError ? e.status : e instanceof Error ? e.message : String(e));
             setEntries([]);
+            setHasMore(false);
         } finally {
             setLoading(false);
         }
-    }, [grids, selected, selectedGrid]);
+    }, [fetchPage]);
+
+    const entriesRef = useRef(entries);
+    entriesRef.current = entries;
+    const loadMore = useCallback(async () => {
+        const current = entriesRef.current;
+        const oldest = current[current.length - 1];
+        if (!oldest) return;
+        setLoadingMore(true);
+        try {
+            const page = await fetchPage(oldest.timeDone);
+            const known = new Set(current.map((e) => e.key));
+            setEntries([...current, ...page.rows.filter((r) => !known.has(r.key))]);
+            setHasMore(page.full);
+        } catch {
+            setHasMore(false);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [fetchPage]);
 
     useEffect(() => {
         void refresh();
@@ -98,8 +130,8 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
     }, [busyCount, refresh]);
 
     const value = useMemo<HistoryContextValue>(
-        () => ({ entries, loading, error, failedGrids, refresh }),
-        [entries, loading, error, failedGrids, refresh],
+        () => ({ entries, loading, error, failedGrids, refresh, hasMore, loadingMore, loadMore }),
+        [entries, loading, error, failedGrids, refresh, hasMore, loadingMore, loadMore],
     );
 
     return <HistoryContext.Provider value={value}>{children}</HistoryContext.Provider>;

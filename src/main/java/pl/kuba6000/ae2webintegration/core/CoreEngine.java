@@ -246,6 +246,7 @@ public class CoreEngine {
             return;
         }
         ItemHistoryStore.prune(System.currentTimeMillis());
+        AE2JobTracker.pruneHistory(System.currentTimeMillis());
         historyFlushScheduled = true;
         nextHistoryFlushNanos = nowNanos + HISTORY_FLUSH_INTERVAL_NANOS;
     }

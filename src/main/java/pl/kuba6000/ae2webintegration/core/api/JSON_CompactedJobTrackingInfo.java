@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEKey;
 import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
@@ -176,6 +177,8 @@ public class JSON_CompactedJobTrackingInfo {
      * @example false
      */
     public boolean wasCancelled;
+    /** Player or web user who submitted the job; null for a machine or when unknown. */
+    public @Nullable String requestedBy;
     /** Per-resource crafting measurements. */
     public ArrayList<CompactedTrackingGSONItem> items = new ArrayList<>();
     /** Inputs of every pushed pattern, largest amount first. */
@@ -216,6 +219,7 @@ public class JSON_CompactedJobTrackingInfo {
         this.timeDone = info.timeDone;
         long elapsed = this.timeDone - this.timeStarted;
         this.wasCancelled = info.wasCancelled;
+        this.requestedBy = info.requestedBy;
         for (Map.Entry<IAEKey, Long> entry : info.timeSpentOn.entrySet()) {
             IAEKey key = entry.getKey();
             long spent = entry.getValue();

@@ -407,8 +407,19 @@ async function handleApi(
             mockJobs.delete(jobId);
             return ok(res, null);
         }
-        case "GET crafting-history":
-            return ok(res, grid.history);
+        case "GET crafting-history": {
+            // GetTrackingHistory.java: newest first, `before`/`itemid` filters, `limit` 1-500 (default 100).
+            const params = new URL(req.url ?? "", "http://mock").searchParams;
+            const before = Number(params.get("before") ?? Infinity);
+            const limit = Number(params.get("limit") ?? 100);
+            const itemid = params.get("itemid");
+            if (!Number.isInteger(limit) || limit < 1 || limit > 500) return respond(res, "BAD_PARAM", null);
+            const rows = grid.history
+                .filter((h) => h.timeDone < before && (itemid === null || h.finalOutput.itemid === itemid))
+                .sort((a, b) => b.timeDone - a.timeDone)
+                .slice(0, limit);
+            return ok(res, rows);
+        }
         case "GET crafting-history/{id}": {
             const detail = grid.trackingDetails.get(Number(id));
             return detail ? ok(res, detail) : respond(res, "TRACKING_NOT_FOUND", null);

@@ -21,6 +21,7 @@ import type {
     StatsRange,
     TrackingDetail,
     TrackingHistoryElement,
+    TrackingHistoryQuery,
 } from "./types";
 
 /** Thrown for any envelope whose `status` isn't `"OK"`. `status` is the server's error code. */
@@ -142,8 +143,8 @@ export function submitJob(gridKey: GridKey, jobId: number, cpuKey?: string): Pro
     return apiRequest("POST", `${grid(gridKey)}/crafting-plans/${jobId}/submit`, cpuKey ? { cpuKey } : {});
 }
 
-export function getTrackingHistory(gridKey: GridKey): Promise<TrackingHistoryElement[]> {
-    return apiGet(`${grid(gridKey)}/crafting-history`);
+export function getTrackingHistory(gridKey: GridKey, q: TrackingHistoryQuery = {}): Promise<TrackingHistoryElement[]> {
+    return apiGet(`${grid(gridKey)}/crafting-history${query({ ...q })}`);
 }
 
 export function getTracking(gridKey: GridKey, id: number): Promise<TrackingDetail> {

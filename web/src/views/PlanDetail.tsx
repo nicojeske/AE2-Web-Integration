@@ -3,7 +3,6 @@ import { useMemo, useState } from "preact/hooks";
 import { formatBytes, formatNumber } from "../api/format";
 import type { JobPlanItem } from "../api/types";
 import { useCpus } from "../state/cpus";
-import { useHistory } from "../state/history";
 import { useOrder } from "../state/order";
 import { usePrefs } from "../state/prefs";
 import { Button } from "../ui/Button";
@@ -42,7 +41,6 @@ const COLUMNS: { key: PlanSortKey; label: string }[] = [
 export function PlanDetail({ onSubmitted }: PlanDetailProps) {
     const order = useOrder();
     const { cpus } = useCpus();
-    const { entries } = useHistory();
     const { settings } = usePrefs();
     const { flow } = order;
 
@@ -70,11 +68,7 @@ export function PlanDetail({ onSubmitted }: PlanDetailProps) {
 
     const buckets = bucketPlan(job);
     const steps = (job.plan ?? []).reduce((sum, r) => sum + r.steps, 0);
-    const estimate = estimateDuration(
-        entries.filter((h) => h.sourceGridKey === flow.gridKey),
-        flow.itemid,
-        flow.quantity,
-    );
+    const estimate = flow.pastRuns ? estimateDuration(flow.pastRuns, flow.itemid, flow.quantity) : null;
     const fmt = (n: number) => formatNumber(n, settings.numberFormat);
 
     // The CPU list keeps polling while this page is open, so re-check the selected CPU is still valid
