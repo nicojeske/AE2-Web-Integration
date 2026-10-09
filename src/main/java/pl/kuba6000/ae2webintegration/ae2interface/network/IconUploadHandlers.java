@@ -8,7 +8,6 @@ import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import pl.kuba6000.ae2webintegration.ae2interface.network.IconUploadMessages.Status;
-import pl.kuba6000.ae2webintegration.core.commands.CommandBootstrap;
 import pl.kuba6000.ae2webintegration.core.icons.IconUpload;
 
 /**
@@ -16,6 +15,12 @@ import pl.kuba6000.ae2webintegration.core.icons.IconUpload;
  * the sender's UUID; in 1.7.10 these run on the network thread, which is fine since IconUpload never blocks on disk.
  */
 public final class IconUploadHandlers {
+
+    /**
+     * Op level needed to upload: that of /give and the other cheat commands. Uploading only replaces the web
+     * terminal's icons, so it doesn't need the full admin level 4, which many servers' ops don't have.
+     */
+    private static final int UPLOAD_PERMISSION_LEVEL = 2;
 
     /** Set by the client proxy; kept as a hook so this class never references client-only code. */
     public static volatile Consumer<Status> clientStatusListener = status -> {};
@@ -32,7 +37,7 @@ public final class IconUploadHandlers {
         @Override
         public IMessage onMessage(IconUploadMessages.Begin message, MessageContext ctx) {
             EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-            if (!player.canCommandSenderUseCommand(CommandBootstrap.ADMIN_PERMISSION_LEVEL, "ae2webicons")) {
+            if (!player.canCommandSenderUseCommand(UPLOAD_PERMISSION_LEVEL, "ae2webicons")) {
                 return new Status(Status.Kind.REJECTED, "Only server operators can upload icons.");
             }
             String error = IconUpload.get()
