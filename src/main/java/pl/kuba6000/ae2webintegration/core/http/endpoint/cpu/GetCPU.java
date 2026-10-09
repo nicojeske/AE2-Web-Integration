@@ -2,7 +2,9 @@ package pl.kuba6000.ae2webintegration.core.http.endpoint.cpu;
 
 import java.net.HttpURLConnection;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -13,7 +15,9 @@ import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.AE2Controller;
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.ISyncedRequest;
+import pl.kuba6000.ae2webintegration.core.api.DimensionalCoords;
 import pl.kuba6000.ae2webintegration.core.api.JSON_CompactedItem;
+import pl.kuba6000.ae2webintegration.core.api.JSON_CompactedJobTrackingInfo;
 import pl.kuba6000.ae2webintegration.core.api.JSON_Stack;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
@@ -109,6 +113,32 @@ public final class GetCPU extends ISyncedRequest {
          * @example 10000
          */
         public long timeElapsed = 0L;
+        /** Inputs taken by the patterns pushed so far, largest first; empty when tracking is unavailable. */
+        public ArrayList<JSON_CompactedJobTrackingInfo.ConsumedGSONItem> consumed = new ArrayList<>();
+        /** Pattern providers still processing pushed patterns, longest-running first. */
+        public ArrayList<WorkingMachine> machines = new ArrayList<>();
+    }
+
+    /** Pattern providers sharing a display name that hold unfinished pushed patterns of this job. */
+    @SuppressWarnings("unused") // Gson reads the fields reflectively.
+    public static class WorkingMachine {
+
+        /**
+         * Pattern provider display name, usually the machine it feeds.
+         *
+         * @example Large Chemical Reactor
+         */
+        public String name;
+        /** Locations of pattern providers sharing this display name. */
+        public ArrayList<DimensionalCoords> location;
+        /**
+         * When these providers started their current work, in Unix epoch milliseconds.
+         *
+         * @example 1700000000000
+         */
+        public long since;
+        /** Resources the providers are still expected to return. */
+        public ArrayList<JSON_CompactedJobTrackingInfo.ResourceGSON> items = new ArrayList<>();
     }
 
     @PathParam("cpuKey")
@@ -165,6 +195,21 @@ public final class GetCPU extends ISyncedRequest {
                             / (compactedItem.timeSpentCrafting / (double) TimeUnit.SECONDS.toMillis(1))
                         : 0d;
                 }
+                clusterData.consumed = JSON_CompactedJobTrackingInfo.ConsumedGSONItem.listOf(trackingInfo);
+                for (Map.Entry<AE2JobTracker.AEInterface, HashSet<IAEKey>> entry : trackingInfo.interfaceWaitingFor
+                    .entrySet()) {
+                    WorkingMachine machine = new WorkingMachine();
+                    machine.name = entry.getKey().name;
+                    machine.location = new ArrayList<>(entry.getKey().location);
+                    Collections.sort(machine.location);
+                    machine.since = trackingInfo.interfaceStarted
+                        .getOrDefault(entry.getKey(), trackingInfo.timeStarted);
+                    for (IAEKey key : entry.getValue()) {
+                        machine.items.add(new JSON_CompactedJobTrackingInfo.ResourceGSON(key));
+                    }
+                    clusterData.machines.add(machine);
+                }
+                clusterData.machines.sort((m1, m2) -> Long.compare(m1.since, m2.since));
             }
 
             clusterData.items = new ArrayList<>(prep.values());

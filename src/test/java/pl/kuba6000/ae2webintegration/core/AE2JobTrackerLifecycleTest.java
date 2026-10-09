@@ -1,6 +1,7 @@
 package pl.kuba6000.ae2webintegration.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -28,6 +29,7 @@ import com.google.gson.JsonParser;
 
 import pl.kuba6000.ae2webintegration.core.api.AEApi.AEControllerState;
 import pl.kuba6000.ae2webintegration.core.api.DimensionalCoords;
+import pl.kuba6000.ae2webintegration.core.api.JSON_CompactedJobTrackingInfo;
 import pl.kuba6000.ae2webintegration.core.grid.GridAccess;
 import pl.kuba6000.ae2webintegration.core.grid.GridData;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.crafting.GetCraftingPlan;
@@ -433,6 +435,40 @@ class AE2JobTrackerLifecycleTest extends GridTestScope {
     }
 
     @Test
+    void pushedPatternsSumTheirInputsEvenWithoutAKnownProvider() {
+        EqualCpu cpu = new EqualCpu();
+        AE2JobTracker.addJob(cpu, grid, false);
+        Resource plate = new Resource(1, 0);
+        Resource ingot = new Resource(2, 0);
+        Resource gear = new Resource(3, 0);
+        DimensionalCoords location = new DimensionalCoords(0, 1, 2, 3);
+
+        push(cpu, "Bender", location, plate, stack(ingot, 1));
+        push(cpu, "Bender", location, plate, stack(ingot, 1));
+        push(cpu, null, null, gear, stack(plate, 4), stack(ingot, 0));
+        update(cpu, plate, 2);
+        update(cpu, plate, 0);
+
+        AE2JobTracker.JobTrackingInfo info = AE2JobTracker.findActiveJob(cpu);
+        assertEquals(2L, info.consumedTotal.get(ingot));
+        assertEquals(4L, info.consumedTotal.get(plate));
+        assertEquals(2, info.consumedTotal.size());
+
+        JSON_CompactedJobTrackingInfo.ConsumedGSONItem[] consumed = JSON_CompactedJobTrackingInfo.ConsumedGSONItem
+            .listOf(info)
+            .toArray(new JSON_CompactedJobTrackingInfo.ConsumedGSONItem[0]);
+        assertEquals(4L, consumed[0].amount);
+        assertTrue(consumed[0].alsoCrafted);
+        assertEquals(2L, consumed[1].amount);
+        assertFalse(consumed[1].alsoCrafted);
+
+        AE2JobTracker.AEInterface bender = info.interfaceShare.keySet()
+            .iterator()
+            .next();
+        assertEquals(Collections.singleton(plate), bender.produced);
+    }
+
+    @Test
     void providersShareNamesAndLocationsButFinishOnlyAfterAllTheirOutputsArrive() {
         EqualCpu cpu = new EqualCpu();
         AE2JobTracker.addJob(cpu, grid, false);
@@ -482,8 +518,9 @@ class AE2JobTrackerLifecycleTest extends GridTestScope {
         assertEquals(2, grouped.location.size());
     }
 
-    private static void push(EqualCpu cpu, String name, DimensionalCoords location, Resource resource) {
-        IPatternProviderViewable provider = new IPatternProviderViewable() {
+    private static void push(EqualCpu cpu, String name, DimensionalCoords location, Resource resource,
+        IAEGenericStack... inputs) {
+        IPatternProviderViewable provider = name == null ? null : new IPatternProviderViewable() {
 
             @Override
             public String web$getName() {
@@ -495,7 +532,24 @@ class AE2JobTrackerLifecycleTest extends GridTestScope {
                 return location;
             }
         };
-        IAEGenericStack output = new IAEGenericStack() {
+        IAEGenericStack output = stack(resource, 1);
+        IAECraftingPatternDetails pattern = new IAECraftingPatternDetails() {
+
+            @Override
+            public IAEGenericStack[] web$getCondensedOutputs() {
+                return new IAEGenericStack[] { output };
+            }
+
+            @Override
+            public IAEGenericStack[] web$getCondensedInputs() {
+                return inputs;
+            }
+        };
+        AE2JobTracker.pushedPattern(cpu, provider, pattern);
+    }
+
+    private static IAEGenericStack stack(Resource resource, long amount) {
+        return new IAEGenericStack() {
 
             @Override
             public @NotNull IAEKey web$what() {
@@ -504,12 +558,10 @@ class AE2JobTrackerLifecycleTest extends GridTestScope {
 
             @Override
             public long web$amount() {
-                return 1;
+                return amount;
             }
 
         };
-        IAECraftingPatternDetails pattern = () -> new IAEGenericStack[] { output };
-        AE2JobTracker.pushedPattern(cpu, provider, pattern);
     }
 
     private static void update(EqualCpu cpu, Resource resource, long remaining) {

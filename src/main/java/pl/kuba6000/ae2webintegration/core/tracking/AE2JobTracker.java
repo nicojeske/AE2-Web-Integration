@@ -36,6 +36,8 @@ public class AE2JobTracker {
 
         public String name;
         public HashSet<DimensionalCoords> location = new HashSet<>();
+        /** Every resource a pattern pushed to a provider of this name was meant to produce. */
+        public HashSet<IAEKey> produced = new HashSet<>();
 
         AEInterface(String name) {
             this.name = name;
@@ -62,6 +64,8 @@ public class AE2JobTracker {
         public HashMap<IAEKey, Long> startedWaitingFor = new HashMap<>();
         public HashMap<IAEKey, Long> craftedTotal = new HashMap<>();
         public HashMap<IAEKey, Long> waitingFor = new HashMap<>();
+        /** Inputs of every pushed pattern, summed per resource. */
+        public HashMap<IAEKey, Long> consumedTotal = new HashMap<>();
         public HashMap<IAEKey, ArrayList<Pair<Long, Long>>> itemShare = new HashMap<>();
         public HashMap<AEInterface, ArrayList<Pair<Long, Long>>> interfaceShare = new HashMap<>();
         public HashMap<AEInterface, Long> interfaceStarted = new HashMap<>();
@@ -192,6 +196,14 @@ public class AE2JobTracker {
         IAECraftingPatternDetails details) {
         JobTrackingInfo info = trackingInfoMap.get(cpu);
         if (info == null) return;
+        for (IAEGenericStack in : details.web$getCondensedInputs()) {
+            long amount = in.web$amount();
+            if (amount <= 0L) continue;
+            IAEKey inKey = in.web$what();
+            Long previous = info.consumedTotal.get(inKey);
+            if (previous == null) info.consumedTotal.put(inKey.web$copyIdentity(), amount);
+            else info.consumedTotal.put(inKey, previous + amount);
+        }
         if (provider != null) {
             String name = provider.web$getName();
             if (name == null) name = "[NULL]";
@@ -207,6 +219,7 @@ public class AE2JobTracker {
                 info.interfaceWaitingForLookup.computeIfAbsent(outKey, k -> new HashMap<>())
                     .putIfAbsent(aeInterface, itemList);
                 itemList.add(outKey);
+                aeInterface.produced.add(outKey);
             }
         }
     }

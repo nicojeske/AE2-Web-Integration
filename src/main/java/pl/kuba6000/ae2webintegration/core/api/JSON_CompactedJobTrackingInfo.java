@@ -88,6 +88,74 @@ public class JSON_CompactedJobTrackingInfo {
         public ArrayList<timingClass> timings = new ArrayList<>();
     }
 
+    /** A resource identity with its display name. */
+    public static class ResourceGSON {
+
+        /**
+         * Registry resource identifier.
+         *
+         * @example minecraft:iron_ingot
+         */
+        public String itemid;
+        /**
+         * Resource display name.
+         *
+         * @example Iron Ingot
+         */
+        public String itemname;
+
+        public ResourceGSON(IAEKey key) {
+            this.itemid = key.web$getItemID();
+            this.itemname = key.web$getDisplayName();
+        }
+    }
+
+    /** Total amount of one resource taken by the patterns this job pushed. */
+    public static class ConsumedGSONItem {
+
+        /**
+         * Registry resource identifier.
+         *
+         * @example minecraft:iron_ore
+         */
+        public String itemid;
+        /**
+         * Resource display name.
+         *
+         * @example Iron Ore
+         */
+        public String itemname;
+        /**
+         * Resource units taken by pushed patterns.
+         *
+         * @example 64
+         */
+        public long amount;
+        /**
+         * Whether this job also crafted the resource, making it an intermediate rather than a raw input.
+         *
+         * @example false
+         */
+        public boolean alsoCrafted;
+
+        /** Every input {@code info} recorded, largest amount first. */
+        public static ArrayList<ConsumedGSONItem> listOf(AE2JobTracker.JobTrackingInfo info) {
+            ArrayList<ConsumedGSONItem> list = new ArrayList<>();
+            for (Map.Entry<IAEKey, Long> entry : info.consumedTotal.entrySet()) {
+                ConsumedGSONItem item = new ConsumedGSONItem();
+                item.itemid = entry.getKey()
+                    .web$getItemID();
+                item.itemname = entry.getKey()
+                    .web$getDisplayName();
+                item.amount = entry.getValue();
+                item.alsoCrafted = info.timeSpentOn.containsKey(entry.getKey());
+                list.add(item);
+            }
+            list.sort((i1, i2) -> Long.compare(i2.amount, i1.amount));
+            return list;
+        }
+    }
+
     /** Detached snapshot of the final crafting output. */
     public @NotNull JSON_Stack finalOutput;
     /**
@@ -110,6 +178,8 @@ public class JSON_CompactedJobTrackingInfo {
     public boolean wasCancelled;
     /** Per-resource crafting measurements. */
     public ArrayList<CompactedTrackingGSONItem> items = new ArrayList<>();
+    /** Inputs of every pushed pattern, largest amount first. */
+    public ArrayList<ConsumedGSONItem> consumed;
 
     /** Processing measurements combined for pattern providers sharing a display name. */
     public static class AEInterfaceGSON {
@@ -132,6 +202,9 @@ public class JSON_CompactedJobTrackingInfo {
 
         /** Locations of pattern providers sharing this display name. */
         public HashSet<DimensionalCoords> location = new HashSet<>();
+
+        /** Resources the patterns pushed to these providers produce. */
+        public ArrayList<ResourceGSON> outputs = new ArrayList<>();
     }
 
     /** Processing measurements grouped by pattern provider name. */
@@ -164,10 +237,14 @@ public class JSON_CompactedJobTrackingInfo {
             items.add(item);
         }
         items.sort((i1, i2) -> Double.compare(i2.shareInCraftingTime, i1.shareInCraftingTime));
+        consumed = ConsumedGSONItem.listOf(info);
         for (Map.Entry<AE2JobTracker.AEInterface, ArrayList<Pair<Long, Long>>> entry : info.interfaceShare.entrySet()) {
             AEInterfaceGSON interfaceGSON = new AEInterfaceGSON();
             interfaceGSON.name = entry.getKey().name;
             interfaceGSON.location = entry.getKey().location;
+            for (IAEKey output : entry.getKey().produced) {
+                interfaceGSON.outputs.add(new ResourceGSON(output));
+            }
             for (Pair<Long, Long> longLongPair : entry.getValue()) {
                 interfaceGSON.timings.add(new timingClass(longLongPair.getKey(), longLongPair.getValue()));
             }
