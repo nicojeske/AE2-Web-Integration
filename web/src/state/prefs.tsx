@@ -84,12 +84,18 @@ export interface MachineFilters {
     /** `dimName` (or `"dim <n>"` when a machine has none), or `null` for every dimension. */
     dimension: string | null;
     showUnloaded: boolean;
+    /**
+     * Whether a passive machine in a problem state shows in that status group; `false` keeps it in the
+     * Passive group whatever its status.
+     */
+    passiveProblems: boolean;
 }
 
 export const DEFAULT_MACHINE_FILTERS: MachineFilters = {
     statuses: [],
     dimension: null,
     showUnloaded: true,
+    passiveProblems: true,
 };
 
 /**

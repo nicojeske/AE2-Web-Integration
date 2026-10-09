@@ -23,6 +23,7 @@ import { formatGTAmount, formatGTPerHour, gtRangeOptions } from "./gtModel";
 import { DEFAULT_CUSTOM_MINUTES, pointTimestamps } from "./statsModel";
 
 type GroupBy = "item" | "machine";
+type Kind = "all" | "items" | "fluids";
 
 const RANGES = gtRangeOptions(["1h", "6h", "24h", "7d", "30d", "90d", "custom"]);
 const GROUP_OPTIONS: SegmentedOption<GroupBy>[] = [
@@ -33,7 +34,36 @@ const FLOW_OPTIONS: SegmentedOption<GTFlow>[] = [
     { value: "produced", label: "Produced" },
     { value: "consumed", label: "Consumed" },
 ];
+const KIND_OPTIONS: SegmentedOption<Kind>[] = [
+    { value: "all", label: "All" },
+    { value: "items", label: "Items" },
+    { value: "fluids", label: "Fluids" },
+];
+const SEARCH_PLACEHOLDERS: Record<Kind, string> = {
+    all: "Search items and fluids...",
+    items: "Search items...",
+    fluids: "Search fluids...",
+};
 const HOUR = 3_600_000;
+
+/**
+ * Only the rows of one kind. Machine rows mix items and fluids, so each keeps just the matching entries of
+ * its breakdown, with its totals summed again from them; a machine left with none drops out.
+ */
+function filterByKind(rows: GTProductionEntry[], groupBy: GroupBy, kind: Kind): GTProductionEntry[] {
+    if (kind === "all") return rows;
+    const wanted = (e: GTProductionEntry) => e.fluid === (kind === "fluids");
+    if (groupBy === "item") return rows.filter(wanted);
+    return rows
+        .map((row) => {
+            const breakdown = row.breakdown.filter(wanted);
+            const total = breakdown.reduce((sum, b) => sum + b.total, 0);
+            const perHour = breakdown.reduce((sum, b) => sum + b.perHour, 0);
+            return { ...row, breakdown, total, perHour };
+        })
+        .filter((row) => row.breakdown.length > 0)
+        .sort((a, b) => b.total - a.total);
+}
 
 export interface ProductionProps {
     onOpenMachine: (id: string) => void;
@@ -47,6 +77,7 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
     const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
     const [groupBy, setGroupBy] = useState<GroupBy>("item");
     const [flow, setFlow] = useState<GTFlow>("produced");
+    const [kind, setKind] = useState<Kind>("all");
     const [search, setSearch] = useState("");
     const minutes = range === "custom" ? customMinutes : undefined;
     const production = useGTPoll(
@@ -63,10 +94,11 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
                 {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
                 <SegmentedControl<GroupBy> options={GROUP_OPTIONS} value={groupBy} onChange={setGroupBy} />
                 <SegmentedControl<GTFlow> options={FLOW_OPTIONS} value={flow} onChange={setFlow} />
+                <SegmentedControl<Kind> options={KIND_OPTIONS} value={kind} onChange={setKind} />
                 <input
                     type="text"
                     className="gt-input production__search"
-                    placeholder={groupBy === "item" ? "Search items and fluids..." : "Search machines..."}
+                    placeholder={groupBy === "item" ? SEARCH_PLACEHOLDERS[kind] : "Search machines..."}
                     value={search}
                     onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
                 />
@@ -77,6 +109,7 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
                         data={data}
                         range={range}
                         minutes={minutes}
+                        kind={kind}
                         search={search}
                         onOpenMachine={onOpenMachine}
                         onOpenStats={onOpenStats}
@@ -91,6 +124,7 @@ function ProductionTable({
     data,
     range,
     minutes,
+    kind,
     search,
     onOpenMachine,
     onOpenStats,
@@ -98,21 +132,23 @@ function ProductionTable({
     data: GTProduction;
     range: GTRange;
     minutes: number | undefined;
+    kind: Kind;
     search: string;
     onOpenMachine: (id: string) => void;
     onOpenStats: () => void;
 }) {
     const { settings } = usePrefs();
     const [expanded, setExpanded] = useState<string | null>(null);
+    const kindRows = useMemo(() => filterByKind(data.rows, data.groupBy, kind), [data.rows, data.groupBy, kind]);
     const rows = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return q ? data.rows.filter((r) => r.name.toLowerCase().includes(q) || r.key.includes(q)) : data.rows;
-    }, [data.rows, search]);
+        return q ? kindRows.filter((r) => r.name.toLowerCase().includes(q) || r.key.includes(q)) : kindRows;
+    }, [kindRows, search]);
     const fmt = settings.numberFormat;
-    // Share bars are relative to the top row of the whole range, not of the filtered list, so a search
+    // Share bars are relative to the top row of the shown kind, not of the searched list, so a search
     // doesn't make a minor output look like the biggest one. Items and fluids aren't comparable units,
     // so each kind is scaled against its own largest row.
-    const maxTotal = (fluid: boolean) => Math.max(1, ...data.rows.filter((r) => r.fluid === fluid).map((r) => r.total));
+    const maxTotal = (fluid: boolean) => Math.max(1, ...kindRows.filter((r) => r.fluid === fluid).map((r) => r.total));
 
     const countingSince = data.trackingSince > data.from;
 
@@ -124,6 +160,8 @@ function ProductionTable({
                         ? "No recipe inputs recorded in this range yet."
                         : "Nothing produced in this range yet."}
                 </div>
+            ) : kindRows.length === 0 ? (
+                <div className="placeholder-panel">No {kind === "fluids" ? "fluid" : "item"} rows in this range.</div>
             ) : rows.length === 0 ? (
                 <div className="placeholder-panel">No rows match "{search}".</div>
             ) : (
@@ -274,6 +312,8 @@ function ProductionDetail({
 }) {
     const { nonce } = useGT();
     const isItem = groupBy === "item";
+    // The history endpoint has no kind filter, so a machine's chart shows its combined output even when
+    // the table above shows only its items or fluids.
     const history = useGTPoll(
         () =>
             getGTProductionHistory({

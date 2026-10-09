@@ -75,7 +75,7 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
 
     const dimensions = useMemo(() => [...new Set(data.machines.map(dimensionKey))].sort(), [data.machines]);
     const groups = useMemo(
-        () => groupMachines(filterMachines(data.machines, filters, search), passiveMachines),
+        () => groupMachines(filterMachines(data.machines, filters, search), passiveMachines, filters.passiveProblems),
         [data.machines, filters, search, passiveMachines],
     );
     const suggestions = useMemo(() => pendingPassiveSuggestions(data, passiveMachines), [data, passiveMachines]);
@@ -97,7 +97,8 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
         search.trim() !== "" ||
         filters.statuses.length > 0 ||
         filters.dimension !== null ||
-        filters.showUnloaded !== DEFAULT_MACHINE_FILTERS.showUnloaded;
+        filters.showUnloaded !== DEFAULT_MACHINE_FILTERS.showUnloaded ||
+        filters.passiveProblems !== DEFAULT_MACHINE_FILTERS.passiveProblems;
 
     return (
         <section className="machines">
@@ -156,6 +157,17 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
                     onChange={(showUnloaded) => setMachineFilters((f) => ({ ...f, showUnloaded }))}
                 >
                     <span className="machines__toggle-label">Show unloaded</span>
+                </Checkbox>
+                <Checkbox
+                    checked={filters.passiveProblems}
+                    onChange={(passiveProblems) => setMachineFilters((f) => ({ ...f, passiveProblems }))}
+                >
+                    <span
+                        className="machines__toggle-label"
+                        title="Off keeps machines marked passive in the Passive group even when they need attention"
+                    >
+                        Show passive problems
+                    </span>
                 </Checkbox>
                 {filtersActive && (
                     <Button

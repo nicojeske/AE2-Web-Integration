@@ -113,21 +113,28 @@ export interface MachineGroup {
 /** Statuses a passive machine stays tucked away in; anything else is worth a look and shows normally. */
 const PASSIVE_HEALTHY: ReadonlySet<GTMachineStatus> = new Set<GTMachineStatus>(["RUNNING", "IDLE"]);
 
-export function isTuckedPassive(m: GTMachine, passive: PassiveMachines): boolean {
-    return m.loaded && passive[m.id] === true && PASSIVE_HEALTHY.has(m.status);
+/** With `passiveProblems` off, a passive machine stays tucked away whatever its status. */
+export function isTuckedPassive(m: GTMachine, passive: PassiveMachines, passiveProblems = true): boolean {
+    return m.loaded && passive[m.id] === true && (!passiveProblems || PASSIVE_HEALTHY.has(m.status));
 }
 
 /**
  * Loaded machines grouped by status in `GT_STATUS_ORDER` (problems first), then the healthy ones marked
- * passive, then every unloaded one.
+ * passive (every passive one when `passiveProblems` is off), then every unloaded one.
  */
-export function groupMachines(machines: GTMachine[], passive: PassiveMachines): MachineGroup[] {
+export function groupMachines(machines: GTMachine[], passive: PassiveMachines, passiveProblems = true): MachineGroup[] {
     const groups: MachineGroup[] = GT_STATUS_ORDER.map((status) => ({
         key: status,
         label: GT_STATUS_LABELS[status],
-        machines: machines.filter((m) => m.loaded && m.status === status && !isTuckedPassive(m, passive)),
+        machines: machines.filter(
+            (m) => m.loaded && m.status === status && !isTuckedPassive(m, passive, passiveProblems),
+        ),
     }));
-    groups.push({ key: "passive", label: "Passive", machines: machines.filter((m) => isTuckedPassive(m, passive)) });
+    groups.push({
+        key: "passive",
+        label: "Passive",
+        machines: machines.filter((m) => isTuckedPassive(m, passive, passiveProblems)),
+    });
     groups.push({ key: "unloaded", label: "Not loaded", machines: machines.filter((m) => !m.loaded) });
     return groups.filter((g) => g.machines.length > 0);
 }
