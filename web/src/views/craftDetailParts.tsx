@@ -4,11 +4,15 @@
 import type { ComponentChildren } from "preact";
 
 import { Badge } from "../ui/Badge";
+import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
-import type { CraftDetailColumn } from "./craftDetailModel";
+import { ItemIcon } from "../ui/ItemIcon";
+import type { ConsumedRow, CraftDetailColumn, WorkingMachineRow } from "./craftDetailModel";
 import type { BadgeVariant } from "../ui/Badge";
 
 export interface CraftDetailHeaderProps {
+    /** Shows the output's icon beside the title when given. */
+    outputItemid?: string;
     outputName: string;
     outputQty: number | null;
     subtitle: string;
@@ -19,6 +23,7 @@ export interface CraftDetailHeaderProps {
 }
 
 export function CraftDetailHeader({
+    outputItemid,
     outputName,
     outputQty,
     subtitle,
@@ -32,6 +37,7 @@ export function CraftDetailHeader({
             <button type="button" className="craft-detail__back" title={closeTitle} onClick={onClose}>
                 ←
             </button>
+            {outputItemid && <ItemIcon itemid={outputItemid} name={outputName} size={40} />}
             <div className="craft-detail__heading">
                 <span className="craft-detail__title">
                     {outputQty === null ? outputName : <FormattedText text={outputName} />}
@@ -67,6 +73,7 @@ export function CraftDetailColumns({ columns }: { columns: CraftDetailColumn[] }
                     {col.rows.map((row) => (
                         <div className="craft-detail__item-card" key={row.itemid}>
                             <div className="craft-detail__item-head">
+                                <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
                                 <FormattedText text={row.itemname} className="craft-detail__item-name" />
                                 <span className={`craft-detail__item-badge craft-detail__item-badge--${col.color}`}>
                                     {row.badgeText}
@@ -102,6 +109,71 @@ export function CraftDetailColumns({ columns }: { columns: CraftDetailColumn[] }
                     {col.rows.length === 0 && <div className="craft-detail__col-empty">{col.emptyText}</div>}
                 </section>
             ))}
+        </section>
+    );
+}
+
+/** Everything the job's pushed patterns used up - live while crafting and in the history record. */
+export function ConsumedSection({ rows }: { rows: ConsumedRow[] }) {
+    const raw = rows.filter((r) => !r.intermediate).length;
+    return (
+        <section className="craft-detail__panel">
+            <div className="craft-detail__panel-head">
+                <span className="craft-detail__panel-title">Consumed</span>
+                <span className="craft-detail__panel-hint">
+                    {raw} raw input{raw === 1 ? "" : "s"}
+                    {rows.length > raw && `, ${rows.length - raw} crafted along the way`}
+                </span>
+            </div>
+            {rows.length === 0 ? (
+                <span className="craft-detail__panel-empty">No patterns pushed yet.</span>
+            ) : (
+                <div className="craft-detail__chips">
+                    {rows.map((row) => (
+                        <div
+                            key={row.itemid}
+                            className={cx("craft-detail__chip", row.intermediate && "craft-detail__chip--intermediate")}
+                            title={row.intermediate ? "Also crafted by this job" : "Taken from storage"}
+                        >
+                            <ItemIcon itemid={row.itemid} name={row.itemname} size={24} />
+                            <FormattedText text={row.itemname} className="craft-detail__chip-name" />
+                            <span className="craft-detail__chip-amount">x{row.amount}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
+
+/** The pattern providers - usually named after the machine they feed - still working on this job. */
+export function WorkingMachines({ rows }: { rows: WorkingMachineRow[] }) {
+    return (
+        <section className="craft-detail__panel">
+            <div className="craft-detail__panel-head">
+                <span className="craft-detail__panel-title">Working machines</span>
+                <span className="craft-detail__panel-hint">{rows.length} busy</span>
+            </div>
+            {rows.length === 0 ? (
+                <span className="craft-detail__panel-empty">No pattern is out at a machine right now.</span>
+            ) : (
+                <div className="craft-detail__machines">
+                    {rows.map((m, i) => (
+                        <div key={`${m.name}:${i}`} className="craft-detail__machine">
+                            <div className="craft-detail__machine-head">
+                                <span className="craft-detail__machine-name">{m.name}</span>
+                                <span className="craft-detail__machine-running">{m.running}</span>
+                            </div>
+                            <span className="craft-detail__machine-location">{m.location}</span>
+                            <div className="craft-detail__machine-items">
+                                {m.items.map((item) => (
+                                    <ItemIcon key={item.itemid} itemid={item.itemid} name={item.itemname} size={22} />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </section>
     );
 }

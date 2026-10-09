@@ -5,7 +5,7 @@ import { useMemo, useState } from "preact/hooks";
 
 import { getGTProduction, getGTProductionHistory } from "../api/client";
 import { formatTimestamp } from "../api/format";
-import type { GTProduction, GTProductionEntry, GTRange } from "../api/types";
+import type { GTFlow, GTProduction, GTProductionEntry, GTRange } from "../api/types";
 import { GT_PRODUCTION_POLL_MS, useGT, useGTPoll } from "../state/gt";
 import { useNetwork } from "../state/network";
 import { usePrefs } from "../state/prefs";
@@ -29,6 +29,10 @@ const GROUP_OPTIONS: SegmentedOption<GroupBy>[] = [
     { value: "item", label: "Items" },
     { value: "machine", label: "Machines" },
 ];
+const FLOW_OPTIONS: SegmentedOption<GTFlow>[] = [
+    { value: "produced", label: "Produced" },
+    { value: "consumed", label: "Consumed" },
+];
 const HOUR = 3_600_000;
 
 export interface ProductionProps {
@@ -42,12 +46,13 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
     const [range, setRange] = useState<GTRange>("24h");
     const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
     const [groupBy, setGroupBy] = useState<GroupBy>("item");
+    const [flow, setFlow] = useState<GTFlow>("produced");
     const [search, setSearch] = useState("");
     const minutes = range === "custom" ? customMinutes : undefined;
     const production = useGTPoll(
-        () => getGTProduction(range, groupBy, undefined, minutes),
+        () => getGTProduction(range, groupBy, flow, undefined, minutes),
         GT_PRODUCTION_POLL_MS,
-        `${range}|${groupBy}|${minutes ?? ""}`,
+        `${range}|${groupBy}|${flow}|${minutes ?? ""}`,
         nonce,
     );
 
@@ -57,6 +62,7 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
                 <SegmentedControl<GTRange> options={RANGES} value={range} onChange={setRange} />
                 {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
                 <SegmentedControl<GroupBy> options={GROUP_OPTIONS} value={groupBy} onChange={setGroupBy} />
+                <SegmentedControl<GTFlow> options={FLOW_OPTIONS} value={flow} onChange={setFlow} />
                 <input
                     type="text"
                     className="gt-input production__search"
@@ -113,14 +119,20 @@ function ProductionTable({
     return (
         <>
             {data.rows.length === 0 ? (
-                <div className="placeholder-panel">Nothing produced in this range yet.</div>
+                <div className="placeholder-panel">
+                    {data.flow === "consumed"
+                        ? "No recipe inputs recorded in this range yet."
+                        : "Nothing produced in this range yet."}
+                </div>
             ) : rows.length === 0 ? (
                 <div className="placeholder-panel">No rows match "{search}".</div>
             ) : (
                 <table className="gt-table production__table">
                     <thead>
                         <tr>
-                            <th>{data.groupBy === "item" ? "Output" : "Machine"}</th>
+                            <th>
+                                {data.groupBy === "machine" ? "Machine" : data.flow === "consumed" ? "Input" : "Output"}
+                            </th>
                             <th className="production__share-col" aria-label="Share" />
                             <th className="gt-table__num">Total</th>
                             <th className="gt-table__num">Per hour</th>
@@ -133,6 +145,7 @@ function ProductionTable({
                                 key={row.key}
                                 row={row}
                                 groupBy={data.groupBy}
+                                flow={data.flow}
                                 share={row.total / maxTotal(row.fluid)}
                                 expanded={expanded === row.key}
                                 onToggle={() => setExpanded((e) => (e === row.key ? null : row.key))}
@@ -158,6 +171,7 @@ function ProductionTable({
 function ProductionRow({
     row,
     groupBy,
+    flow,
     share,
     expanded,
     onToggle,
@@ -169,6 +183,7 @@ function ProductionRow({
 }: {
     row: GTProductionEntry;
     groupBy: GroupBy;
+    flow: GTFlow;
     share: number;
     expanded: boolean;
     onToggle: () => void;
@@ -223,6 +238,7 @@ function ProductionRow({
                         <ProductionDetail
                             row={row}
                             groupBy={groupBy}
+                            flow={flow}
                             range={range}
                             minutes={minutes}
                             numberFormat={numberFormat}
@@ -242,6 +258,7 @@ const DETAIL_POINTS = 48;
 function ProductionDetail({
     row,
     groupBy,
+    flow,
     range,
     minutes,
     numberFormat,
@@ -249,6 +266,7 @@ function ProductionDetail({
 }: {
     row: GTProductionEntry;
     groupBy: GroupBy;
+    flow: GTFlow;
     range: GTRange;
     minutes: number | undefined;
     numberFormat: "full" | "compact";
@@ -261,21 +279,25 @@ function ProductionDetail({
             getGTProductionHistory({
                 item: isItem ? row.key : undefined,
                 machine: isItem ? undefined : row.key,
+                flow,
                 range,
                 points: DETAIL_POINTS,
                 minutes,
             }),
         GT_PRODUCTION_POLL_MS,
-        `${groupBy}|${row.key}|${range}|${minutes ?? ""}`,
+        `${groupBy}|${flow}|${row.key}|${range}|${minutes ?? ""}`,
         nonce,
     );
     const data = history.data;
+    const verb = flow === "consumed" ? "Consumed" : "Produced";
     const timestamps = data ? pointTimestamps(data.from, data.stepMillis, data.points.length) : [];
 
     return (
         <div className="production__detail">
             <div className="production__breakdown">
-                <span className="production__detail-label">{isItem ? "By machine" : "By output"}</span>
+                <span className="production__detail-label">
+                    {isItem ? "By machine" : flow === "consumed" ? "By input" : "By output"}
+                </span>
                 {row.breakdown.map((b) => (
                     <div key={b.key} className="production__breakdown-row">
                         {isItem ? (
@@ -299,7 +321,7 @@ function ProductionDetail({
             </div>
             <div className="production__chart">
                 <span className="production__detail-label">
-                    Produced per {data ? describeStep(data.stepMillis) : "window"}
+                    {verb} per {data ? describeStep(data.stepMillis) : "window"}
                 </span>
                 {history.error && <span className="production__detail-label">Couldn't load ({history.error}).</span>}
                 {data && (
@@ -314,7 +336,7 @@ function ProductionDetail({
                         showAxes
                         numberFormat={numberFormat}
                         formatValue={isItem && row.fluid ? (v) => formatGTAmount(v, true, numberFormat) : undefined}
-                        ariaLabel={`${row.name}, produced per window`}
+                        ariaLabel={`${row.name}, ${verb.toLowerCase()} per window`}
                     />
                 )}
             </div>

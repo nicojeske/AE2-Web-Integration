@@ -10,7 +10,8 @@ import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
 import { Modal } from "../ui/Modal";
 import { ProgressBar } from "../ui/ProgressBar";
-import { CraftDetailColumns, CraftDetailHeader, StatCard } from "./craftDetailParts";
+import { ItemIcon } from "../ui/ItemIcon";
+import { ConsumedSection, CraftDetailColumns, CraftDetailHeader, StatCard, WorkingMachines } from "./craftDetailParts";
 import { buildActiveCraftDetail, isJobFinished, snapshotOf } from "./craftDetailModel";
 import type { CraftDetailSnapshot } from "./craftDetailModel";
 
@@ -108,6 +109,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
     return (
         <section className="craft-detail">
             <CraftDetailHeader
+                outputItemid={view.outputItemid}
                 outputName={view.outputName}
                 outputQty={view.outputQty}
                 subtitle={
@@ -136,7 +138,11 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                 </section>
             )}
 
+            {!view.finished && view.consumed !== null && <WorkingMachines rows={view.machines} />}
+
             <CraftDetailColumns columns={view.columns} />
+
+            {view.consumed !== null && <ConsumedSection rows={view.consumed} />}
 
             {view.bottleneck && view.bottleneck.length > 0 && (
                 <section className="craft-detail__bottleneck">
@@ -152,7 +158,8 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                     {bottleneckOpen && (
                         <div className="craft-detail__bottleneck-body">
                             {view.bottleneck.map((row) => (
-                                <div className="craft-detail__bottleneck-row" key={row.itemname}>
+                                <div className="craft-detail__bottleneck-row" key={row.itemid}>
+                                    <ItemIcon itemid={row.itemid} name={row.itemname} size={20} />
                                     <FormattedText text={row.itemname} className="craft-detail__bottleneck-name" />
                                     <div className="craft-detail__bottleneck-track">
                                         <div

@@ -49,6 +49,19 @@
     min-height: 16px;
 }
 
+.cpu-card__output-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.cpu-card__output-row .cpu-card__output {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .cpu-card__footer {
     display: flex;
     justify-content: space-between;

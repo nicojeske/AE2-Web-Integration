@@ -10,6 +10,7 @@ import type {
     GTMachines,
     GTPower,
     GTPowerHistory,
+    GTFlow,
     GTProduction,
     GTProductionHistory,
     GTRange,
@@ -221,21 +222,23 @@ export function getGTPowerHistory(
 export function getGTProduction(
     range: GTRange,
     groupBy: "item" | "machine",
+    flow: GTFlow,
     machine?: string,
     minutes?: number,
 ): Promise<GTProduction> {
-    return apiGet(`gt/production${query({ groupBy, machine, ...gtRange(range, minutes) })}`);
+    return apiGet(`gt/production${query({ groupBy, flow, machine, ...gtRange(range, minutes) })}`);
 }
 
 export function getGTProductionHistory(opts: {
     item?: string;
     machine?: string;
+    flow: GTFlow;
     range: GTRange;
     points: number;
     minutes?: number;
 }): Promise<GTProductionHistory> {
-    const { item, machine, range, points, minutes } = opts;
-    return apiGet(`gt/production/history${query({ item, machine, points, ...gtRange(range, minutes) })}`);
+    const { item, machine, flow, range, points, minutes } = opts;
+    return apiGet(`gt/production/history${query({ item, machine, flow, points, ...gtRange(range, minutes) })}`);
 }
 
 /** The server has no GregTech provider (or `gt_enabled=false`) - an empty state, never an error toast. */

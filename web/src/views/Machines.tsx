@@ -6,7 +6,7 @@ import { useMemo, useState } from "preact/hooks";
 
 import { getGTMachine, getGTProductionHistory } from "../api/client";
 import { formatEUt, formatRelativeAge, gtTierName } from "../api/format";
-import type { GTMachine, GTMachines, GTMachineStatus, GTRange } from "../api/types";
+import type { GTMachine, GTMachines, GTMachineStatus, GTProductionEntry, GTRange } from "../api/types";
 import { GT_STATUS_ORDER } from "../api/types";
 import { getContext } from "../context";
 import { GT_PRODUCTION_POLL_MS, useGT, useGTPoll } from "../state/gt";
@@ -423,7 +423,7 @@ function MachineDrawer({
     const key = `${id}|${range}`;
     const detail = useGTPoll(() => getGTMachine(id, range), GT_PRODUCTION_POLL_MS, key, nonce);
     const history = useGTPoll(
-        () => getGTProductionHistory({ machine: id, range, points: DRAWER_CHART_POINTS }),
+        () => getGTProductionHistory({ machine: id, flow: "produced", range, points: DRAWER_CHART_POINTS }),
         GT_PRODUCTION_POLL_MS,
         key,
         nonce,
@@ -452,6 +452,7 @@ function MachineDrawer({
 
     const progress = scannedAt !== null ? liveProgressTicks(m, scannedAt, now) : m.progressTicks;
     const production = detail.data?.production ?? null;
+    const consumption = detail.data?.consumption ?? null;
     const values = history.data?.points ?? [];
     const timestamps = history.data ? pointTimestamps(history.data.from, history.data.stepMillis, values.length) : [];
 
@@ -552,30 +553,55 @@ function MachineDrawer({
             ) : production.rows.length === 0 ? (
                 <div className="machine-drawer__empty">Nothing produced in this range.</div>
             ) : (
-                <table className="gt-table">
-                    <thead>
-                        <tr>
-                            <th>Output</th>
-                            <th className="gt-table__num">Total</th>
-                            <th className="gt-table__num">Per hour</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {production.rows.map((row) => (
-                            <tr key={row.key}>
-                                <td>
-                                    <span className="gt-table__item">
-                                        <ItemIcon itemid={row.key} name={row.name} size={20} />
-                                        {row.name}
-                                    </span>
-                                </td>
-                                <td className="gt-table__num">{formatGTAmount(row.total, row.fluid, fmt)}</td>
-                                <td className="gt-table__num">{formatGTPerHour(row.perHour, row.fluid, fmt)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                <FlowTable rows={production.rows} heading="Output" numberFormat={fmt} />
+            )}
+
+            {consumption !== null && (
+                <>
+                    <h3 className="machine-drawer__heading">Inputs</h3>
+                    {consumption.rows.length === 0 ? (
+                        <div className="machine-drawer__empty">No recipe inputs recorded in this range.</div>
+                    ) : (
+                        <FlowTable rows={consumption.rows} heading="Input" numberFormat={fmt} />
+                    )}
+                </>
             )}
         </Drawer>
+    );
+}
+
+function FlowTable({
+    rows,
+    heading,
+    numberFormat,
+}: {
+    rows: GTProductionEntry[];
+    heading: string;
+    numberFormat: "full" | "compact";
+}) {
+    return (
+        <table className="gt-table">
+            <thead>
+                <tr>
+                    <th>{heading}</th>
+                    <th className="gt-table__num">Total</th>
+                    <th className="gt-table__num">Per hour</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows.map((row) => (
+                    <tr key={row.key}>
+                        <td>
+                            <span className="gt-table__item">
+                                <ItemIcon itemid={row.key} name={row.name} size={20} />
+                                {row.name}
+                            </span>
+                        </td>
+                        <td className="gt-table__num">{formatGTAmount(row.total, row.fluid, numberFormat)}</td>
+                        <td className="gt-table__num">{formatGTPerHour(row.perHour, row.fluid, numberFormat)}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     );
 }

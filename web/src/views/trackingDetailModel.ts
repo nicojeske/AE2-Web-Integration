@@ -3,6 +3,8 @@
 import { formatDuration, formatNumber, formatTimestamp, skipSpecialFormat } from "../api/format";
 import type { DimensionalCoords, TrackingDetail } from "../api/types";
 import type { TimelineRow } from "../ui/Timeline";
+import { buildConsumedRows } from "./craftDetailModel";
+import type { ConsumedRow } from "./craftDetailModel";
 
 /** Server sorts `items`/`interfaceShare` by share/`timingsCombined` desc already - cap rather than
  *  re-sort, so a job with dozens of interfaces doesn't produce a mile-long timeline. */
@@ -32,6 +34,7 @@ export interface TrackingDetailView {
     statusVariant: "green" | "red";
     stats: TrackingDetailStat[];
     items: TrackingItemRow[];
+    consumed: ConsumedRow[];
     itemTimelineRows: TimelineRow[];
     interfaceTimelineRows: TimelineRow[];
     /** `[timeStarted, timeDone]`, fed straight to `<Timeline>`. */
@@ -50,6 +53,7 @@ export function buildTrackingDetail(detail: TrackingDetail): TrackingDetailView 
     const totalTimeSpent = detail.items.reduce((sum, it) => sum + it.timeSpentOn, 0);
     const totalCrafted = detail.items.reduce((sum, it) => sum + it.craftedTotal, 0);
     const elapsed = detail.timeDone - detail.timeStarted;
+    const used = new Map(detail.consumed.map((c) => [c.itemid, c.amount]));
 
     const items: TrackingItemRow[] = detail.items.map((it) => {
         // Derived, never read off the wire: `craftsPerSec`/`shareInCraftingTimeCombined` divide by
@@ -68,6 +72,7 @@ export function buildTrackingDetail(detail: TrackingDetail): TrackingDetailView 
                 { label: "Crafted", value: formatNumber(it.craftedTotal) },
                 { label: "Time spent", value: formatDuration(it.timeSpentOn) },
                 { label: "Rate", value: rate === null ? "—" : `${rate.toFixed(2)}/s` },
+                ...(used.has(it.itemid) ? [{ label: "Used", value: formatNumber(used.get(it.itemid)!) }] : []),
             ],
         };
     });
@@ -83,7 +88,12 @@ export function buildTrackingDetail(detail: TrackingDetail): TrackingDetailView 
         label: iface.name,
         segments: iface.timings,
         value: formatDuration(iface.timingsCombined),
-        tooltipExtra: sortedLocationLines(iface.location),
+        tooltipExtra: [
+            ...(iface.outputs.length > 0
+                ? [`Makes ${iface.outputs.map((o) => skipSpecialFormat(o.itemname)).join(", ")}`]
+                : []),
+            ...sortedLocationLines(iface.location),
+        ],
     }));
 
     return {
@@ -98,6 +108,7 @@ export function buildTrackingDetail(detail: TrackingDetail): TrackingDetailView 
             { label: "Crafted", value: formatNumber(totalCrafted) },
         ],
         items,
+        consumed: buildConsumedRows(detail.consumed),
         itemTimelineRows,
         interfaceTimelineRows,
         domain: [detail.timeStarted, detail.timeDone],

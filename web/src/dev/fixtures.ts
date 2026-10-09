@@ -2,6 +2,7 @@
 // keep them in sync as later milestones need richer scenarios.
 import type {
     CompactedItem,
+    ConsumedItem,
     CpuList,
     DetailedItem,
     DimensionalCoords,
@@ -14,6 +15,7 @@ import type {
     StatsRange,
     TrackingDetail,
     TrackingHistoryElement,
+    WorkingMachine,
 } from "../api/types.ts";
 import { HISTORY_NO_SAMPLE } from "../api/types.ts";
 
@@ -22,6 +24,8 @@ export interface MockRecipeRow {
     itemname: string;
     requested: number;
     stored: number;
+    /** Pattern provider the row's patterns go to; a Molecular Assembler when omitted. */
+    machine?: string;
 }
 
 export interface MockBusyCpu {
@@ -35,6 +39,8 @@ export interface MockBusyCpu {
     craftDurationMs: number;
     hasTrackingInfo: boolean;
     recipe: MockRecipeRow[];
+    /** Raw materials the whole job takes from storage, used up evenly as it progresses. */
+    rawInputs?: { itemid: string; itemname: string; total: number }[];
 }
 
 export interface MockGrid {
@@ -291,14 +297,22 @@ export const mockGrids: MockGrid[] = [
                         itemname: "Fluix Crystal",
                         requested: 48,
                         stored: 860,
+                        machine: "Charger",
                     },
                     {
                         itemid: "appliedenergistics2:crystal_certus",
                         itemname: "Certus Quartz Crystal",
                         requested: 64,
                         stored: 210,
+                        machine: "Crystal Growth Chamber",
                     },
-                    { itemid: "appliedenergistics2:material_silicon", itemname: "Silicon", requested: 24, stored: 640 },
+                    {
+                        itemid: "appliedenergistics2:material_silicon",
+                        itemname: "Silicon",
+                        requested: 24,
+                        stored: 640,
+                        machine: "Electric Blast Furnace",
+                    },
                     { itemid: "minecraft:redstone", itemname: "Redstone", requested: 40, stored: 3400 },
                     // Two extra rows (beyond the 5 needed for the busy-CPU list) so "Top 5 by time
                     // spent" actually truncates rather than showing every row.
@@ -313,7 +327,13 @@ export const mockGrids: MockGrid[] = [
                         itemname: "Calculation Processor Press",
                         requested: 8,
                         stored: 4,
+                        machine: "Inscriber",
                     },
+                ],
+                rawInputs: [
+                    { itemid: "minecraft:quartz", itemname: "Nether Quartz", total: 96 },
+                    { itemid: "minecraft:sand", itemname: "Sand", total: 48 },
+                    { itemid: "minecraft:gold_ingot", itemname: "Gold Ingot", total: 16 },
                 ],
             },
             {
@@ -431,12 +451,23 @@ export const mockGrids: MockGrid[] = [
                             timings: [{ started: serverStart - 3_420_000, ended: serverStart - 3_348_000 }],
                         },
                     ],
+                    consumed: [
+                        {
+                            itemid: "appliedenergistics2:crystal_certus",
+                            itemname: "Certus Quartz Crystal",
+                            amount: 128,
+                            alsoCrafted: true,
+                        },
+                        { itemid: "minecraft:quartz", itemname: "Nether Quartz", amount: 128, alsoCrafted: false },
+                        { itemid: "minecraft:redstone", itemname: "Redstone", amount: 128, alsoCrafted: false },
+                    ],
                     interfaceShare: [
                         {
                             name: "ME Interface (Fluix Crystal)",
                             timings: [{ started: serverStart - 3_600_000, ended: serverStart - 3_348_000 }],
                             timingsCombined: 252_000,
                             location: [{ dimid: "0", x: 120, y: 70, z: -340 } satisfies DimensionalCoords],
+                            outputs: [{ itemid: "appliedenergistics2:crystal_fluix", itemname: "Fluix Crystal" }],
                         },
                     ],
                 } satisfies TrackingDetail,
@@ -493,6 +524,29 @@ export const mockGrids: MockGrid[] = [
                             timings: [{ started: serverStart - 1_390_000, ended: serverStart - 1_270_000 }],
                         },
                     ],
+                    consumed: [
+                        {
+                            itemid: "appliedenergistics2:crystal_certus",
+                            itemname: "Certus Quartz Crystal",
+                            amount: 1024,
+                            alsoCrafted: true,
+                        },
+                        { itemid: "minecraft:redstone", itemname: "Redstone", amount: 1024, alsoCrafted: false },
+                        {
+                            itemid: "appliedenergistics2:crystal_fluix",
+                            itemname: "Fluix Crystal",
+                            amount: 768,
+                            alsoCrafted: true,
+                        },
+                        { itemid: "minecraft:quartz", itemname: "Nether Quartz", amount: 768, alsoCrafted: false },
+                        {
+                            itemid: "appliedenergistics2:material_silicon",
+                            itemname: "Silicon",
+                            amount: 256,
+                            alsoCrafted: true,
+                        },
+                        { itemid: "minecraft:sand", itemname: "Sand", amount: 384, alsoCrafted: false },
+                    ],
                     interfaceShare: [
                         {
                             name: "ME Interface (Fluix Crystal)",
@@ -505,12 +559,16 @@ export const mockGrids: MockGrid[] = [
                                 { dimid: "0", x: 120, y: 70, z: -340 } satisfies DimensionalCoords,
                                 { dimid: "0", x: 121, y: 70, z: -340 } satisfies DimensionalCoords,
                             ],
+                            outputs: [{ itemid: "appliedenergistics2:crystal_fluix", itemname: "Fluix Crystal" }],
                         },
                         {
                             name: "ME Interface (Certus Quartz Crystal)",
                             timings: [{ started: serverStart - 1_760_000, ended: serverStart - 1_550_000 }],
                             timingsCombined: 210_000,
                             location: [{ dimid: "0", x: 118, y: 70, z: -338 } satisfies DimensionalCoords],
+                            outputs: [
+                                { itemid: "appliedenergistics2:crystal_certus", itemname: "Certus Quartz Crystal" },
+                            ],
                         },
                         {
                             // AE2JobTracker.java:190-192 - the literal name a null-named interface arrives
@@ -524,6 +582,7 @@ export const mockGrids: MockGrid[] = [
                                 { dimid: "-1", x: 41, y: 60, z: 200 } satisfies DimensionalCoords,
                                 { dimid: "1", x: 5, y: 80, z: 5 } satisfies DimensionalCoords,
                             ],
+                            outputs: [{ itemid: "appliedenergistics2:material_silicon", itemname: "Silicon" }],
                         },
                     ],
                 } satisfies TrackingDetail,
@@ -747,15 +806,58 @@ export function recordTracking(grid: MockGrid, cpu: MockBusyCpu, wasCancelled: b
         timeDone,
         wasCancelled,
         items,
+        consumed: mockConsumed(cpu, toCompactedItems(cpu)),
         interfaceShare: [
             {
                 name: `ME Interface (${cpu.output.itemname})`,
                 timings: [{ started: cpu.startedAt, ended: timeDone }],
                 timingsCombined: elapsed,
                 location: [{ dimid: "0", x: 0, y: 64, z: 0 }],
+                outputs: [{ itemid: cpu.output.itemid, itemname: cpu.output.itemname }],
             },
         ],
     });
+}
+
+/**
+ * What a mock job has used up so far: every sub-craft below the final output feeds the one above it, so
+ * its crafted total counts as consumed (an intermediate), plus the job's raw inputs in step with progress.
+ */
+export function mockConsumed(cpu: MockBusyCpu, items: CompactedItem[]): ConsumedItem[] {
+    if (!cpu.hasTrackingInfo) return [];
+    const progress = craftProgress(cpu);
+    const consumed: ConsumedItem[] = items
+        .slice(1)
+        .filter((i) => i.craftedTotal > 0)
+        .map((i) => ({ itemid: i.itemid, itemname: i.itemname, amount: i.craftedTotal, alsoCrafted: true }));
+    for (const raw of cpu.rawInputs ?? []) {
+        const amount = Math.round(raw.total * progress);
+        if (amount > 0) consumed.push({ itemid: raw.itemid, itemname: raw.itemname, amount, alsoCrafted: false });
+    }
+    return consumed.sort((a, b) => b.amount - a.amount);
+}
+
+/** Providers holding the mock job's in-flight patterns: one per machine name with an active row. */
+export function mockWorkingMachines(cpu: MockBusyCpu, items: CompactedItem[]): WorkingMachine[] {
+    if (!cpu.hasTrackingInfo) return [];
+    const byName = new Map<string, WorkingMachine>();
+    cpu.recipe.forEach((row, i) => {
+        if ((items[i]?.active ?? 0) <= 0) return;
+        const name = row.machine ?? "Molecular Assembler";
+        let machine = byName.get(name);
+        if (!machine) {
+            machine = {
+                name,
+                location: [{ dimid: "0", x: 100 + byName.size * 3, y: 64, z: -300 }],
+                // Staggered so the running timers differ, but never before the job itself started.
+                since: Math.max(cpu.startedAt, Date.now() - (byName.size + 1) * 7_000),
+                items: [],
+            };
+            byName.set(name, machine);
+        }
+        machine.items.push({ itemid: row.itemid, itemname: row.itemname });
+    });
+    return [...byName.values()].sort((a, b) => a.since - b.since);
 }
 
 export function toCpuList(grid: MockGrid): CpuList {

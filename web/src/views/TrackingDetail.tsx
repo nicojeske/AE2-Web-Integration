@@ -5,7 +5,8 @@ import { describeApiError } from "../api/errors";
 import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
 import { Timeline } from "../ui/Timeline";
-import { CraftDetailHeader, StatCard } from "./craftDetailParts";
+import { ItemIcon } from "../ui/ItemIcon";
+import { ConsumedSection, CraftDetailHeader, StatCard } from "./craftDetailParts";
 import { buildTrackingDetail } from "./trackingDetailModel";
 import type { GridKey, TrackingDetail as TrackingDetailData } from "../api/types";
 
@@ -74,6 +75,7 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
     return (
         <section className="craft-detail">
             <CraftDetailHeader
+                outputItemid={detail.finalOutput.itemid}
                 outputName={view.outputName}
                 outputQty={view.outputQty}
                 subtitle={detail.wasCancelled ? "This job was cancelled" : "Crafting history"}
@@ -99,6 +101,7 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
                     {view.items.map((row) => (
                         <div className="craft-detail__item-card" key={row.itemid}>
                             <div className="craft-detail__item-head">
+                                <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
                                 <FormattedText text={row.itemname} className="craft-detail__item-name" />
                             </div>
                             <div className="craft-detail__item-stats">
@@ -124,6 +127,8 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
                     ))}
                 </section>
             )}
+
+            <ConsumedSection rows={view.consumed} />
 
             <div className="tracking-detail__timeline-card">
                 <span className="tracking-detail__timeline-title">Item share</span>

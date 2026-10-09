@@ -7,6 +7,7 @@ import type {
     GTMachineStatus,
     GTPowerHistory,
     GTPowerSource,
+    GTFlow,
     GTProduction,
     GTProductionEntry,
     GTProductionHistory,
@@ -47,6 +48,16 @@ const ETHYLENE = { id: "ethylene", name: "Ethylene", fluid: true };
 const PROPENE = { id: "propene", name: "Propene", fluid: true };
 const ETHANE = { id: "ethane", name: "Ethane", fluid: true };
 const POLYETHYLENE = { id: "molten.polyethylene", name: "Molten Polyethylene", fluid: true };
+const TITANIUM_DUST = { id: "gregtech:gt.metaitem.01:2028", name: "Titanium Dust", fluid: false };
+const HOT_TITANIUM = { id: "gregtech:gt.metaitem.01:12028", name: "Hot Titanium Ingot", fluid: false };
+const TUNGSTEN_DUST = { id: "gregtech:gt.metaitem.01:2316", name: "Tungstensteel Dust", fluid: false };
+const ALUMINIUM_DUST = { id: "gregtech:gt.metaitem.01:2019", name: "Aluminium Dust", fluid: false };
+const IRON_ORE = { id: "minecraft:iron_ore", name: "Iron Ore", fluid: false };
+const CLAY = { id: "minecraft:clay_ball", name: "Clay", fluid: false };
+const NITROGEN = { id: "nitrogen", name: "Nitrogen", fluid: true };
+const OXYGEN = { id: "oxygen", name: "Oxygen", fluid: true };
+const HYDROGEN = { id: "hydrogen", name: "Hydrogen", fluid: true };
+const STEAM = { id: "steam", name: "Steam", fluid: true };
 
 type StackDef = { id: string; name: string; fluid: boolean };
 
@@ -56,6 +67,9 @@ interface MockMachine {
     outputs: (StackDef & { amount: number })[];
     /** Average production per hour - what feeds `/gt/production`. */
     produces: (StackDef & { perHour: number })[];
+    /** Average recipe inputs per hour - `/gt/production?flow=consumed`. Empty like a machine without
+     *  `ProcessingLogic`, whose inputs the adapter can't see. */
+    consumes: (StackDef & { perHour: number })[];
     /** Unloaded machines: how long ago they were last scanned. */
     unloadedFor?: number;
 }
@@ -68,12 +82,13 @@ function machine(
     extra: Partial<Omit<MockMachine["base"], "owner" | "ownerName">> & {
         outputs?: MockMachine["outputs"];
         produces?: MockMachine["produces"];
+        consumes?: MockMachine["consumes"];
         unloadedFor?: number;
         by?: typeof DEV | null;
     } = {},
 ): MockMachine {
     const [dim, x, y, z] = pos;
-    const { outputs = [], produces = [], unloadedFor, by = DEV, ...rest } = extra;
+    const { outputs = [], produces = [], consumes = [], unloadedFor, by = DEV, ...rest } = extra;
     return {
         base: {
             dim,
@@ -96,6 +111,7 @@ function machine(
         },
         outputs,
         produces,
+        consumes,
         unloadedFor,
     };
 }
@@ -107,6 +123,10 @@ const MOCK_MACHINES: MockMachine[] = [
         voltageTier: 5,
         outputs: [{ ...TITANIUM, amount: 1 }],
         produces: [{ ...TITANIUM, perHour: 24 }],
+        consumes: [
+            { ...TITANIUM_DUST, perHour: 24 },
+            { ...NITROGEN, perHour: 24_000 },
+        ],
     }),
     machine([0, 130, 64, -340], "Vacuum Freezer", "multimachine.vacuumfreezer", "MAINTENANCE", {
         statusDetail: "Maintenance required",
@@ -117,6 +137,7 @@ const MOCK_MACHINES: MockMachine[] = [
             { ...HELIUM, perHour: 4000 },
             { ...TITANIUM, perHour: 6 },
         ],
+        consumes: [{ ...HOT_TITANIUM, perHour: 6 }],
     }),
     machine([0, 140, 64, -340], "Assembling Line", "multimachine.assemblyline", "STRUCTURE_INCOMPLETE", {
         statusDetail: "Structure incomplete",
@@ -139,6 +160,10 @@ const MOCK_MACHINES: MockMachine[] = [
         statusDetail: "Out of fluid: Oxygen",
         voltageTier: 4,
         produces: [{ ...POLYETHYLENE, perHour: 1440 }],
+        consumes: [
+            { ...ETHYLENE, perHour: 1440 },
+            { ...OXYGEN, perHour: 1440 },
+        ],
     }),
     machine([0, 180, 64, -340], "Pyrolyse Oven", "multimachine.pyro", "DISABLED", {
         statusDetail: "Disabled",
@@ -148,6 +173,7 @@ const MOCK_MACHINES: MockMachine[] = [
         statusDetail: "No valid recipe found",
         voltageTier: 2,
         produces: [{ ...BRICK, perHour: 300 }],
+        consumes: [{ ...CLAY, perHour: 300 }],
     }),
     machine(
         [0, 200, 64, -340],
@@ -161,6 +187,7 @@ const MOCK_MACHINES: MockMachine[] = [
             efficiency: 10000,
             outputs: [{ ...IRON_DUST, amount: 16 }],
             produces: [{ ...IRON_DUST, perHour: 900 }],
+            consumes: [{ ...IRON_ORE, perHour: 450 }],
         },
     ),
     machine([0, 210, 64, -340], "Oil Cracking Unit", "multimachine.cracker", "RUNNING", {
@@ -169,6 +196,10 @@ const MOCK_MACHINES: MockMachine[] = [
         voltageTier: 4,
         outputs: [{ ...ETHANE, amount: 1000 }],
         produces: [{ ...ETHANE, perHour: 8000 }],
+        consumes: [
+            { ...HYDROGEN, perHour: 4000 },
+            { ...STEAM, perHour: 8000 },
+        ],
     }),
     machine([0, 100, 64, -300], "Lapotronic Supercapacitor", "multimachine.supercapacitor", "IDLE", {
         voltageTier: -1,
@@ -182,6 +213,7 @@ const MOCK_MACHINES: MockMachine[] = [
         voltageTier: 7,
         outputs: [{ ...TUNGSTENSTEEL, amount: 48 }],
         produces: [{ ...TUNGSTENSTEEL, perHour: 48 }],
+        consumes: [{ ...TUNGSTEN_DUST, perHour: 48 }],
     }),
     machine([-28, 60, 70, 12], "Cleanroom", "multimachine.cleanroom", "RUNNING", {
         maxProgressTicks: 100,
@@ -205,6 +237,7 @@ const MOCK_MACHINES: MockMachine[] = [
         by: KUBA,
         outputs: [{ ...ALUMINIUM, amount: 2 }],
         produces: [{ ...ALUMINIUM, perHour: 64 }],
+        consumes: [{ ...ALUMINIUM_DUST, perHour: 64 }],
     }),
 ];
 
@@ -496,9 +529,14 @@ function productionBucket(span: number): { bucket: number; resolution: "hourly" 
         : { bucket: DAY, resolution: "daily" };
 }
 
+function stacksOf(m: MockMachine, flow: GTFlow): MockMachine["produces"] {
+    return flow === "consumed" ? m.consumes : m.produces;
+}
+
 export function mockGTProduction(
     span: number,
     groupBy: "item" | "machine",
+    flow: GTFlow,
     machine: string | null,
     now: number,
 ): GTProduction {
@@ -520,7 +558,7 @@ export function mockGTProduction(
     const cells: { m: MockMachine; s: StackDef; total: number }[] = [];
     for (const m of MOCK_MACHINES) {
         if (machine !== null && machineId(m) !== machine) continue;
-        for (const s of m.produces) {
+        for (const s of stacksOf(m, flow)) {
             const total = producedIn(m, s, Math.floor(from / HOUR) * HOUR, to);
             if (total > 0) cells.push({ m, s, total });
         }
@@ -544,12 +582,13 @@ export function mockGTProduction(
         breakdown: r.breakdown.sort((a, b) => b.total - a.total),
     }));
     rows.sort((a, b) => b.total - a.total);
-    return { from, to, spanMillis, trackingSince: TRACKING_SINCE, resolution, groupBy, rows };
+    return { from, to, spanMillis, trackingSince: TRACKING_SINCE, resolution, groupBy, flow, rows };
 }
 
 export function mockGTProductionHistory(
     item: string | null,
     machine: string | null,
+    flow: GTFlow,
     span: number,
     points: number,
     now: number,
@@ -566,7 +605,7 @@ export function mockGTProductionHistory(
         let sum = 0;
         for (const m of MOCK_MACHINES) {
             if (machine !== null && machineId(m) !== machine) continue;
-            for (const s of m.produces) {
+            for (const s of stacksOf(m, flow)) {
                 if (item !== null && s.id !== item) continue;
                 sum += producedIn(m, s, start, Math.min(start + step, now));
             }

@@ -9,6 +9,7 @@ import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Drawer } from "../ui/Drawer";
 import { FormattedText } from "../ui/FormattedText";
+import { ItemIcon } from "../ui/ItemIcon";
 import { ProgressBar } from "../ui/ProgressBar";
 import type { CpuView } from "../state/cpus";
 
@@ -95,16 +96,21 @@ export function Jobs({ onOpenCraftDetail }: JobsProps) {
                                     {cpu.isBusy ? "Busy" : "Idle"}
                                 </Badge>
                             </div>
-                            <span className="cpu-card__output">
-                                {cpu.isBusy && cpu.finalOutput ? (
-                                    <>
+                            {cpu.isBusy && cpu.finalOutput ? (
+                                <div className="cpu-card__output-row">
+                                    <ItemIcon
+                                        itemid={cpu.finalOutput.itemid}
+                                        name={cpu.finalOutput.itemname}
+                                        size={24}
+                                    />
+                                    <span className="cpu-card__output">
                                         Crafting <FormattedText text={cpu.finalOutput.itemname} /> x
                                         {formatNumber(cpu.finalOutput.quantity, settings.numberFormat)}
-                                    </>
-                                ) : (
-                                    "No active job"
-                                )}
-                            </span>
+                                    </span>
+                                </div>
+                            ) : (
+                                <span className="cpu-card__output">No active job</span>
+                            )}
                             {cpu.isBusy && cpu.progressPct !== null && (
                                 <ProgressBar percent={cpu.progressPct} height={6} />
                             )}

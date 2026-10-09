@@ -91,6 +91,34 @@ export interface CpuDetail {
     hasTrackingInfo: boolean;
     timeStarted: number;
     timeElapsed: number;
+    /** Inputs of the patterns pushed so far, largest first; empty when untracked. */
+    consumed: ConsumedItem[];
+    /** Pattern providers still holding unfinished pushed patterns, longest-running first. */
+    machines: WorkingMachine[];
+}
+
+/** A resource identity with its display name. */
+export interface ResourceRef {
+    itemid: string;
+    itemname: string;
+}
+
+/** Total amount of one resource taken by a job's pushed patterns. */
+export interface ConsumedItem extends ResourceRef {
+    amount: number;
+    /** The job also crafted it - an intermediate rather than a raw input. */
+    alsoCrafted: boolean;
+}
+
+/** Pattern providers sharing a name, still processing patterns a job pushed to them. */
+export interface WorkingMachine {
+    /** Usually the name of the machine the provider feeds. */
+    name: string;
+    location: DimensionalCoords[];
+    /** Server-clock epoch millis when their current work started. */
+    since: number;
+    /** What they are still expected to return. */
+    items: ResourceRef[];
 }
 
 /** `POST /api/grids/{gridKey}/crafting-plans` response. */
@@ -155,6 +183,8 @@ export interface InterfaceShare {
     timings: TrackingTiming[];
     timingsCombined: number;
     location: DimensionalCoords[];
+    /** What the patterns pushed to these providers produce. */
+    outputs: ResourceRef[];
 }
 
 /** `GET /api/grids/{gridKey}/crafting-history/{entryId}` response. */
@@ -164,6 +194,8 @@ export interface TrackingDetail {
     timeDone: number;
     wasCancelled: boolean;
     items: TrackingItem[];
+    /** Inputs of every pushed pattern, largest first. */
+    consumed: ConsumedItem[];
     interfaceShare: InterfaceShare[];
 }
 
@@ -295,6 +327,8 @@ export interface GTMachines {
 export interface GTMachineDetail {
     machine: GTMachine;
     production: GTProduction;
+    /** Recipe inputs over the same range. */
+    consumption: GTProduction;
 }
 
 /**
@@ -359,8 +393,12 @@ export interface GTProduction {
     trackingSince: number;
     resolution: "hourly" | "daily";
     groupBy: "item" | "machine";
+    flow: GTFlow;
     rows: GTProductionEntry[];
 }
+
+/** Which side of a GregTech recipe `/api/gt/production` counts: outputs, or the inputs recipes took. */
+export type GTFlow = "produced" | "consumed";
 
 /** `/api/gt/production/history` response. `points` are sums per window - 0 means nothing produced, never a gap. */
 export interface GTProductionHistory {

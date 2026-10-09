@@ -3,7 +3,7 @@
 // claude-design's `craftDetailVals()` (AE2 Web Terminal.dc.html:895-1048) against the real DTOs.
 import { formatBytes, formatDuration, formatNumber } from "../api/format";
 import { craftTotals } from "../state/craftProgress";
-import type { CompactedItem, ItemStack } from "../api/types";
+import type { CompactedItem, ConsumedItem, DimensionalCoords, ItemStack, ResourceRef } from "../api/types";
 import type { CpuView } from "../state/cpus";
 
 export type CraftDetailColumnKey = "crafting" | "waiting" | "done";
@@ -31,6 +31,7 @@ export interface CraftDetailColumn {
 }
 
 export interface CraftDetailBottleneckRow {
+    itemid: string;
     itemname: string;
     /** `0..1`. */
     sharePct: number;
@@ -42,7 +43,25 @@ export interface CraftDetailStat {
     value: string;
 }
 
+/** One input a job used up, for the "Consumed" section of both the live and the history page. */
+export interface ConsumedRow {
+    itemid: string;
+    itemname: string;
+    amount: string;
+    /** Crafted by the same job - shown after, and dimmer than, the raw materials. */
+    intermediate: boolean;
+}
+
+/** A pattern provider (group) still working on the job, for the "Working machines" section. */
+export interface WorkingMachineRow {
+    name: string;
+    location: string;
+    running: string;
+    items: ResourceRef[];
+}
+
 export interface CraftDetailView {
+    outputItemid: string;
     /** Raw (possibly §-formatted) item name - render via `<FormattedText>`, never as a plain string. */
     outputName: string;
     outputQty: number;
@@ -56,6 +75,9 @@ export interface CraftDetailView {
     progress: { fraction: number; caption: string } | null;
     columns: CraftDetailColumn[];
     bottleneck: CraftDetailBottleneckRow[] | null;
+    /** `null` when untracked; otherwise raw materials first, then intermediates. */
+    consumed: ConsumedRow[] | null;
+    machines: WorkingMachineRow[];
     finished: boolean;
 }
 
@@ -71,6 +93,7 @@ export interface CraftDetailSnapshot {
     usedStorage: number;
     output: ItemStack;
     items: CompactedItem[];
+    consumed: ConsumedItem[];
     hasTrackingInfo: boolean;
     elapsedMs: number;
 }
@@ -104,6 +127,7 @@ export function snapshotOf(cpu: CpuView, now: number): CraftDetailSnapshot | nul
         usedStorage: cpu.usedStorage,
         output: cpu.finalOutput,
         items: cpu.detail.items,
+        consumed: cpu.detail.consumed,
         hasTrackingInfo: cpu.detail.hasTrackingInfo,
         elapsedMs,
     };
@@ -114,7 +138,45 @@ function itemRate(item: CompactedItem): string {
     return `${(item.craftedTotal / (item.timeSpentCrafting / 1000)).toFixed(2)}/s`;
 }
 
-function buildRow(item: CompactedItem, tracked: boolean, badgeText: string, totalTime: number): CraftDetailItemRow {
+/** Raw materials first (what the job actually drew from storage), each group largest first. */
+export function buildConsumedRows(consumed: ConsumedItem[]): ConsumedRow[] {
+    return [...consumed]
+        .sort((a, b) => Number(a.alsoCrafted) - Number(b.alsoCrafted) || b.amount - a.amount)
+        .map((c) => ({
+            itemid: c.itemid,
+            itemname: c.itemname,
+            amount: formatNumber(c.amount),
+            intermediate: c.alsoCrafted,
+        }));
+}
+
+export function formatLocations(location: DimensionalCoords[]): string {
+    const first = location[0];
+    if (!first) return "";
+    const coords = `${first.x}, ${first.y}, ${first.z} (dim ${first.dimid})`;
+    return location.length > 1 ? `${coords} +${location.length - 1} more` : coords;
+}
+
+function buildMachineRows(live: CpuView, now: number): WorkingMachineRow[] {
+    const detail = live.detail;
+    if (!detail?.hasTrackingInfo || live.fetchedAt === null) return [];
+    // `since` is on the server's clock: measure against the server's "now" at fetch time, then tick on.
+    const serverNow = detail.timeStarted + detail.timeElapsed + Math.max(0, now - live.fetchedAt);
+    return detail.machines.map((m) => ({
+        name: m.name,
+        location: formatLocations(m.location),
+        running: formatDuration(Math.max(0, serverNow - m.since)),
+        items: m.items,
+    }));
+}
+
+function buildRow(
+    item: CompactedItem,
+    tracked: boolean,
+    badgeText: string,
+    totalTime: number,
+    used: Map<string, number>,
+): CraftDetailItemRow {
     const requested = item.craftedTotal + item.active + item.pending;
     const stats: CraftDetailStat[] = [
         { label: "active", value: formatNumber(item.active) },
@@ -125,6 +187,8 @@ function buildRow(item: CompactedItem, tracked: boolean, badgeText: string, tota
         stats.push({ label: "crafted", value: `${formatNumber(item.craftedTotal)} / ${formatNumber(requested)}` });
         stats.push({ label: "rate", value: itemRate(item) });
         stats.push({ label: "time spent", value: formatDuration(item.timeSpentCrafting) });
+        const usedAmount = used.get(item.itemid);
+        if (usedAmount) stats.push({ label: "used", value: formatNumber(usedAmount) });
     }
     const share = tracked && totalTime > 0 ? item.timeSpentCrafting / totalTime : 0;
     return {
@@ -169,6 +233,7 @@ export function buildActiveCraftDetail(
     }
 
     return {
+        outputItemid: live.finalOutput.itemid,
         outputName: live.finalOutput.itemname,
         outputQty: live.finalOutput.quantity,
         subtitle: `${live.name} - ${live.coProcessors} co-proc${live.coProcessors === 1 ? "" : "s"} - ${storageStat(live.usedStorage, live.availableStorage)}`,
@@ -181,8 +246,10 @@ export function buildActiveCraftDetail(
                   caption: `${formatNumber(totals.crafted)} of ${formatNumber(totals.requested)} sub-crafts complete - approximated from crafted totals`,
               }
             : null,
-        columns: buildColumns(items, tracked, totals.totalTime, false),
+        columns: buildColumns(items, tracked, totals.totalTime, false, usedByItem(detail.consumed)),
         bottleneck: tracked ? buildBottleneck(items, totals.totalTime) : null,
+        consumed: tracked ? buildConsumedRows(detail.consumed) : null,
+        machines: buildMachineRows(live, now),
         finished: false,
     };
 }
@@ -196,6 +263,7 @@ function buildFromSnapshot(snapshot: CraftDetailSnapshot): CraftDetailView {
     if (tracked) stats.push({ label: "Crafts / sec", value: jobRate.toFixed(2) });
 
     return {
+        outputItemid: snapshot.output.itemid,
         outputName: snapshot.output.itemname,
         outputQty: snapshot.output.quantity,
         subtitle: `${snapshot.cpuName} - ${snapshot.coProcessors} co-proc${snapshot.coProcessors === 1 ? "" : "s"} - ${storageStat(snapshot.usedStorage, snapshot.availableStorage)}`,
@@ -208,10 +276,19 @@ function buildFromSnapshot(snapshot: CraftDetailSnapshot): CraftDetailView {
                   caption: `Completed - ${formatNumber(totals.crafted)} sub-crafts recorded over ${formatDuration(elapsedMs)}`,
               }
             : null,
-        columns: buildColumns(items, tracked, totals.totalTime, true),
+        columns: buildColumns(items, tracked, totals.totalTime, true, usedByItem(snapshot.consumed)),
         bottleneck: tracked ? buildBottleneck(items, totals.totalTime) : null,
+        consumed: tracked ? buildConsumedRows(snapshot.consumed) : null,
+        machines: [],
         finished: true,
     };
+}
+
+/** Amount used per itemid; a fluid and an item never share an itemid, so no key collision. */
+function usedByItem(consumed: ConsumedItem[]): Map<string, number> {
+    const used = new Map<string, number>();
+    for (const c of consumed) used.set(c.itemid, (used.get(c.itemid) ?? 0) + c.amount);
+    return used;
 }
 
 function buildColumns(
@@ -219,6 +296,7 @@ function buildColumns(
     tracked: boolean,
     totalTime: number,
     finished: boolean,
+    used: Map<string, number>,
 ): CraftDetailColumn[] {
     const crafting = finished ? [] : items.filter((i) => i.active > 0);
     const waiting = finished ? [] : items.filter((i) => i.active === 0 && i.pending > 0);
@@ -228,21 +306,21 @@ function buildColumns(
             key: "crafting",
             title: "Crafting",
             color: "amber",
-            rows: crafting.map((i) => buildRow(i, tracked, "active", totalTime)),
+            rows: crafting.map((i) => buildRow(i, tracked, "active", totalTime, used)),
             emptyText: "Nothing being crafted right now",
         },
         {
             key: "waiting",
             title: "Waiting",
             color: "grey",
-            rows: waiting.map((i) => buildRow(i, tracked, "scheduled", totalTime)),
+            rows: waiting.map((i) => buildRow(i, tracked, "scheduled", totalTime, used)),
             emptyText: "Nothing scheduled",
         },
         {
             key: "done",
             title: "Done",
             color: "green",
-            rows: done.map((i) => buildRow(i, tracked, "complete", totalTime)),
+            rows: done.map((i) => buildRow(i, tracked, "complete", totalTime, used)),
             emptyText: tracked ? "Nothing finished yet" : "Completion needs job tracking",
         },
     ];
@@ -256,6 +334,7 @@ function buildBottleneck(items: CompactedItem[], totalTime: number): CraftDetail
         .map((i) => {
             const share = totalTime > 0 ? i.timeSpentCrafting / totalTime : 0;
             return {
+                itemid: i.itemid,
                 itemname: i.itemname,
                 sharePct: share,
                 label: `${formatDuration(i.timeSpentCrafting)} - ${Math.round(share * 100)}%`,

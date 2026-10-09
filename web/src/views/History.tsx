@@ -7,6 +7,7 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { FormattedText } from "../ui/FormattedText";
+import { ItemIcon } from "../ui/ItemIcon";
 import { useVirtualWindow } from "../ui/useVirtualWindow";
 import type { HistoryEntry } from "../state/history";
 import type { GridKey } from "../api/types";
@@ -98,6 +99,7 @@ export function History({ onOpen }: HistoryProps) {
                             className="history-row"
                             onClick={() => onOpen({ gridKey: entry.sourceGridKey, id: entry.id })}
                         >
+                            <ItemIcon itemid={entry.finalOutput.itemid} name={entry.finalOutput.itemname} size={32} />
                             <div className="history-row__main">
                                 <span className="history-row__item">
                                     <FormattedText text={entry.finalOutput.itemname} />x

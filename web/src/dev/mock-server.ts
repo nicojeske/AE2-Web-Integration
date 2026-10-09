@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Plugin } from "vite";
 
-import type { GTRange, StatsRange } from "../api/types.ts";
+import type { GTFlow, GTRange, StatsRange } from "../api/types.ts";
 
 import {
     createJob,
@@ -20,6 +20,8 @@ import {
     recordTracking,
     settleCompletedJobs,
     toCompactedItems,
+    mockConsumed,
+    mockWorkingMachines,
     toCpuList,
     toGridSummaries,
     toJobData,
@@ -185,6 +187,12 @@ async function handleLoginPost(req: IncomingMessage, res: ServerResponse): Promi
 }
 
 /** `/api/gt/*` - mirrors the `GetGT*` endpoints' params, defaults and error statuses. */
+/** `GTFlow.fromParam`: absent means produced; anything but the two names is a bad param. */
+function parseFlow(value: string | null): GTFlow | null {
+    if (value === null || value === "produced") return "produced";
+    return value === "consumed" ? "consumed" : null;
+}
+
 function handleGT(path: string[], params: URLSearchParams, mode: GTMode, res: ServerResponse, next: () => void): void {
     if (mode !== "1" || params.get("fail") === "NOT_AVAILABLE") return respond(res, "NOT_AVAILABLE", null);
     const now = Date.now();
@@ -198,7 +206,11 @@ function handleGT(path: string[], params: URLSearchParams, mode: GTMode, res: Se
         if (span === null) return respond(res, "BAD_PARAM", null);
         const machine = findMockMachine(id, now);
         if (!machine) return respond(res, "NOT_FOUND", null);
-        return ok(res, { machine, production: mockGTProduction(span, "item", id, now) });
+        return ok(res, {
+            machine,
+            production: mockGTProduction(span, "item", "produced", id, now),
+            consumption: mockGTProduction(span, "item", "consumed", id, now),
+        });
     }
     if (section === "power" && id === undefined) return ok(res, { sources: mockGTPower(now) });
     if (section === "power" && id !== undefined && sub === "history") {
@@ -211,16 +223,18 @@ function handleGT(path: string[], params: URLSearchParams, mode: GTMode, res: Se
     if (section === "production" && id === undefined) {
         const span = range("24h", MOCK_PRODUCTION_MAX_RANGE);
         const groupBy = params.get("groupBy") ?? "item";
-        if (span === null || (groupBy !== "item" && groupBy !== "machine")) {
+        const flow = parseFlow(params.get("flow"));
+        if (span === null || flow === null || (groupBy !== "item" && groupBy !== "machine")) {
             return respond(res, "BAD_PARAM", null);
         }
-        return ok(res, mockGTProduction(span, groupBy, params.get("machine"), now));
+        return ok(res, mockGTProduction(span, groupBy, flow, params.get("machine"), now));
     }
     if (section === "production" && id === "history") {
         const span = range("7d", MOCK_PRODUCTION_MAX_RANGE);
         const points = parsePoints(params.get("points"));
-        if (span === null || points === null) return respond(res, "BAD_PARAM", null);
-        return ok(res, mockGTProductionHistory(params.get("item"), params.get("machine"), span, points, now));
+        const flow = parseFlow(params.get("flow"));
+        if (span === null || points === null || flow === null) return respond(res, "BAD_PARAM", null);
+        return ok(res, mockGTProductionHistory(params.get("item"), params.get("machine"), flow, span, points, now));
     }
     next();
 }
@@ -263,14 +277,17 @@ async function handleApi(
             if (busy) {
                 // GetCPU.java only sets timeStarted/timeElapsed inside its hasTrackingInfo branch - an
                 // untracked busy CPU reports neither.
+                const items = toCompactedItems(busy);
                 return ok(res, {
                     size: busy.availableStorage,
                     isBusy: true,
                     finalOutput: busy.output,
-                    items: toCompactedItems(busy),
+                    items,
                     hasTrackingInfo: busy.hasTrackingInfo,
                     timeStarted: busy.hasTrackingInfo ? busy.startedAt : 0,
                     timeElapsed: busy.hasTrackingInfo ? Date.now() - busy.startedAt : 0,
+                    consumed: mockConsumed(busy, items),
+                    machines: mockWorkingMachines(busy, items),
                 });
             }
             const idle = grid.idleCpus.find((c) => mockCpuKey(c.name) === id);
@@ -284,6 +301,8 @@ async function handleApi(
                 hasTrackingInfo: false,
                 timeStarted: 0,
                 timeElapsed: 0,
+                consumed: [],
+                machines: [],
             });
         }
         case "POST cpus/{id}/cancel": {
