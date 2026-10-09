@@ -1,5 +1,5 @@
-// Pieces shared between the active-mode Craft Detail page (M3) and the plan-mode Craft Detail page
-// (M4, PlanDetail.tsx) - lifted out of CraftDetail.tsx rather than duplicated, since both pages render
+// Pieces shared between the active-mode Craft Detail page, the plan preview (PlanDetail.tsx) and the
+// history detail - lifted out of CraftDetail.tsx rather than duplicated, since both pages render
 // the same header/stat-card/three-column shapes against `CraftDetailView`-shaped data.
 import type { ComponentChildren } from "preact";
 
@@ -91,17 +91,11 @@ export function CraftDetailColumns({ columns }: { columns: CraftDetailColumn[] }
                                 <div className="craft-detail__share">
                                     <div className="craft-detail__share-track">
                                         <div
-                                            // Always purple (M3's active-mode share, verified), except the
-                                            // plan page's teal "From storage" column - no other plan column
-                                            // ever produces a sharePct (Job.java only sets `usedPercent` for
-                                            // from-storage rows), so this doesn't need a rule per column color.
-                                            className={`craft-detail__share-fill${col.color === "teal" ? " craft-detail__share-fill--teal" : ""}`}
+                                            className="craft-detail__share-fill"
                                             style={{ width: `${Math.round(row.sharePct * 100)}%` }}
                                         />
                                     </div>
-                                    <span>
-                                        {Math.round(row.sharePct * 100)}% {row.shareCaption ?? "of craft time"}
-                                    </span>
+                                    <span>{Math.round(row.sharePct * 100)}% of craft time</span>
                                 </div>
                             )}
                         </div>

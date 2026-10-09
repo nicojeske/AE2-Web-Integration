@@ -1,0 +1,178 @@
+/* Plan preview (PlanDetail.tsx): toolbar, the virtualized plan table, and the CPU picker block. */
+
+.plan-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.plan-toolbar__search {
+    flex: 1 1 220px;
+    min-width: 0;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 13px;
+}
+
+.plan-table-wrap {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+/* Head and rows share one column template, so the sort buttons line up with the numbers. */
+.plan-table__head,
+.plan-table__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 100px 100px 100px 80px 140px;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px;
+}
+
+.plan-table__head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg-app);
+    padding-top: 6px;
+    padding-bottom: 6px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+.plan-table__sort {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    color: inherit;
+    text-align: right;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.plan-table__sort:hover,
+.plan-table__sort--active {
+    color: var(--text-primary);
+}
+.plan-table__sort.plan-table__cell--name {
+    text-align: left;
+}
+
+/* `flex-shrink: 0` for the same reason as `.item-table` (browser.css): `overflow: hidden` would otherwise
+   let `.content` squash the rows below their windowing height. */
+.plan-table {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card-sm);
+    overflow: hidden;
+}
+
+.plan-table__row {
+    height: 44px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 12.5px;
+}
+.plan-table__row:last-child {
+    border-bottom: 0;
+}
+.plan-table__row:hover {
+    background: var(--bg-hover);
+}
+.plan-table__row--missing {
+    background: rgba(242, 96, 107, 0.06);
+}
+
+.plan-table__cell--name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.plan-table__name {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.plan-table__cell--stored,
+.plan-table__cell--requested,
+.plan-table__cell--missing,
+.plan-table__cell--steps {
+    text-align: right;
+}
+
+.plan-table__amount {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.plan-table__amount--zero {
+    color: var(--text-dim);
+    opacity: 0.6;
+}
+.plan-table__amount--teal {
+    color: var(--teal);
+}
+.plan-table__amount--purple {
+    color: var(--accent);
+}
+.plan-table__amount--red {
+    color: var(--red);
+}
+
+.plan-table__bar {
+    display: flex;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--bg-sunken);
+}
+.plan-table__head .plan-table__cell--bar {
+    text-align: left;
+}
+
+.plan-table__bar-fill--teal {
+    background: var(--teal);
+}
+.plan-table__bar-fill--purple {
+    background: var(--accent);
+}
+.plan-table__bar-fill--red {
+    background: var(--red);
+}
+
+.plan-detail__cpus {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 520px;
+}
+
+/* Phone width: name and the three amounts only. */
+@media (max-width: 767px) {
+    .plan-table__head,
+    .plan-table__row {
+        grid-template-columns: minmax(0, 1fr) 64px 64px 64px;
+        gap: 8px;
+        padding: 0 8px;
+    }
+    .plan-table__cell--steps,
+    .plan-table__cell--bar {
+        display: none;
+    }
+}

@@ -1,5 +1,5 @@
-// Pure view-model builder for the Craft Detail page (M3: active mode; M4 adds a plan-mode sibling
-// alongside this). No Preact here so the arithmetic is reviewable/testable in isolation - mirrors
+// Pure view-model builder for the active Craft Detail page (the plan preview has its own model in
+// orderModel.ts). No Preact here so the arithmetic is reviewable/testable in isolation - mirrors
 // claude-design's `craftDetailVals()` (AE2 Web Terminal.dc.html:895-1048) against the real DTOs.
 import { formatBytes, formatDuration, formatNumber } from "../api/format";
 import { craftTotals } from "../state/craftProgress";
@@ -16,16 +16,12 @@ export interface CraftDetailItemRow {
     badgeText: string;
     /** `0..1`, or `null` when untracked or this item has no recorded time. */
     sharePct: number | null;
-    /** Caption after the share bar - defaults to "% of craft time" (active mode) when omitted; the
-     *  plan-mode page (M4) passes "% of stock" for its `usedPercent`-fed bar. */
-    shareCaption?: string;
 }
 
 export interface CraftDetailColumn {
     key: CraftDetailColumnKey;
     title: string;
-    /** `red`/`purple`/`teal` are M4's plan-mode columns (Missing/To craft/From storage); the rest are M3's. */
-    color: "amber" | "grey" | "green" | "red" | "purple" | "teal";
+    color: "amber" | "grey" | "green";
     rows: CraftDetailItemRow[];
     emptyText: string;
 }

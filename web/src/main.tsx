@@ -8,6 +8,7 @@ import "./views/browser.css";
 import "./views/jobs.css";
 import "./views/craft-detail.css";
 import "./views/order.css";
+import "./views/plan.css";
 import "./views/history.css";
 import "./views/favorites.css";
 import "./views/statistics.css";

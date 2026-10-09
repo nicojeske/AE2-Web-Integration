@@ -1,9 +1,7 @@
-// Pure view-model helpers for the order modal and plan-mode Craft Detail (M4). No Preact here, mirroring
-// craftDetailModel.ts - the CPU validity rule and the plan bucketing are reviewable/testable in isolation.
-import { formatBytes, formatNumber } from "../api/format";
-import type { JobData, JobPlanItem } from "../api/types";
-import type { CraftDetailColumn, CraftDetailItemRow, CraftDetailStat } from "./craftDetailModel";
-import type { BadgeVariant } from "../ui/Badge";
+// Pure view-model helpers for the order modal and the plan preview. No Preact here, mirroring
+// craftDetailModel.ts - the CPU ranking, the plan table and the duration estimate stay testable in isolation.
+import { formatBytes, formatDuration, skipSpecialFormat } from "../api/format";
+import type { JobData, JobPlanItem, TrackingHistoryElement } from "../api/types";
 
 /** Structural subset of `CpuView`/`CpuSummary` this module needs - kept local (not imported from
  *  `state/cpus`) so this stays a leaf module with no dependency on the polling state. */
@@ -131,6 +129,8 @@ export interface PlanBuckets {
     /** Rows AE2 couldn't source, most missing first (the server's own order). */
     missing: JobPlanItem[];
     toCraft: JobPlanItem[];
+    /** Every row that takes something from storage - overlaps `toCraft` where AE2 both takes and
+     *  crafts the same resource, and `missing` for what a simulation could partly source. */
     fromStorage: JobPlanItem[];
 }
 
@@ -138,81 +138,89 @@ export function bucketPlan(job: JobData): PlanBuckets {
     const plan = job.plan ?? [];
     return {
         missing: plan.filter((r) => r.missing > 0),
-        toCraft: plan.filter((r) => r.missing === 0 && r.requested > 0),
-        fromStorage: plan.filter((r) => r.missing === 0 && r.requested === 0 && r.stored > 0),
+        toCraft: plan.filter((r) => r.requested > 0),
+        fromStorage: plan.filter((r) => r.stored > 0),
     };
 }
 
-export interface PlanDetailView {
-    statusLabel: "Ready" | "Simulation";
-    statusVariant: BadgeVariant;
-    /** Bytes / Craft steps / Missing items - Output is rendered separately (needs `<FormattedText>`). */
-    stats: CraftDetailStat[];
-    columns: CraftDetailColumn[];
-    bytesTotal: number;
-    missingCount: number;
+export type PlanFilter = "all" | "missing" | "craft" | "storage";
+export type PlanSortKey = "default" | "name" | "stored" | "requested" | "missing" | "steps";
+
+export interface PlanQuery {
+    filter: PlanFilter;
+    /** Matched against the plain (§-stripped) name and the itemid, case-insensitive. */
+    search: string;
+    sortKey: PlanSortKey;
+    descending: boolean;
 }
 
-function planRow(item: JobPlanItem, badgeText: string): CraftDetailItemRow {
-    return {
-        itemid: item.itemid,
-        itemname: item.itemname,
-        badgeText,
-        stats: [
-            { label: "requested", value: formatNumber(item.requested) },
-            { label: "from storage", value: formatNumber(item.stored) },
-            { label: "missing", value: formatNumber(item.missing) },
-            { label: "steps", value: formatNumber(item.steps) },
-        ],
-        sharePct: item.usedPercent > 0 ? item.usedPercent : null,
-        shareCaption: "of stock",
-    };
+function matchesFilter(row: JobPlanItem, filter: PlanFilter): boolean {
+    switch (filter) {
+        case "all":
+            return true;
+        case "missing":
+            return row.missing > 0;
+        case "craft":
+            return row.requested > 0;
+        case "storage":
+            return row.stored > 0;
+    }
 }
 
 /**
- * Builds the plan-mode Craft Detail view model from a completed `/job?id=` response. Bucketed exactly as
- * `Job.java` fills the fields (caveat: `missing`/`requested`/`stored` are mutually exclusive per row
- * there, see `Job.java:106-121`), not by re-deriving from `Job.java`'s own sort order.
+ * The plan table's rows. Missing rows always stay on top - they are why a plan can't start - and the
+ * chosen sort applies within each group; `default` keeps the server's order (missing, then crafts by
+ * steps, then storage by amount).
  */
-export function buildPlanDetail(job: JobData): PlanDetailView {
-    const plan = job.plan ?? [];
-    const { missing, toCraft, fromStorage } = bucketPlan(job);
-    const steps = plan.reduce((sum, r) => sum + r.steps, 0);
+export function planTableRows(job: JobData, query: PlanQuery): JobPlanItem[] {
+    const needle = query.search.trim().toLowerCase();
+    const rows = (job.plan ?? []).filter(
+        (r) =>
+            matchesFilter(r, query.filter) &&
+            (needle === "" ||
+                skipSpecialFormat(r.itemname).toLowerCase().includes(needle) ||
+                r.itemid.toLowerCase().includes(needle)),
+    );
+    if (query.sortKey === "default") return rows;
+    const key = query.sortKey;
+    const dir = query.descending ? -1 : 1;
+    const compare = (a: JobPlanItem, b: JobPlanItem) =>
+        key === "name"
+            ? dir * skipSpecialFormat(a.itemname).localeCompare(skipSpecialFormat(b.itemname))
+            : dir * (a[key] - b[key]);
+    return rows.sort((a, b) => Number(b.missing > 0) - Number(a.missing > 0) || compare(a, b));
+}
 
-    const columns: CraftDetailColumn[] = [
-        {
-            key: "crafting", // reusing craftDetailModel's key union loosely - title/color drive the render
-            title: "Missing",
-            color: "red",
-            rows: missing.map((r) => planRow(r, "unavailable")),
-            emptyText: "Nothing missing",
-        },
-        {
-            key: "waiting",
-            title: "To craft",
-            color: "purple",
-            rows: toCraft.map((r) => planRow(r, "craft")),
-            emptyText: "Nothing to craft",
-        },
-        {
-            key: "done",
-            title: "From storage",
-            color: "teal",
-            rows: fromStorage.map((r) => planRow(r, "in stock")),
-            emptyText: "Nothing taken from storage",
-        },
-    ];
+export interface DurationEstimate {
+    ms: number;
+    runs: number;
+}
 
-    return {
-        statusLabel: job.isSimulating ? "Simulation" : "Ready",
-        statusVariant: job.isSimulating ? "red" : "green",
-        stats: [
-            { label: "Bytes", value: formatBytes(job.bytesTotal) },
-            { label: "Craft steps", value: formatNumber(steps) },
-            { label: "Missing items", value: formatNumber(missing.length) },
-        ],
-        columns,
-        bytesTotal: job.bytesTotal,
-        missingCount: missing.length,
-    };
+/** Past runs an estimate is drawn from, newest first. */
+const ESTIMATE_RUNS = 5;
+
+/**
+ * How long crafting `quantity` of an item should take: the median time per unit of the latest finished
+ * (not cancelled) runs of the same output on the same grid, scaled to `quantity`. Crafting time isn't
+ * linear in quantity (setup, parallel machines), so it is shown as a rough "≈". `null` without a run.
+ */
+export function estimateDuration(
+    history: TrackingHistoryElement[],
+    itemid: string,
+    quantity: number,
+): DurationEstimate | null {
+    const perUnit = history
+        .filter((h) => !h.wasCancelled && h.finalOutput.itemid === itemid && h.finalOutput.quantity > 0)
+        .sort((a, b) => b.timeDone - a.timeDone)
+        .slice(0, ESTIMATE_RUNS)
+        .map((h) => (h.timeDone - h.timeStarted) / h.finalOutput.quantity)
+        .sort((a, b) => a - b);
+    if (perUnit.length === 0) return null;
+    const mid = perUnit.length >> 1;
+    const median = perUnit.length % 2 ? perUnit[mid]! : (perUnit[mid - 1]! + perUnit[mid]!) / 2;
+    return { ms: median * quantity, runs: perUnit.length };
+}
+
+export function formatEstimate(estimate: DurationEstimate): string {
+    return `≈ ${formatDuration(estimate.ms)} (${estimate.runs} past run${estimate.runs === 1 ? "" : "s"})`;
 }

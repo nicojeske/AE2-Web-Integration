@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { formatBytes, formatNumber } from "../api/format";
-import { useCpus } from "../state/cpus";
+import { useHistory } from "../state/history";
 import { useItems } from "../state/items";
 import { useOrder } from "../state/order";
 import { prefsKey, usePrefs } from "../state/prefs";
@@ -9,7 +9,8 @@ import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
 import { Modal } from "../ui/Modal";
-import { bucketPlan, clampQuantity, cpuRows } from "./orderModel";
+import { CpuPicker } from "./CpuPicker";
+import { bucketPlan, clampQuantity, estimateDuration, formatEstimate } from "./orderModel";
 
 const QTY_STEPS_MINUS = [-512, -64, -1];
 const QTY_STEPS_PLUS = [1, 64, 512];
@@ -28,7 +29,7 @@ export interface OrderModalProps {
  */
 export function OrderModal({ onSubmitted }: OrderModalProps) {
     const order = useOrder();
-    const { cpus } = useCpus();
+    const { entries: history } = useHistory();
     const { items } = useItems();
     const { thresholds, settings } = usePrefs();
     const { flow } = order;
@@ -59,15 +60,14 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
     const job = flow.phase === "plan" || flow.phase === "submitting" ? flow.job : null;
     const bytesTotal = job?.bytesTotal ?? 0;
     const buckets = job ? bucketPlan(job) : null;
-    const rows =
-        job && !job.isSimulating
-            ? cpuRows(
-                  cpus.filter((c) => c.sourceGridKey === flow.gridKey),
-                  bytesTotal,
-                  flow.itemid,
-                  flow.selectedCpu,
-              )
-            : [];
+    // Only the plan's own grid - a run elsewhere says little about this network's machines.
+    const estimate = job
+        ? estimateDuration(
+              history.filter((h) => h.sourceGridKey === flow.gridKey),
+              flow.itemid,
+              flow.quantity,
+          )
+        : null;
     const elapsedSeconds = Math.max(0, Math.round((now - flow.calcStartedAt) / 1000));
     const busy = flow.phase === "submitting";
     const canStart = flow.phase === "plan" && !!flow.selectedCpu && !job?.isSimulating;
@@ -185,6 +185,7 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
                                 {buckets.missing.length} missing
                             </span>
                         )}
+                        {estimate && <span className="order-modal__chip">{formatEstimate(estimate)}</span>}
                     </div>
                 )}
                 {job?.isSimulating && buckets && (
@@ -211,29 +212,13 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
             {job && !job.isSimulating && (
                 <div className="order-modal__section">
                     <span className="order-modal__label">Crafting CPU</span>
-                    {rows.length === 0 ? (
-                        <p className="order-modal__notice">This network has no crafting CPUs.</p>
-                    ) : (
-                        <div className="order-modal__cpu-list">
-                            {rows.map((row) => (
-                                <button
-                                    key={row.cpuKey}
-                                    type="button"
-                                    className={`order-modal__cpu-row order-modal__cpu-row--${row.state}${
-                                        row.selected ? " order-modal__cpu-row--selected" : ""
-                                    }`}
-                                    disabled={!row.selectable}
-                                    onClick={() => order.selectCpu(row.cpuKey)}
-                                >
-                                    <span className="order-modal__cpu-row-head">
-                                        <span>{row.name}</span>
-                                        <span className="order-modal__cpu-tag">{row.tag}</span>
-                                    </span>
-                                    <span className="order-modal__cpu-row-detail">{row.detail}</span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    <CpuPicker
+                        gridKey={flow.gridKey}
+                        itemid={flow.itemid}
+                        bytesTotal={bytesTotal}
+                        selectedCpu={flow.selectedCpu}
+                        onSelect={order.selectCpu}
+                    />
                 </div>
             )}
 
