@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 
 class GTProductionLogTest {
@@ -40,7 +41,8 @@ class GTProductionLogTest {
     }
 
     private static void record(String machine, UUID owner, String stack, long amount, long at) {
-        GTProductionLog.record(machine, "EBF " + machine, owner, stack, "Name of " + stack, amount, false, at);
+        GTProductionLog
+            .record(GTFlow.PRODUCED, machine, "EBF " + machine, owner, stack, "Name of " + stack, amount, false, at);
     }
 
     @Test
@@ -50,7 +52,8 @@ class GTProductionLogTest {
         record("m1", ALICE, "gregtech:ingot:1", 1000, NOW - 3 * HOUR);
         record("m2", ALICE, "gregtech:ingot:1", 7, NOW);
 
-        List<GTProductionLog.Row> rows = GTProductionLog.totals(NOW - HOUR, NOW, NOW, owner -> true, null);
+        List<GTProductionLog.Row> rows = GTProductionLog
+            .totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, owner -> true, null);
 
         assertEquals(2, rows.size());
         long m1 = rows.stream()
@@ -71,7 +74,8 @@ class GTProductionLogTest {
         record("m1", ALICE, "a", 1, NOW);
         record("m2", BOB, "a", 1, NOW);
 
-        List<GTProductionLog.Row> rows = GTProductionLog.totals(NOW - HOUR, NOW, NOW, ALICE::equals, null);
+        List<GTProductionLog.Row> rows = GTProductionLog
+            .totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, ALICE::equals, null);
 
         assertEquals(1, rows.size());
         assertEquals("m1", rows.get(0).machineId);
@@ -81,11 +85,11 @@ class GTProductionLogTest {
     void nonPositiveAmountsAndMissingIdsAreIgnored() {
         record("m1", ALICE, "a", 0, NOW);
         record("m1", ALICE, "a", -5, NOW);
-        GTProductionLog.record(null, null, ALICE, "a", null, 5, false, NOW);
-        GTProductionLog.record("m1", null, ALICE, null, null, 5, false, NOW);
+        GTProductionLog.record(GTFlow.PRODUCED, null, null, ALICE, "a", null, 5, false, NOW);
+        GTProductionLog.record(GTFlow.PRODUCED, "m1", null, ALICE, null, null, 5, false, NOW);
 
         assertTrue(
-            GTProductionLog.totals(NOW - DAY, NOW, NOW, o -> true, null)
+            GTProductionLog.totals(GTFlow.PRODUCED, NOW - DAY, NOW, NOW, o -> true, null)
                 .isEmpty());
         assertEquals(0L, GTProductionLog.trackingSinceMillis());
     }
@@ -100,7 +104,7 @@ class GTProductionLogTest {
         assertTrue(!GTProductionLog.useHourly(NOW - 10 * DAY, NOW));
         assertEquals(
             7,
-            GTProductionLog.totals(NOW - 10 * DAY, NOW, NOW, o -> true, null)
+            GTProductionLog.totals(GTFlow.PRODUCED, NOW - 10 * DAY, NOW, NOW, o -> true, null)
                 .get(0).total);
     }
 
@@ -113,7 +117,8 @@ class GTProductionLogTest {
 
         GTProductionLog.prune(NOW);
 
-        List<GTProductionLog.Row> rows = GTProductionLog.totals(NOW - 90 * DAY, NOW, NOW, o -> true, null);
+        List<GTProductionLog.Row> rows = GTProductionLog
+            .totals(GTFlow.PRODUCED, NOW - 90 * DAY, NOW, NOW, o -> true, null);
         assertEquals(1, rows.size());
         assertEquals("new", rows.get(0).machineId);
     }
@@ -126,7 +131,8 @@ class GTProductionLogTest {
         record("m1", ALICE, "b", 100, NOW);
         record("m3", BOB, "a", 1000, NOW);
 
-        GTProductionLog.Series series = GTProductionLog.series("a", null, NOW - 2 * HOUR, NOW, NOW, 120, ALICE::equals);
+        GTProductionLog.Series series = GTProductionLog
+            .series(GTFlow.PRODUCED, "a", null, NOW - 2 * HOUR, NOW, NOW, 120, ALICE::equals);
 
         assertEquals("hourly", series.resolution);
         assertArrayEquals(new long[] { 3, 0, 4 }, series.points);
@@ -138,25 +144,54 @@ class GTProductionLogTest {
         for (int h = 0; h < 6; h++) {
             record("m1", ALICE, "a", 1, NOW - h * HOUR);
         }
-        GTProductionLog.Series series = GTProductionLog.series("a", "m1", NOW - 5 * HOUR, NOW, NOW, 3, o -> true);
+        GTProductionLog.Series series = GTProductionLog
+            .series(GTFlow.PRODUCED, "a", "m1", NOW - 5 * HOUR, NOW, NOW, 3, o -> true);
 
         assertArrayEquals(new long[] { 2, 2, 2 }, series.points);
         assertEquals(2 * HOUR, series.stepMillis);
     }
 
     @Test
+    void consumedStacksAreKeptApartFromProducedOnes() {
+        record("m1", ALICE, "ingot", 10, NOW);
+        GTProductionLog.record(GTFlow.CONSUMED, "m1", "EBF m1", ALICE, "dust", "Name of dust", 20, false, NOW);
+        GTProductionLog.record(GTFlow.CONSUMED, "m1", "EBF m1", ALICE, "oxygen", "Oxygen", 1000, true, NOW);
+
+        List<GTProductionLog.Row> produced = GTProductionLog
+            .totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, o -> true, null);
+        List<GTProductionLog.Row> consumed = GTProductionLog
+            .totals(GTFlow.CONSUMED, NOW - HOUR, NOW, NOW, o -> true, "m1");
+        assertEquals(1, produced.size());
+        assertEquals("ingot", produced.get(0).stackId);
+        assertEquals(2, consumed.size());
+        assertEquals(
+            1020L,
+            consumed.stream()
+                .mapToLong(r -> r.total)
+                .sum());
+        assertArrayEquals(
+            new long[] { 1020 },
+            GTProductionLog.series(GTFlow.CONSUMED, null, "m1", NOW - HOUR / 2, NOW, NOW, 1, o -> true).points);
+    }
+
+    @Test
     void persistenceRoundTrip() {
         record("m1", ALICE, "a", 42, NOW);
+        GTProductionLog.record(GTFlow.CONSUMED, "m1", "EBF m1", ALICE, "b", "Name of b", 7, false, NOW);
         GTProductionLog.saveNow();
         GTProductionLog.clear();
 
         GTProductionLog.loadData();
 
-        List<GTProductionLog.Row> rows = GTProductionLog.totals(NOW - HOUR, NOW, NOW, o -> true, null);
+        List<GTProductionLog.Row> rows = GTProductionLog.totals(GTFlow.PRODUCED, NOW - HOUR, NOW, NOW, o -> true, null);
         assertEquals(1, rows.size());
         assertEquals(42, rows.get(0).total);
         assertEquals(ALICE, rows.get(0).owner);
         assertEquals("Name of a", rows.get(0).stackName);
         assertEquals(NOW, GTProductionLog.trackingSinceMillis());
+        List<GTProductionLog.Row> consumed = GTProductionLog
+            .totals(GTFlow.CONSUMED, NOW - HOUR, NOW, NOW, o -> true, null);
+        assertEquals(1, consumed.size());
+        assertEquals(7, consumed.get(0).total);
     }
 }

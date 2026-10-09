@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -14,6 +15,7 @@ import org.jetbrains.annotations.Nullable;
 import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.WebPrincipal;
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.gt.GTProductionLog;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
@@ -24,7 +26,7 @@ import pl.kuba6000.ae2webintegration.core.http.contract.OptionalInput;
 import pl.kuba6000.ae2webintegration.core.http.contract.QueryParam;
 
 /**
- * Totals GregTech production over a range.
+ * Totals GregTech production, or with {@code flow=consumed} recipe inputs, over a range.
  *
  * Grouped by item (with a per-machine breakdown) or by machine (with a per-item breakdown), largest first.
  * 
@@ -66,6 +68,11 @@ public final class GetGTProduction extends GTRequest {
     @OptionalInput
     private String groupBy = "item";
 
+    /** {@code produced} (recipe outputs) or {@code consumed} (recipe inputs). */
+    @QueryParam("flow")
+    @OptionalInput
+    private String flow = "produced";
+
     /** Machine id to restrict the totals to. */
     @QueryParam("machine")
     @OptionalInput
@@ -96,6 +103,8 @@ public final class GetGTProduction extends GTRequest {
         public long trackingSince;
         public String resolution;
         public String groupBy;
+        /** {@code produced} or {@code consumed}, as requested. */
+        public String flow;
         public List<JSON_GTProductionEntry> rows = new ArrayList<>();
     }
 
@@ -108,28 +117,31 @@ public final class GetGTProduction extends GTRequest {
     @Override
     protected void handleGT(WebPrincipal principal) {
         Long span = parseRange(range, minutes, maxRangeMillis());
-        if (span == null || !(groupBy.equals("item") || groupBy.equals("machine"))) {
+        GTFlow flow = GTFlow.fromParam(this.flow);
+        if (span == null || flow == null || !(groupBy.equals("item") || groupBy.equals("machine"))) {
             deny(ApiStatus.BAD_PARAM);
             return;
         }
         long now = System.currentTimeMillis();
         respond(
             HttpURLConnection.HTTP_OK,
-            new Response(ApiStatus.OK, build(now - span, now, now, groupBy, machine, principal)));
+            new Response(ApiStatus.OK, build(flow, now - span, now, now, groupBy, machine, principal)));
     }
 
     static long maxRangeMillis() {
         return TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.productionDailyRetentionDays);
     }
 
-    static JSON_GTProduction build(long fromMillis, long toMillis, long nowMillis, String groupBy, String machineId,
-        WebPrincipal principal) {
+    static JSON_GTProduction build(GTFlow flow, long fromMillis, long toMillis, long nowMillis, String groupBy,
+        String machineId, WebPrincipal principal) {
         boolean hourly = fromMillis
             >= nowMillis - TimeUnit.DAYS.toMillis(Config.INSTANCE.gregtech.productionHourlyRetentionDays);
         long bucketMillis = hourly ? TimeUnit.HOURS.toMillis(1) : TimeUnit.DAYS.toMillis(1);
 
         JSON_GTProduction result = new JSON_GTProduction();
         result.groupBy = groupBy;
+        result.flow = flow.name()
+            .toLowerCase(Locale.ROOT);
         result.resolution = hourly ? "hourly" : "daily";
         result.from = Math.floorDiv(fromMillis, bucketMillis) * bucketMillis;
         result.to = toMillis;
@@ -141,7 +153,7 @@ public final class GetGTProduction extends GTRequest {
         boolean byItem = groupBy.equals("item");
         Map<String, JSON_GTProductionEntry> groups = new LinkedHashMap<>();
         for (GTProductionLog.Row row : GTProductionLog
-            .totals(fromMillis, toMillis, nowMillis, visibleTo(principal), machineId)) {
+            .totals(flow, fromMillis, toMillis, nowMillis, visibleTo(principal), machineId)) {
             String groupKey = byItem ? row.stackId : row.machineId;
             JSON_GTProductionEntry group = groups.computeIfAbsent(groupKey, k -> {
                 JSON_GTProductionEntry entry = new JSON_GTProductionEntry();

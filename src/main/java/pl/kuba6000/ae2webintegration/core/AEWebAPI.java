@@ -3,6 +3,7 @@ package pl.kuba6000.ae2webintegration.core;
 import java.util.UUID;
 
 import pl.kuba6000.ae2webintegration.core.api.IAEWebInterface;
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.api.gt.IGTProvider;
 import pl.kuba6000.ae2webintegration.core.gt.GTEngine;
 import pl.kuba6000.ae2webintegration.core.gt.GTMachineRegistry;
@@ -30,9 +31,9 @@ public class AEWebAPI implements IAEWebInterface {
 
     @Override
     public void recordGTProduction(String machineId, String machineName, UUID owner, String stackId, String stackName,
-        long amount, boolean fluid) {
+        long amount, boolean fluid, GTFlow flow) {
         GTProductionLog
-            .record(machineId, machineName, owner, stackId, stackName, amount, fluid, System.currentTimeMillis());
+            .record(flow, machineId, machineName, owner, stackId, stackName, amount, fluid, System.currentTimeMillis());
     }
 
     @Override

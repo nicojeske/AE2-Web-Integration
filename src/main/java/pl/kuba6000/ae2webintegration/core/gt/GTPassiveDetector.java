@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 
 /**
@@ -85,7 +86,8 @@ public final class GTPassiveDetector {
             long from = (firstBucket + i * windowHours) * GTProductionLog.HOUR_MILLIS;
             long to = from + windowHours * GTProductionLog.HOUR_MILLIS - 1;
             Map<String, Set<String>> outputs = new HashMap<>();
-            for (GTProductionLog.Row row : GTProductionLog.totals(from, to, nowMillis, owner -> true, null)) {
+            for (GTProductionLog.Row row : GTProductionLog
+                .totals(GTFlow.PRODUCED, from, to, nowMillis, owner -> true, null)) {
                 outputs.computeIfAbsent(row.machineId, k -> new HashSet<>())
                     .add(row.stackId);
             }

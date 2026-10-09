@@ -18,6 +18,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import pl.kuba6000.ae2webintegration.core.ae2request.async.IAsyncRequest;
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.config.Config;
@@ -272,10 +273,10 @@ class GTRequestTest {
         String alices = GTMachineSnapshot.idOf(0, 1, 64, 0);
         String bobs = GTMachineSnapshot.idOf(0, 2, 64, 0);
         String carols = GTMachineSnapshot.idOf(0, 3, 64, 0);
-        GTProductionLog.record(alices, "EBF", ALICE, "gt:ingot:1", "Titanium Ingot", 30, false, now);
-        GTProductionLog.record(bobs, "Vac", BOB, "gt:ingot:1", "Titanium Ingot", 10, false, now);
-        GTProductionLog.record(bobs, "Vac", BOB, "helium", "Helium", 1000, true, now);
-        GTProductionLog.record(carols, "EBF", CAROL, "gt:ingot:1", "Titanium Ingot", 500, false, now);
+        GTProductionLog.record(GTFlow.PRODUCED, alices, "EBF", ALICE, "gt:ingot:1", "Titanium Ingot", 30, false, now);
+        GTProductionLog.record(GTFlow.PRODUCED, bobs, "Vac", BOB, "gt:ingot:1", "Titanium Ingot", 10, false, now);
+        GTProductionLog.record(GTFlow.PRODUCED, bobs, "Vac", BOB, "helium", "Helium", 1000, true, now);
+        GTProductionLog.record(GTFlow.PRODUCED, carols, "EBF", CAROL, "gt:ingot:1", "Titanium Ingot", 500, false, now);
 
         JsonObject byItem = run(new GetGTProduction(), ALICE_ID, "range=1h&groupBy=item");
         assertStatus("OK", byItem);
@@ -338,10 +339,71 @@ class GTRequestTest {
     }
 
     @Test
+    void consumedFlowServesRecipeInputsSeparately() {
+        scanThreeOwners();
+        long now = System.currentTimeMillis();
+        String alices = GTMachineSnapshot.idOf(0, 1, 64, 0);
+        GTProductionLog.record(GTFlow.PRODUCED, alices, "EBF", ALICE, "gt:ingot:1", "Titanium Ingot", 30, false, now);
+        GTProductionLog.record(GTFlow.CONSUMED, alices, "EBF", ALICE, "gt:dust:1", "Titanium Dust", 30, false, now);
+
+        JsonObject consumed = run(new GetGTProduction(), ALICE_ID, "range=1h&flow=consumed");
+        assertStatus("OK", consumed);
+        JsonObject data = consumed.getAsJsonObject("data");
+        assertEquals(
+            "consumed",
+            data.get("flow")
+                .getAsString());
+        assertEquals(
+            "gt:dust:1",
+            data.getAsJsonArray("rows")
+                .get(0)
+                .getAsJsonObject()
+                .get("key")
+                .getAsString());
+        assertEquals(
+            1,
+            data.getAsJsonArray("rows")
+                .size());
+
+        JsonObject history = run(new GetGTProductionHistory(), ALICE_ID, "flow=consumed&item=gt:ingot:1&range=24h");
+        JsonArray points = history.getAsJsonObject("data")
+            .getAsJsonArray("points");
+        assertEquals(
+            0,
+            points.get(points.size() - 1)
+                .getAsLong(),
+            "outputs are not inputs");
+
+        JsonObject machine = run(new GetGTMachine(), ALICE_ID, "range=1h&id=" + alices);
+        assertStatus("OK", machine);
+        assertEquals(
+            "gt:dust:1",
+            machine.getAsJsonObject("data")
+                .getAsJsonObject("consumption")
+                .getAsJsonArray("rows")
+                .get(0)
+                .getAsJsonObject()
+                .get("key")
+                .getAsString());
+
+        assertStatus("BAD_PARAM", run(new GetGTProduction(), ALICE_ID, "flow=sideways"));
+        assertStatus("BAD_PARAM", run(new GetGTProductionHistory(), ALICE_ID, "flow=sideways"));
+    }
+
+    @Test
     void productionHistoryIsServedPerItem() {
         scanThreeOwners();
         long now = System.currentTimeMillis();
-        GTProductionLog.record(GTMachineSnapshot.idOf(0, 1, 64, 0), "EBF", ALICE, "gt:ingot:1", "Ti", 30, false, now);
+        GTProductionLog.record(
+            GTFlow.PRODUCED,
+            GTMachineSnapshot.idOf(0, 1, 64, 0),
+            "EBF",
+            ALICE,
+            "gt:ingot:1",
+            "Ti",
+            30,
+            false,
+            now);
 
         JsonObject response = run(new GetGTProductionHistory(), ALICE_ID, "item=gt:ingot:1&range=24h");
         assertStatus("OK", response);
@@ -366,7 +428,8 @@ class GTRequestTest {
     void perHourUsesTheTrackedSpanButNeverLessThanFiveMinutes() {
         scanThreeOwners();
         long now = System.currentTimeMillis();
-        GTProductionLog.record(GTMachineSnapshot.idOf(0, 1, 64, 0), "EBF", ALICE, "a", "A", 60, false, now);
+        GTProductionLog
+            .record(GTFlow.PRODUCED, GTMachineSnapshot.idOf(0, 1, 64, 0), "EBF", ALICE, "a", "A", 60, false, now);
 
         JsonObject data = run(new GetGTProduction(), ALICE_ID, "range=24h").getAsJsonObject("data");
 

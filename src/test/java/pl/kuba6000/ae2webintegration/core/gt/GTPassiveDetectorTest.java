@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 
 class GTPassiveDetectorTest {
@@ -37,7 +38,8 @@ class GTPassiveDetectorTest {
     }
 
     private static void record(String machine, String stack, long at) {
-        GTProductionLog.record(machine, "EBF " + machine, ALICE, stack, "Name of " + stack, 1, false, at);
+        GTProductionLog
+            .record(GTFlow.PRODUCED, machine, "EBF " + machine, ALICE, stack, "Name of " + stack, 1, false, at);
     }
 
     /** One output of {@code stack} every hour of the last {@code hours} hours, oldest first. */

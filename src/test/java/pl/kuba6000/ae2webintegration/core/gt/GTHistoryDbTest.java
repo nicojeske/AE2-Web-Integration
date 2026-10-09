@@ -21,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
@@ -134,7 +135,8 @@ class GTHistoryDbTest {
     // --- Production ---
 
     private static void record(String machine, UUID owner, String stack, long amount, long at) {
-        GTProductionLog.record(machine, "EBF " + machine, owner, stack, "Name of " + stack, amount, false, at);
+        GTProductionLog
+            .record(GTFlow.PRODUCED, machine, "EBF " + machine, owner, stack, "Name of " + stack, amount, false, at);
     }
 
     private static void recordProduction() {
@@ -142,6 +144,8 @@ class GTHistoryDbTest {
             record("m1", ALICE, "ingot", 10 + h, NOW - h * HOUR);
             record("m1", ALICE, "dust", 1, NOW - h * HOUR);
             record("m2", BOB, "ingot", 100, NOW - h * 5 * HOUR);
+            GTProductionLog
+                .record(GTFlow.CONSUMED, "m1", "EBF m1", ALICE, "dust", "Name of dust", 4, false, NOW - h * HOUR);
         }
         record("m3", null, "plate", 3, NOW - 20 * DAY);
     }
@@ -149,12 +153,23 @@ class GTHistoryDbTest {
     private static List<String> readProduction() {
         List<String> answers = new ArrayList<>();
         for (long span : new long[] { 5 * HOUR, 3 * DAY, 30 * DAY }) {
-            answers.add(rows(GTProductionLog.totals(NOW - span, NOW, NOW, o -> true, null)));
-            answers.add(rows(GTProductionLog.totals(NOW - span, NOW, NOW, o -> ALICE.equals(o), null)));
-            answers.add(rows(GTProductionLog.totals(NOW - span, NOW, NOW, o -> true, "m2")));
-            answers.add(describe(GTProductionLog.series("ingot", null, NOW - span, NOW, NOW, 6, o -> true)));
-            answers.add(describe(GTProductionLog.series(null, "m1", NOW - span, NOW, NOW, 6, o -> true)));
-            answers.add(describe(GTProductionLog.series("ingot", null, NOW - span, NOW, NOW, 6, o -> BOB.equals(o))));
+            answers.add(rows(GTProductionLog.totals(GTFlow.PRODUCED, NOW - span, NOW, NOW, o -> true, null)));
+            answers
+                .add(rows(GTProductionLog.totals(GTFlow.PRODUCED, NOW - span, NOW, NOW, o -> ALICE.equals(o), null)));
+            answers.add(rows(GTProductionLog.totals(GTFlow.PRODUCED, NOW - span, NOW, NOW, o -> true, "m2")));
+            answers.add(
+                describe(GTProductionLog.series(GTFlow.PRODUCED, "ingot", null, NOW - span, NOW, NOW, 6, o -> true)));
+            answers
+                .add(describe(GTProductionLog.series(GTFlow.PRODUCED, null, "m1", NOW - span, NOW, NOW, 6, o -> true)));
+            answers.add(
+                describe(
+                    GTProductionLog
+                        .series(GTFlow.PRODUCED, "ingot", null, NOW - span, NOW, NOW, 6, o -> BOB.equals(o))));
+        }
+        for (long span : new long[] { 5 * HOUR, 30 * DAY }) {
+            answers.add(rows(GTProductionLog.totals(GTFlow.CONSUMED, NOW - span, NOW, NOW, o -> true, null)));
+            answers
+                .add(describe(GTProductionLog.series(GTFlow.CONSUMED, null, "m1", NOW - span, NOW, NOW, 6, o -> true)));
         }
         answers.add("since " + GTProductionLog.trackingSinceMillis());
         return answers;

@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.WebPrincipal;
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.gt.GTMachineRegistry;
 import pl.kuba6000.ae2webintegration.core.gt.GTVisibility;
@@ -67,6 +68,8 @@ public final class GetGTMachine extends GTRequest {
 
         public GTMachineSnapshot machine;
         public GetGTProduction.JSON_GTProduction production;
+        /** Recipe inputs over the same range, in the same shape as {@code production}. */
+        public GetGTProduction.JSON_GTProduction consumption;
     }
 
     @Override
@@ -84,7 +87,8 @@ public final class GetGTMachine extends GTRequest {
         long now = System.currentTimeMillis();
         JSON_GTMachine result = new JSON_GTMachine();
         result.machine = machine;
-        result.production = GetGTProduction.build(now - span, now, now, "item", id, principal);
+        result.production = GetGTProduction.build(GTFlow.PRODUCED, now - span, now, now, "item", id, principal);
+        result.consumption = GetGTProduction.build(GTFlow.CONSUMED, now - span, now, now, "item", id, principal);
         respond(HttpURLConnection.HTTP_OK, new Response(ApiStatus.OK, result));
     }
 }

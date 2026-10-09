@@ -18,7 +18,10 @@ public enum HistoryTable {
     POWER_HOURLY("power_hourly", Kind.GAUGE, TimeUnit.DAYS.toMillis(7), 0L),
     /** GregTech production, summed per hour. */
     PRODUCTION_HOURLY("production_hourly", Kind.COUNTER, TimeUnit.DAYS.toMillis(7), 0L),
-    PRODUCTION_DAILY("production_daily", Kind.COUNTER, TimeUnit.DAYS.toMillis(30), 0L);
+    PRODUCTION_DAILY("production_daily", Kind.COUNTER, TimeUnit.DAYS.toMillis(30), 0L),
+    /** GregTech recipe inputs, summed per hour. */
+    CONSUMPTION_HOURLY("consumption_hourly", Kind.COUNTER, TimeUnit.DAYS.toMillis(7), 0L),
+    CONSUMPTION_DAILY("consumption_daily", Kind.COUNTER, TimeUnit.DAYS.toMillis(30), 0L);
 
     public enum Kind {
         /**

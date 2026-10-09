@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.WebPrincipal;
+import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.gt.GTProductionLog;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
@@ -64,6 +65,11 @@ public final class GetGTProductionHistory extends GTRequest {
     @OptionalInput
     private @Nullable String item;
 
+    /** {@code produced} (recipe outputs) or {@code consumed} (recipe inputs). */
+    @QueryParam("flow")
+    @OptionalInput
+    private String flow = "produced";
+
     /** Machine id to restrict the series to. */
     @QueryParam("machine")
     @OptionalInput
@@ -73,7 +79,8 @@ public final class GetGTProductionHistory extends GTRequest {
     protected void handleGT(WebPrincipal principal) {
         Long span = parseRange(range, minutes, GetGTProduction.maxRangeMillis());
         Integer points = parsePoints(this.points);
-        if (span == null || points == null) {
+        GTFlow flow = GTFlow.fromParam(this.flow);
+        if (span == null || points == null || flow == null) {
             deny(ApiStatus.BAD_PARAM);
             return;
         }
@@ -83,6 +90,7 @@ public final class GetGTProductionHistory extends GTRequest {
             new Response(
                 ApiStatus.OK,
                 GTProductionLog.series(
+                    flow,
                     emptyToNull(item),
                     emptyToNull(machine),
                     now - span,
