@@ -5,6 +5,7 @@ import { useItems } from "../state/items";
 import { useNetwork } from "../state/network";
 import { useOrder } from "../state/order";
 import { prefsKey, usePrefs } from "../state/prefs";
+import { useStockRules } from "../state/stockRules";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -38,8 +39,8 @@ const OVERSCAN_ROWS = 4;
 export function Browser({ search }: BrowserProps) {
     const { items, loading, error, failedGrids, refresh } = useItems();
     const { selected, selectedGrid } = useNetwork();
-    const { favorites, thresholds, isFavorite, toggleFavorite, browserFilters, setBrowserFilters, settings } =
-        usePrefs();
+    const { isFavorite, toggleFavorite, browserFilters, setBrowserFilters, settings } = usePrefs();
+    const { rules: stockRules } = useStockRules();
     const { startOrder } = useOrder();
 
     const isAllGrids = selected === "all";
@@ -145,7 +146,7 @@ export function Browser({ search }: BrowserProps) {
                     {visible.map((item) => {
                         const key = prefsKey(item.sourceGridKey, item.itemid);
                         const favorited = isFavorite(key);
-                        const lowStock = isLowStock(item, favorites, thresholds);
+                        const lowStock = isLowStock(item, stockRules);
                         return (
                             <div key={`${item.sourceGridKey}:${item.itemid}`} className="item-table-row">
                                 <button
@@ -208,7 +209,7 @@ export function Browser({ search }: BrowserProps) {
                     {visible.map((item) => {
                         const key = prefsKey(item.sourceGridKey, item.itemid);
                         const favorited = isFavorite(key);
-                        const lowStock = isLowStock(item, favorites, thresholds);
+                        const lowStock = isLowStock(item, stockRules);
                         return (
                             <Card key={`${item.sourceGridKey}:${item.itemid}`} className="item-card">
                                 <button

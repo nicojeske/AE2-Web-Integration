@@ -9,10 +9,10 @@ import { HistoryProvider, useHistory } from "./state/history";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
 import type { GridSelection } from "./state/network";
-import { AutoCraftProvider } from "./state/autoCraft";
 import { OrderProvider, useOrder } from "./state/order";
 import { PrefsProvider, usePrefs } from "./state/prefs";
 import { StatsProvider, useStats } from "./state/stats";
+import { StockRulesProvider, useStockRules } from "./state/stockRules";
 import { ToastProvider, useToast } from "./state/toast";
 import { OutdatedBanner } from "./shell/OutdatedBanner";
 import { useRoute } from "./shell/route";
@@ -44,7 +44,8 @@ function Shell() {
     const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
     const { refresh: refreshHistory } = useHistory();
     const { setActive: setStatsActive, refresh: refreshStats } = useStats();
-    const { favorites, thresholds, notifyEnabled, setNotifyEnabled, settings } = usePrefs();
+    const { notifyEnabled, setNotifyEnabled, settings } = usePrefs();
+    const { rules: stockRules, refresh: refreshStockRules } = useStockRules();
     const gt = useGT();
     const order = useOrder();
     const toast = useToast();
@@ -135,16 +136,23 @@ function Shell() {
 
     const onRefresh = useCallback(async () => {
         gt.refresh();
-        await Promise.all([refreshGrids(), refreshItems(), refreshCpus(), refreshHistory(), refreshStats()]);
+        await Promise.all([
+            refreshGrids(),
+            refreshItems(),
+            refreshCpus(),
+            refreshHistory(),
+            refreshStats(),
+            refreshStockRules(),
+        ]);
         toast("Refreshed");
-    }, [refreshGrids, refreshItems, refreshCpus, refreshHistory, refreshStats, gt.refresh, toast]);
+    }, [refreshGrids, refreshItems, refreshCpus, refreshHistory, refreshStats, refreshStockRules, gt.refresh, toast]);
 
     // Scoped to whatever's currently loaded (the selected grid, or every grid in All-Grids mode) -
     // not every grid regardless of selection, which would mean fetching every grid's items just to
     // feed this badge (the tracker flags server-thread cost from `items`/`get` as a risk to watch).
     const lowStockFavCount = useMemo(
-        () => items.reduce((count, item) => count + (isLowStock(item, favorites, thresholds) ? 1 : 0), 0),
-        [items, favorites, thresholds],
+        () => items.reduce((count, item) => count + (isLowStock(item, stockRules) ? 1 : 0), 0),
+        [items, stockRules],
     );
 
     // Item-list freshness - meaningless on the GT sections, which show their own scan age instead.
@@ -254,24 +262,21 @@ export function App() {
         <ToastProvider>
             <PrefsProvider>
                 <NetworkProvider>
-                    <ItemsProvider>
-                        <CpusProvider>
-                            <HistoryProvider>
-                                <StatsProvider>
-                                    <GTProvider>
-                                        {/* Outside OrderProvider on purpose - the driver must never touch
-                                        useOrder()'s single UI flow slot, only the same underlying API
-                                        (via craftChain.ts) headlessly. */}
-                                        <AutoCraftProvider>
+                    <StockRulesProvider>
+                        <ItemsProvider>
+                            <CpusProvider>
+                                <HistoryProvider>
+                                    <StatsProvider>
+                                        <GTProvider>
                                             <OrderProvider>
                                                 <Shell />
                                             </OrderProvider>
-                                        </AutoCraftProvider>
-                                    </GTProvider>
-                                </StatsProvider>
-                            </HistoryProvider>
-                        </CpusProvider>
-                    </ItemsProvider>
+                                        </GTProvider>
+                                    </StatsProvider>
+                                </HistoryProvider>
+                            </CpusProvider>
+                        </ItemsProvider>
+                    </StockRulesProvider>
                 </NetworkProvider>
             </PrefsProvider>
         </ToastProvider>

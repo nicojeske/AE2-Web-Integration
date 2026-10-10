@@ -55,6 +55,9 @@ import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProductionHistor
 import pl.kuba6000.ae2webintegration.core.http.endpoint.prefs.GetPrefs;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.prefs.PutPrefs;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetItemHistory;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.stock.DeleteStockRule;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.stock.GetStockRules;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.stock.PutStockRule;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.tracking.GetTracking;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.tracking.GetTrackingHistory;
 import pl.kuba6000.ae2webintegration.core.identity.ItemIdentityRegistry;
@@ -221,6 +224,9 @@ public class AE2Controller {
                 api.register(Register.class);
                 api.register(Logout.class);
                 api.register(GetItemHistory.class);
+                api.register(GetStockRules.class);
+                api.register(PutStockRule.class);
+                api.register(DeleteStockRule.class);
                 api.register(GetGTMachines.class);
                 api.register(GetGTMachine.class);
                 api.register(GetGTPower.class);

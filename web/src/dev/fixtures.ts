@@ -10,6 +10,7 @@ import type {
     GridSummary,
     ItemHistoryResult,
     ItemStack,
+    StockRule,
     JobData,
     JobPlanItem,
     StatsRange,
@@ -59,6 +60,8 @@ export interface MockGrid {
     /** M8: when a scripted item's history begins; every other stored item has history since `serverStart`
      *  minus 40 days, the way the real server samples every item. */
     historyStart: Map<string, number>;
+    /** Stock rules by itemid; `stored`/`low` are recomputed from `items` on every GET. */
+    stockRules: Map<string, StockRule>;
 }
 
 const serverStart = Date.now();
@@ -182,7 +185,7 @@ export const mockGrids: MockGrid[] = [
                 quantity: 512,
                 craftable: true,
             },
-            // Under the default alertBelow (100) - star these in dev to see "Low stock".
+            // Under its stock rule's alertBelow (100) - shows "Low stock" in Favorites and the Browser.
             {
                 itemKey: "item-1013",
                 identityStatus: null,
@@ -233,9 +236,8 @@ export const mockGrids: MockGrid[] = [
                 quantity: 4000,
                 craftable: false,
             },
-            // Under the default alertBelow (100) *and* craftable - star this one with Auto-craft on in
-            // dev to exercise the M6 driver end to end (order -> plan -> submit -> stock credited on
-            // completion via settleCompletedJobs, above).
+            // Low *and* craftable, with an auto-craft stock rule whose last attempt failed - shows the server's
+            // status line in Favorites.
             {
                 itemKey: "item-1019",
                 identityStatus: null,
@@ -599,6 +601,40 @@ export const mockGrids: MockGrid[] = [
         // M8: scripted history for a normal trend, a gap, a zero-baseline ramp, a just-started item, a
         // flat §-formatted one, a decline, a large-magnitude item, a near-max sawtooth, and an item absent
         // from the network entirely - see mockBucketValue's per-item branches.
+        stockRules: new Map<string, StockRule>([
+            [
+                "biomesoplenty:gem_amethyst",
+                {
+                    itemid: "biomesoplenty:gem_amethyst",
+                    alertBelow: 100,
+                    keepStock: 0,
+                    batchSize: 64,
+                    autoCraft: false,
+                    stored: 88,
+                    low: true,
+                    crafting: false,
+                    lastAttempt: 0,
+                    lastError: null,
+                    backoffUntil: 0,
+                },
+            ],
+            [
+                "minecraft:charcoal",
+                {
+                    itemid: "minecraft:charcoal",
+                    alertBelow: 64,
+                    keepStock: 256,
+                    batchSize: 128,
+                    autoCraft: true,
+                    stored: 40,
+                    low: true,
+                    crafting: false,
+                    lastAttempt: serverStart - 90_000,
+                    lastError: "Missing ingredients",
+                    backoffUntil: serverStart + 210_000,
+                },
+            ],
+        ]),
         historyStart: new Map([
             ["minecraft:iron_ingot", serverStart - 40 * 86_400_000],
             ["minecraft:redstone", serverStart - 40 * 86_400_000],
@@ -696,6 +732,7 @@ export const mockGrids: MockGrid[] = [
         history: [],
         trackingDetails: new Map(),
         historyStart: new Map([["minecraft:cobblestone", serverStart - 40 * 86_400_000]]),
+        stockRules: new Map(),
     },
 ];
 

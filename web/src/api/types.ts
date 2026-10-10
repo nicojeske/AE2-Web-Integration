@@ -163,6 +163,34 @@ export interface JobData {
     plan: JobPlanItem[] | null;
 }
 
+/** The editable part of a stock rule - `PUT /api/grids/{gridKey}/stock-rules/{itemid}`'s body. */
+export interface StockRuleInput {
+    /** Notify once when the stored amount drops below this; 0 never alerts. */
+    alertBelow: number;
+    /** Auto-craft tops the stored amount back up to this. */
+    keepStock: number;
+    /** Most one auto-craft orders at a time (>= 1). */
+    batchSize: number;
+    autoCraft: boolean;
+}
+
+/** `GET /api/grids/{gridKey}/stock-rules` entry: a per-grid rule (shared by its players) and the server's
+ *  last check of it. The server checks every `stock.check_interval_seconds`, with no browser open. */
+export interface StockRule extends StockRuleInput {
+    itemid: string;
+    /** Stored amount at the last check; -1 before the first one. */
+    stored: number;
+    low: boolean;
+    /** A CPU is crafting the item, or an auto-craft plan for it is computing. */
+    crafting: boolean;
+    /** Epoch millis; 0 if none. */
+    lastAttempt: number;
+    /** Why the last auto-craft attempt failed; null after a success. */
+    lastError: string | null;
+    /** Epoch millis before which no new attempt starts; 0 if none. */
+    backoffUntil: number;
+}
+
 /** `GET /api/grids/{gridKey}/crafting-history` entry. */
 export interface TrackingHistoryElement {
     id: number;

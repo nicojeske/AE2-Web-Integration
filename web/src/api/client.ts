@@ -19,6 +19,8 @@ import type {
     OrderResult,
     PrefsResult,
     StatsRange,
+    StockRule,
+    StockRuleInput,
     TrackingDetail,
     TrackingHistoryElement,
     TrackingHistoryQuery,
@@ -171,6 +173,18 @@ export function getItemHistory(
             minutes: range === "custom" ? customMinutes : undefined,
         })}`,
     );
+}
+
+export function getStockRules(gridKey: GridKey): Promise<StockRule[]> {
+    return apiGet(`${grid(gridKey)}/stock-rules`);
+}
+
+export function putStockRule(gridKey: GridKey, itemid: string, rule: StockRuleInput): Promise<StockRule> {
+    return apiRequest("PUT", `${grid(gridKey)}/stock-rules/${seg(itemid)}`, rule);
+}
+
+export function deleteStockRule(gridKey: GridKey, itemid: string): Promise<null> {
+    return apiRequest("DELETE", `${grid(gridKey)}/stock-rules/${seg(itemid)}`);
 }
 
 /** Prefs follow the logged-in principal, not any one grid. */

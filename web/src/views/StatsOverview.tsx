@@ -4,7 +4,7 @@ import type { GridKey, StatsRange } from "../api/types";
 import { formatNumber, formatRelativeAge } from "../api/format";
 import { MAX_PINNED, type HistoryBundle } from "../state/stats";
 import type { BrowserItem } from "../state/items";
-import type { Thresholds } from "../state/prefs";
+import type { StockRule } from "../api/types";
 import { Badge } from "../ui/Badge";
 import { Card } from "../ui/Card";
 import { Chart } from "../ui/Chart";
@@ -15,8 +15,7 @@ export interface StatsOverviewProps {
     gridKey: GridKey;
     pinned: string[];
     items: BrowserItem[];
-    favorites: Record<string, true>;
-    thresholds: Record<string, Thresholds>;
+    stockRules: Record<string, StockRule>;
     history: HistoryBundle | null;
     range: StatsRange;
     spanMillis?: number;
@@ -27,8 +26,7 @@ export function StatsOverview({
     gridKey,
     pinned,
     items,
-    favorites,
-    thresholds,
+    stockRules,
     history,
     range,
     spanMillis,
@@ -56,9 +54,9 @@ export function StatsOverview({
     let lowStockCount = 0;
     for (const id of pinned) {
         const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === id);
-        // Reuses the Browser badge's own rule - a pinned item only counts here if it's favourited
-        // (otherwise it has no `alertBelow` to compare against) and still on the network.
-        if (item && isLowStock(item, favorites, thresholds)) lowStockCount++;
+        // Reuses the Browser badge's own rule - a pinned item only counts here if its grid has a stock rule
+        // for it (otherwise there's no `alertBelow` to compare against) and it's still on the network.
+        if (item && isLowStock(item, stockRules)) lowStockCount++;
     }
 
     return (

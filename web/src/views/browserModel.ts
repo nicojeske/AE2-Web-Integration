@@ -1,5 +1,6 @@
 import type { BrowserItem } from "../state/items";
-import { DEFAULT_THRESHOLDS, prefsKey, type Thresholds } from "../state/prefs";
+import { prefsKey } from "../state/prefs";
+import type { StockRule } from "../api/types";
 
 /** Labels for the "Stored/Craftable" toolbar pill; index is the cycled state (default 2). */
 export const STORED_CRAFTABLE = ["Stored only", "Craftable only", "Stored & craftable"] as const;
@@ -122,38 +123,20 @@ export function sortItems(
     return rows.slice().sort((a, b) => favRank(b) - favRank(a) || primary(a, b) * dir);
 }
 
-/** The `alertBelow` in effect for a prefs key, falling back to the favoriting default. */
-export function alertBelowFor(thresholds: Record<string, Thresholds>, key: string): number {
-    return thresholds[key]?.alertBelow ?? DEFAULT_THRESHOLDS.alertBelow;
+/** A stock rule's `alertBelow` by prefs key, or `null` without a rule (no threshold to draw). */
+export function alertBelowFor(rules: Record<string, StockRule>, key: string): number | null {
+    return rules[key]?.alertBelow ?? null;
 }
 
 /**
- * Low stock is only ever shown for favourited items (the badge/pill is a favourites feature - an
- * un-favourited item has no `alertBelow` to compare against). Shared by the Browser badge, the sidebar
- * pill (`App.tsx`) and the Favorites pane (M6) so the three can never disagree.
+ * Low = the item's grid has a stock rule for it and the live stored amount is under its `alertBelow`. Uses the
+ * Browser's quantity rather than the server's last check, so the badge agrees with the number beside it.
+ * Shared by the Browser badge, the sidebar pill (`App.tsx`) and the Favorites pane so they never disagree.
  */
 export function isLowStock(
     item: Pick<BrowserItem, "sourceGridKey" | "itemid" | "quantity">,
-    favorites: Record<string, true>,
-    thresholds: Record<string, Thresholds>,
+    rules: Record<string, StockRule>,
 ): boolean {
-    const key = prefsKey(item.sourceGridKey, item.itemid);
-    if (!favorites[key]) return false;
-    return item.quantity < alertBelowFor(thresholds, key);
-}
-
-/**
- * Any favourite with `autoCraft` on, resolvable in the currently loaded `items` - shared by
- * `state/items.tsx` (whether its own poll is worth arming regardless of the Settings auto-refresh
- * toggle) and `state/autoCraft.tsx` (whether there's anything for its own cycle to act on).
- */
-export function hasAutoCraftFavorite(
-    items: BrowserItem[],
-    favorites: Record<string, true>,
-    thresholds: Record<string, Thresholds>,
-): boolean {
-    return items.some((item) => {
-        const key = prefsKey(item.sourceGridKey, item.itemid);
-        return favorites[key] && thresholds[key]?.autoCraft;
-    });
+    const rule = rules[prefsKey(item.sourceGridKey, item.itemid)];
+    return rule !== undefined && item.quantity < rule.alertBelow;
 }

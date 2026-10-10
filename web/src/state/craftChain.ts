@@ -1,7 +1,6 @@
-// The order -> plan chain shared by the interactive order flow (order.tsx) and the headless auto-craft
-// driver (autoCraft.tsx, M6). Extracted from order.tsx's original calculate() so both callers run the
-// exact same sequence against the real API: re-fetch items to resolve the item's stable key -> order() ->
-// poll the crafting plan until isDone. No Preact here - a leaf module, like orderModel.ts/craftDetailModel.ts.
+// The order -> plan chain of the interactive order flow (order.tsx), against the real API: re-fetch items
+// to resolve the item's stable key -> order() -> poll the crafting plan until isDone. (Auto-craft runs on the
+// server, `stock/StockKeeper.java`.) No Preact here - a leaf module, like orderModel.ts/craftDetailModel.ts.
 import { cancelJob, getItems, getJob, order as orderRequest } from "../api/client";
 import type { GridKey, JobData } from "../api/types";
 

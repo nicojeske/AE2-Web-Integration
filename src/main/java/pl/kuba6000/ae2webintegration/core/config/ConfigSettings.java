@@ -13,6 +13,7 @@ public final class ConfigSettings {
     public Ntfy ntfy = new Ntfy();
     public Tracking tracking = new Tracking();
     public Statistics statistics = new Statistics();
+    public Stock stock = new Stock();
     public History history = new History();
     public GregTech gregtech = new GregTech();
 
@@ -124,6 +125,19 @@ public final class ConfigSettings {
 
     }
 
+    public static final class Stock {
+
+        @Comment({
+            "Check the stock rules set in the web terminal on the server: auto-craft items below their target and",
+            "notify when one drops below its alert level, with no browser open." })
+        public boolean enabled = true;
+
+        @Path("check_interval_seconds")
+        @Comment("How often, in seconds, to check every grid's stock rules (5-600).")
+        public int checkIntervalSeconds = 30;
+
+    }
+
     public static final class History {
 
         @Path("jdbc_url")
@@ -199,6 +213,7 @@ public final class ConfigSettings {
         requireRange("statistics.sample_interval_minutes", statistics.sampleIntervalMinutes, 1, 60);
         requireRange("statistics.fine_retention_days", statistics.fineRetentionDays, 1, 90);
         requireRange("statistics.hourly_retention_days", statistics.hourlyRetentionDays, 1, 3650);
+        requireRange("stock.check_interval_seconds", stock.checkIntervalSeconds, 5, 600);
         requireRange("gregtech.scan_interval_seconds", gregtech.scanIntervalSeconds, 2, 300);
         requireRange("gregtech.power_sample_interval_seconds", gregtech.powerSampleIntervalSeconds, 10, 3600);
         requireRange("gregtech.power_fine_retention_hours", gregtech.powerFineRetentionHours, 1, 168);

@@ -116,7 +116,7 @@ localhost check and rate limiting.
 
 Config is `config/ae2webintegration/config.toml`, owned by core (`config/Config`, NightConfig, sections in
 `ConfigSettings` with `@Comment`s; `validate()` holds the bounds). Read it as `Config.INSTANCE.<section>.<field>`
-- the instance is replaced whole on `/ae2webintegration reload`. Fork sections: `statistics`, `history`,
+- the instance is replaced whole on `/ae2webintegration reload`. Fork sections: `statistics`, `stock`, `history`,
 `gregtech`. Notifications go through `notification/NotificationManager` (Discord and ntfy destinations).
 
 Item icons can't be rendered on a headless server: a client runs `/ae2webicons export` (1.7.10 adapter), renders
@@ -125,7 +125,8 @@ and swaps them into `config/ae2webintegration/icons/` (`Config.iconDirectory()`)
 `<itemid>.png` each. `http/IconHandler` serves them as `/icon?id=<itemid>`.
 
 Persistence: `CoreData` (`webdata.json`: accounts, prefs blobs), per-grid settings in `GridSettingsData`
-(the crafting-tracking flag) inside the grid-identity file, and
+(the crafting-tracking flag) and per-grid stock rules in `StockRulesData` (itemid -> alert level, keep-stock
+target, batch, auto-craft; plus which items already alerted) inside the grid-identity file, and
 runtime-only `grid/GridData` (crafting plans, active job tracking - not persisted across restarts). Finished
 jobs go to the history database's `ae2wi_craft_job` table (detail stored as JSONB, passed through by
 `GetTracking`) when one is configured; without one they stay in `GridData` until restart.
@@ -146,7 +147,12 @@ Every history test uses Testcontainers and skips without Docker; `AE2WEB_SCALE_T
 `transitive = false`, so it must shade `org.postgresql:postgresql` explicitly (and exclude it from 1.7.10's
 shadow minimization).
 
-`/api/prefs` (`GetPrefs`/`PutPrefs`) syncs the web terminal's favourites/thresholds/browser filters/saved stats
+Stock rules (`/api/grids/{gridKey}/stock-rules[/{itemid}]`) are shared by everyone with access to the grid and
+checked server-side by `stock/StockKeeper` from the tick (one grid per tick, every `stock.check_interval_seconds`):
+one `StatusMessage` per dip below `alertBelow`, and auto-crafts (at most one plan computing per grid, submitted
+on a later pass as requester `Auto-stock`, 5 min backoff on failure). The browser no longer auto-crafts.
+
+`/api/prefs` (`GetPrefs`/`PutPrefs`) syncs the web terminal's favourites/browser filters/saved stats
 views and pinned Statistics items across a player's devices — an opaque JSON blob (sent as the string member `blob`) per principal in
 `CoreData`, keyed by `WebPrincipal.prefsKey()` (a reserved UUID for ADMIN/LOCALHOST, which have no player
 identity of their own). `CoreData` never parses the blob's contents, so a frontend-only change to what it syncs
@@ -162,7 +168,7 @@ backlog. All server calls go through `src/api/client.ts` (relative `api/...` pat
 proxy sub-path). API quirks worth knowing before touching data code: no `requested` field for craft progress
 (approximated from crafted totals), and the CPU list carries no per-CPU progress (a sequential per-CPU detail
 fan-in covers busy CPUs). Grids, CPUs and orderable items are addressed by their string keys; favourites,
-thresholds and statistics stay keyed by `itemid`. Read
+stock rules and statistics stay keyed by `itemid`. Read
 `claude-design/README.md` and open `claude-design/AE2 Web Terminal.dc.html` (needs `support.js` and
 `image-slot.js` alongside it) for the original design handoff if it's ever needed again — `claude-design/`
 is an **untracked local reference copy**, not part of any branch, so it needs to be re-requested if missing.

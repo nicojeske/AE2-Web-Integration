@@ -7,7 +7,6 @@ import type { GridKey, GTMachineStatus, StatsRange } from "../api/types";
 import type { ChartScale } from "../views/statsModel";
 
 const FAVORITES_KEY = "ae2.favorites";
-const THRESHOLDS_KEY = "ae2.thresholds";
 const NOTIFY_KEY = "ae2.notifyEnabled";
 const BROWSER_FILTERS_KEY = "ae2.browserFilters";
 const STATS_VIEWS_KEY = "ae2.statsViews";
@@ -24,14 +23,14 @@ const SCHEMA_KEY = "ae2.schema";
  * server-sync slice needs a versioned blob to upload instead of six loose keys, so the plumbing starts
  * here rather than being invented under time pressure later.
  */
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 function migratePrefsSchema(): void {
     const raw = localStorage.getItem(SCHEMA_KEY);
     const from = raw === null ? 0 : Number(raw);
     if (Number.isFinite(from) && from >= CURRENT_SCHEMA_VERSION) return;
-    // No migrations exist yet - this only stamps the version so a future one has something to compare
-    // against.
+    // v2: stock thresholds moved to the server's per-grid stock rules (`state/stockRules.tsx`).
+    localStorage.removeItem("ae2.thresholds");
     localStorage.setItem(SCHEMA_KEY, String(CURRENT_SCHEMA_VERSION));
 }
 // Runs once per page load (this module is only ever imported by the one PrefsProvider instance the
@@ -39,24 +38,8 @@ function migratePrefsSchema(): void {
 // way, but doing it at import time keeps the provider's own body free of one-time setup noise.
 migratePrefsSchema();
 
-/** Per-item auto-craft configuration, keyed by `prefsKey(gridKey, itemid)`. Also used by M6. */
-export interface Thresholds {
-    alertBelow: number;
-    keepStock: number;
-    batchSize: number;
-    autoCraft: boolean;
-}
-
-/** Defaults applied the moment an item is favourited (design's "Defaults on favoriting"). */
-export const DEFAULT_THRESHOLDS: Thresholds = {
-    alertBelow: 100,
-    keepStock: 200,
-    batchSize: 64,
-    autoCraft: false,
-};
-
 /**
- * Favorites/thresholds are keyed on `itemid`, never `itemKey` - the itemid is readable and version
+ * Favorites (and the stock rules in `state/stockRules.tsx`) are keyed on `itemid`, never `itemKey` - the itemid is readable and version
  * independent, and it is what the statistics history is keyed by too.
  */
 export function prefsKey(gridKey: GridKey, itemid: string): string {
@@ -128,8 +111,7 @@ export interface Settings {
     /** Minimum item-card width (px) feeding the Browser grid's `minmax(...)` - the legacy UI's
      *  "items per row" knob, expressed as a size instead of a fixed column count so it still reflows. */
     tileMin: number;
-    /** Arms `state/items.tsx`'s own poll independently of auto-craft's (which stays armed regardless of
-     *  this setting, at its own fixed cadence, whenever an auto-craft favourite exists). */
+    /** Arms `state/items.tsx`'s poll. */
     autoRefreshItems: "off" | "15s" | "30s" | "60s";
     /** Statistics' range/compare-range reset every visit otherwise, unlike every other browser
      *  preference - persisted here so a Settings default at least survives a reload. */
@@ -170,7 +152,7 @@ function writeJSON(key: string, value: unknown): void {
 }
 
 /**
- * The subset of prefs that follows a player across devices (M13) - favourites, thresholds, the Browser
+ * The subset of prefs that follows a player across devices (M13) - favourites, the Browser
  * toolbar filters, saved Statistics views and pinned items, and the GT Machines filters. Deliberately excludes
  * `notifyEnabled` and `settings` (M11): those are this device's own display/notification preferences,
  * not account data, and syncing e.g. `tileMin` across a phone and a desktop would fight whichever one
@@ -182,7 +164,6 @@ function writeJSON(key: string, value: unknown): void {
 interface SyncedPrefs {
     schemaVersion: number;
     favorites: Record<string, true>;
-    thresholds: Record<string, Thresholds>;
     browserFilters: BrowserFilters;
     statsViews: StatsView[];
     statsPinned: StatsPinned;
@@ -205,7 +186,6 @@ function parseSyncedPrefs(raw: string): SyncedPrefs | null {
         return {
             schemaVersion: typeof parsed.schemaVersion === "number" ? parsed.schemaVersion : 0,
             favorites: parsed.favorites ?? {},
-            thresholds: parsed.thresholds ?? {},
             browserFilters: { ...DEFAULT_BROWSER_FILTERS, ...parsed.browserFilters },
             statsViews: parsed.statsViews ?? [],
             statsPinned:
@@ -229,13 +209,11 @@ const PREFS_PUSH_DEBOUNCE_MS = 800;
 
 export interface PrefsContextValue {
     favorites: Record<string, true>;
-    thresholds: Record<string, Thresholds>;
     notifyEnabled: boolean;
     browserFilters: BrowserFilters;
     isFavorite: (key: string) => boolean;
     toggleFavorite: (gridKey: GridKey, itemid: string) => void;
     removeFavorite: (key: string) => void;
-    setThreshold: (key: string, field: keyof Thresholds, value: number | boolean) => void;
     setNotifyEnabled: (enabled: boolean) => void;
     setBrowserFilters: (update: (current: BrowserFilters) => BrowserFilters) => void;
     machineFilters: MachineFilters;
@@ -259,7 +237,6 @@ const PrefsContext = createContext<PrefsContextValue | null>(null);
 
 export function PrefsProvider({ children }: { children?: ComponentChildren }) {
     const [favorites, setFavorites] = useState<Record<string, true>>(() => readJSON(FAVORITES_KEY, {}));
-    const [thresholds, setThresholds] = useState<Record<string, Thresholds>>(() => readJSON(THRESHOLDS_KEY, {}));
     const [notifyEnabled, setNotifyEnabledState] = useState<boolean>(() => localStorage.getItem(NOTIFY_KEY) === "1");
     const [browserFilters, setBrowserFiltersState] = useState<BrowserFilters>(() =>
         readJSON(BROWSER_FILTERS_KEY, DEFAULT_BROWSER_FILTERS),
@@ -301,7 +278,6 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                     await apiSetPrefs(
                         serializeSyncedPrefs({
                             favorites,
-                            thresholds,
                             browserFilters,
                             statsViews,
                             statsPinned,
@@ -316,8 +292,6 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 if (!parsed || cancelled) return;
                 setFavorites(parsed.favorites);
                 writeJSON(FAVORITES_KEY, parsed.favorites);
-                setThresholds(parsed.thresholds);
-                writeJSON(THRESHOLDS_KEY, parsed.thresholds);
                 setBrowserFiltersState(parsed.browserFilters);
                 writeJSON(BROWSER_FILTERS_KEY, parsed.browserFilters);
                 setStatsViews(parsed.statsViews);
@@ -339,13 +313,13 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         return () => {
             cancelled = true;
         };
-        // Deliberately empty - runs exactly once per mount. `favorites`/`thresholds`/`browserFilters`/
+        // Deliberately empty - runs exactly once per mount. `favorites`/`browserFilters`/
         // `statsViews` are read here only as their mount-time (localStorage-loaded) snapshot, for the
         // "seed the server" branch - a real dependency array would re-run this reconciliation on every
         // later edit, which the push effect below already handles.
     }, []);
 
-    // Pushes favourites/thresholds/browserFilters/statsViews/machineFilters to the server whenever any of them change,
+    // Pushes favourites/browserFilters/statsViews/machineFilters to the server whenever any of them change,
     // debounced so a burst of edits becomes one request. A push that lands before the mount-time fetch
     // above resolves would either race it or (worse) overwrite a blob it hasn't read yet - `hasHydratedRef`
     // holds this off until that reconciliation has actually run once, in either direction.
@@ -355,7 +329,6 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             void apiSetPrefs(
                 serializeSyncedPrefs({
                     favorites,
-                    thresholds,
                     browserFilters,
                     statsViews,
                     statsPinned,
@@ -366,16 +339,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             ).catch(() => {});
         }, PREFS_PUSH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [
-        favorites,
-        thresholds,
-        browserFilters,
-        statsViews,
-        statsPinned,
-        machineFilters,
-        mainPowerSource,
-        passiveMachines,
-    ]);
+    }, [favorites, browserFilters, statsViews, statsPinned, machineFilters, mainPowerSource, passiveMachines]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
@@ -391,14 +355,6 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             writeJSON(FAVORITES_KEY, next);
             return next;
         });
-        // Seed defaults on favouriting; keep any existing entry on unfavouriting so re-starring
-        // restores the previous numbers (matches the prototype's toggleFavorite).
-        setThresholds((current) => {
-            if (current[key]) return current;
-            const next = { ...current, [key]: { ...DEFAULT_THRESHOLDS } };
-            writeJSON(THRESHOLDS_KEY, next);
-            return current[key] ? current : next;
-        });
     }, []);
 
     const removeFavorite = useCallback((key: string) => {
@@ -407,15 +363,6 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             const next = { ...current };
             delete next[key];
             writeJSON(FAVORITES_KEY, next);
-            return next;
-        });
-    }, []);
-
-    const setThreshold = useCallback((key: string, field: keyof Thresholds, value: number | boolean) => {
-        setThresholds((current) => {
-            const base = current[key] ?? DEFAULT_THRESHOLDS;
-            const next = { ...current, [key]: { ...base, [field]: value } };
-            writeJSON(THRESHOLDS_KEY, next);
             return next;
         });
     }, []);
@@ -497,13 +444,11 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
     const value = useMemo<PrefsContextValue>(
         () => ({
             favorites,
-            thresholds,
             notifyEnabled,
             browserFilters,
             isFavorite,
             toggleFavorite,
             removeFavorite,
-            setThreshold,
             setNotifyEnabled,
             setBrowserFilters,
             machineFilters,
@@ -522,13 +467,11 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         }),
         [
             favorites,
-            thresholds,
             notifyEnabled,
             browserFilters,
             isFavorite,
             toggleFavorite,
             removeFavorite,
-            setThreshold,
             setNotifyEnabled,
             setBrowserFilters,
             machineFilters,

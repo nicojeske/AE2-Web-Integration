@@ -6,7 +6,7 @@ import { ApiError, getItems } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
 import type { DetailedItem, GridKey } from "../api/types";
 import { gridOptionLabel } from "../shell/gridLabel";
-import { hasAutoCraftFavorite, isFluidId, modOf } from "../views/browserModel";
+import { isFluidId, modOf } from "../views/browserModel";
 import { useNetwork } from "./network";
 import { usePrefs } from "./prefs";
 import type { Settings } from "./prefs";
@@ -53,23 +53,10 @@ const AUTO_REFRESH_INTERVALS: Record<Exclude<Settings["autoRefreshItems"], "off"
     "30s": 30_000,
     "60s": 60_000,
 };
-/** The fixed cadence auto-craft used before M11 - kept as the floor so turning the Settings toggle off
- *  doesn't stop auto-craft favourites from ever seeing fresh stock. */
-const AUTOCRAFT_FALLBACK_MS = 30_000;
-
-/** `null` when nothing needs a poll at all; otherwise the faster of the user's setting and auto-craft's
- *  own floor, so having both active doesn't leave stock staler than either alone would. */
-function pollIntervalMs(autoRefresh: Settings["autoRefreshItems"], autoCraftArmed: boolean): number | null {
-    const settingMs = autoRefresh === "off" ? null : AUTO_REFRESH_INTERVALS[autoRefresh];
-    const autoCraftMs = autoCraftArmed ? AUTOCRAFT_FALLBACK_MS : null;
-    if (settingMs === null) return autoCraftMs;
-    if (autoCraftMs === null) return settingMs;
-    return Math.min(settingMs, autoCraftMs);
-}
 
 export function ItemsProvider({ children }: { children?: ComponentChildren }) {
     const { grids, selected, selectedGrid } = useNetwork();
-    const { favorites, thresholds, settings } = usePrefs();
+    const { settings } = usePrefs();
     const [items, setItems] = useState<BrowserItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -124,23 +111,18 @@ export function ItemsProvider({ children }: { children?: ComponentChildren }) {
         void refresh();
     }, [refresh]);
 
-    // `items` isn't polled by anything else - armed whenever the Settings auto-refresh toggle is on, or
-    // (regardless of that toggle) at least one auto-craft favourite is resolvable in the currently
-    // loaded items, so auto-craft keeps seeing fresh stock even with auto-refresh left off. Before M11
-    // this same test armed a fixed-cadence timer inside `state/autoCraft.tsx` directly.
+    // `items` isn't polled by anything else - armed by the Settings auto-refresh toggle. Auto-craft runs on
+    // the server (`state/stockRules.tsx`), so it needs no poll here.
     const refreshRef = useRef(refresh);
     refreshRef.current = refresh;
     useEffect(() => {
-        const intervalMs = pollIntervalMs(
-            settings.autoRefreshItems,
-            hasAutoCraftFavorite(items, favorites, thresholds),
-        );
-        if (intervalMs === null) return;
+        if (settings.autoRefreshItems === "off") return;
+        const intervalMs = AUTO_REFRESH_INTERVALS[settings.autoRefreshItems];
         const timer = setInterval(() => {
             if (!document.hidden) void refreshRef.current();
         }, intervalMs);
         return () => clearInterval(timer);
-    }, [items, favorites, thresholds, settings.autoRefreshItems]);
+    }, [settings.autoRefreshItems]);
 
     const value = useMemo<ItemsContextValue>(
         () => ({ items, loading, error, failedGrids, fetchedAt, refresh }),

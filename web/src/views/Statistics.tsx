@@ -20,11 +20,13 @@ import { ManagePinnedModal } from "./ManagePinnedModal";
 import { StatCard } from "./StatCard";
 import { StatsOverview } from "./StatsOverview";
 import { useNetwork } from "../state/network";
+import { useStockRules } from "../state/stockRules";
 
 export function Statistics() {
     const { selected, selectedGrid } = useNetwork();
     const { items } = useItems();
-    const { statsViews, removeStatsView, favorites, thresholds, settings, setSettings } = usePrefs();
+    const { statsViews, removeStatsView, settings, setSettings } = usePrefs();
+    const { rules: stockRules } = useStockRules();
     const stats = useStats();
     const [manageOpen, setManageOpen] = useState(false);
     const [compareIds, setCompareIds] = useState<string[] | null>(null);
@@ -141,8 +143,7 @@ export function Statistics() {
                             gridKey={gridKey}
                             pinned={pinned}
                             items={items}
-                            favorites={favorites}
-                            thresholds={thresholds}
+                            stockRules={stockRules}
                             history={history}
                             range={range}
                             spanMillis={spanMillis}
@@ -152,7 +153,7 @@ export function Statistics() {
                             {pinned.map((itemid) => {
                                 const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === itemid);
                                 const key = prefsKey(gridKey, itemid);
-                                const threshold = favorites[key] ? alertBelowFor(thresholds, key) : null;
+                                const threshold = alertBelowFor(stockRules, key);
                                 return (
                                     <StatCard
                                         key={itemid}

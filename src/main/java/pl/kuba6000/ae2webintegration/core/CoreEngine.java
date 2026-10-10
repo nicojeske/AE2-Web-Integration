@@ -26,6 +26,7 @@ import pl.kuba6000.ae2webintegration.core.identity.GridIdentityRegistry;
 import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
+import pl.kuba6000.ae2webintegration.core.stock.StockKeeper;
 import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
 import pl.kuba6000.ae2webintegration.core.tracking.ItemHistoryStore;
 import pl.kuba6000.ae2webintegration.core.utils.ReleaseManifest;
@@ -113,6 +114,7 @@ public class CoreEngine {
         runPlanMaintenance(System.nanoTime());
         runHistorySampling(System.nanoTime(), System.currentTimeMillis());
         runStallCheck(System.currentTimeMillis());
+        StockKeeper.onServerTick(System.nanoTime(), System.currentTimeMillis());
         GTEngine.onServerTick();
         maintainVersionChecker();
     }
@@ -318,6 +320,7 @@ public class CoreEngine {
         CoreEngine.GRID_IDENTITIES.clear();
         resetPlanMaintenance();
         resetHistorySampling();
+        StockKeeper.clear();
         GTEngine.onServerStopped();
     }
 

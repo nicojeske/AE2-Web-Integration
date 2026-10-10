@@ -190,10 +190,8 @@ public final class GridIdentityRegistry {
 
     private boolean preferIdentity(StableKey contender, StableKey winner) {
         boolean contenderDefault = records.get(contender)
-            .getSettings()
             .isDefault();
         boolean winnerDefault = records.get(winner)
-            .getSettings()
             .isDefault();
         if (contenderDefault != winnerDefault) return !contenderDefault;
         return contender.toString()

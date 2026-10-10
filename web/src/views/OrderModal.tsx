@@ -4,6 +4,7 @@ import { formatBytes, formatNumber } from "../api/format";
 import { useItems } from "../state/items";
 import { useOrder } from "../state/order";
 import { prefsKey, usePrefs } from "../state/prefs";
+import { useStockRules } from "../state/stockRules";
 import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
@@ -29,7 +30,8 @@ export interface OrderModalProps {
 export function OrderModal({ onSubmitted }: OrderModalProps) {
     const order = useOrder();
     const { items } = useItems();
-    const { thresholds, settings } = usePrefs();
+    const { settings } = usePrefs();
+    const { rules: stockRules } = useStockRules();
     const { flow } = order;
     const [now, setNow] = useState(Date.now());
     // The input's own text, so it can be emptied while typing - only a valid number reaches the order.
@@ -52,7 +54,7 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
 
     const key = prefsKey(flow.gridKey, flow.itemid);
     const stored = items.find((it) => it.sourceGridKey === flow.gridKey && it.itemid === flow.itemid)?.quantity;
-    const keepStock = thresholds[key]?.keepStock ?? 0;
+    const keepStock = stockRules[key]?.keepStock ?? 0;
     const topUp = stored !== undefined && keepStock > stored ? keepStock - stored : 0;
 
     const job = flow.phase === "plan" || flow.phase === "submitting" ? flow.job : null;

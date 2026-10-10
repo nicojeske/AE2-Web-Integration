@@ -59,6 +59,10 @@ public final class OpenApiDoclet implements Doclet {
         new Category("tracking", "Crafting history", "Browse recorded crafting jobs and their measurements."),
         new Category("auth", "Authentication", "Obtain or revoke session tokens and start account registration."),
         new Category("statistics", "Statistics", "Choose tracked items and read their sampled stored-count history."),
+        new Category(
+            "stock",
+            "Stock rules",
+            "Keep items stocked: per-grid alert levels and server-side auto-crafting."),
         new Category("gt", "GregTech", "Inspect GregTech machines, power storage and production."),
         new Category("prefs", "Preferences", "Read and store the web terminal's per-account preferences."));
 

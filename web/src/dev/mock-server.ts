@@ -424,6 +424,51 @@ async function handleApi(
             const detail = grid.trackingDetails.get(Number(id));
             return detail ? ok(res, detail) : respond(res, "TRACKING_NOT_FOUND", null);
         }
+        case "GET stock-rules": {
+            // GetStockRules.java: the server's last check - mocked as "just now" from the live items.
+            const stored = (itemid: string) => grid.items.find((it) => it.itemid === itemid)?.quantity ?? 0;
+            return ok(
+                res,
+                [...grid.stockRules.values()].map((rule) => ({
+                    ...rule,
+                    stored: stored(rule.itemid),
+                    low: stored(rule.itemid) < rule.alertBelow,
+                })),
+            );
+        }
+        case "PUT stock-rules/{id}":
+        case "DELETE stock-rules/{id}": {
+            const itemid = id!;
+            if (method === "DELETE") {
+                return grid.stockRules.delete(itemid) ? ok(res, null) : respond(res, "NOT_FOUND", null);
+            }
+            const body = await readJson(req);
+            const whole = (v: unknown, min: number) => typeof v === "number" && Number.isInteger(v) && v >= min;
+            if (
+                !whole(body.alertBelow, 0) ||
+                !whole(body.keepStock, 0) ||
+                !whole(body.batchSize, 1) ||
+                typeof body.autoCraft !== "boolean"
+            ) {
+                return respond(res, "BAD_PARAM", null);
+            }
+            const previous = grid.stockRules.get(itemid);
+            const rule = {
+                itemid,
+                alertBelow: body.alertBelow as number,
+                keepStock: body.keepStock as number,
+                batchSize: body.batchSize as number,
+                autoCraft: body.autoCraft,
+                stored: previous?.stored ?? -1,
+                low: previous?.low ?? false,
+                crafting: previous?.crafting ?? false,
+                lastAttempt: previous?.lastAttempt ?? 0,
+                lastError: previous?.lastError ?? null,
+                backoffUntil: previous?.backoffUntil ?? 0,
+            };
+            grid.stockRules.set(itemid, rule);
+            return ok(res, rule);
+        }
         case "GET settings":
         case "PATCH settings": {
             if (method === "PATCH") {

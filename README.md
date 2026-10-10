@@ -86,11 +86,12 @@ password accordingly!
 - View the live status and progress of every crafting CPU, with a detailed per-craft breakdown
 - Cancel crafting jobs
 - Track active and completed crafting jobs, including a per-item and per-interface crafting-time timeline
-- Favorite items with low-stock alerts and automatic re-crafting to a target stock level
+- Favorite items, and per-network stock rules: a low-stock alert level and automatic re-crafting to a target
+  stock level, checked by the server even with no browser open
 - Chart per-item stored-count history over time, with a compare view across several items
 - GregTech hub (GTNH 1.7.10): machine status, power storage and production statistics
 - Desktop notifications on job completion
-- Send crafting updates through a Discord webhook or ntfy
+- Send crafting updates, stalled jobs and low-stock alerts through a Discord webhook or ntfy
 
 ## Gallery
 
@@ -272,6 +273,12 @@ env:
 Crafting completion notifications can be filtered with `minimum_crafting_duration_seconds` and
 `minimum_crafting_amount`. A notification must meet both configured minimums. Both values default to `0`,
 which keeps all crafting completion notifications enabled.
+
+Low-stock alerts come from the stock rules set in the web terminal (Favorites, "Add stock rule"): one alert each
+time an item drops below its alert level, on any grid, tracked or not. The server checks every rule every
+`[stock] check_interval_seconds` (default 30) and auto-crafts the items that have auto-craft on, in batches of
+at most the rule's batch size; those jobs show `Auto-stock` as their requester. `[stock] enabled = false` stops
+both.
 Notifications are initialized ONLY for tracked grids
 
 #### Discord Integration
