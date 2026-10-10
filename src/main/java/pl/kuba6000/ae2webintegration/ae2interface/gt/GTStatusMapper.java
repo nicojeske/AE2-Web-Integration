@@ -2,6 +2,7 @@ package pl.kuba6000.ae2webintegration.ae2interface.gt;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 
@@ -52,7 +53,17 @@ public final class GTStatusMapper {
         }
     }
 
+    /** GT's {@code &#RRGGBB} hex colours and legacy {@code §x} formatting codes. */
+    private static final Pattern FORMATTING = Pattern.compile("&#\\p{XDigit}{6}|\u00a7.");
+
     private GTStatusMapper() {}
+
+    /** A GT display string without colour/formatting codes; {@code null} stays {@code null}. */
+    public static String stripFormatting(String text) {
+        return text == null ? null
+            : FORMATTING.matcher(text)
+                .replaceAll("");
+    }
 
     /** Display names of the missing tools; empty when maintenance does not apply. */
     public static List<String> maintenanceIssues(Input in) {

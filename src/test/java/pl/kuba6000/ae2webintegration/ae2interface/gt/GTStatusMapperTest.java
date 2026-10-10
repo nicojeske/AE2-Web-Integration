@@ -137,4 +137,14 @@ class GTStatusMapperTest {
         assertEquals(GTMachineStatus.IDLE, r.status);
         assertEquals("No valid recipe found", r.detail);
     }
+
+    @Test
+    void stripFormattingRemovesColourCodes() {
+        assertEquals(
+            "Shut down due to power loss.",
+            GTStatusMapper.stripFormatting("&#C62140Shut down due to power loss."));
+        assertEquals("Out of fluid: Oxygen", GTStatusMapper.stripFormatting("\u00a7cOut of fluid: \u00a7rOxygen"));
+        assertEquals("No valid recipe found", GTStatusMapper.stripFormatting("No valid recipe found"));
+        assertNull(GTStatusMapper.stripFormatting(null));
+    }
 }

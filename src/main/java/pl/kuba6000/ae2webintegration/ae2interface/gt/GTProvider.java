@@ -132,13 +132,13 @@ public class GTProvider implements IGTProvider {
         in.active = igte.isActive();
         ShutDownReason reason = igte.getLastShutDownReason();
         in.reason = classify(reason);
-        in.reasonDisplay = reason == null ? null : reason.getDisplayString();
+        in.reasonDisplay = reason == null ? null : GTStatusMapper.stripFormatting(reason.getDisplayString());
         in.maxProgressTicks = mte.mMaxProgresstime;
         CheckRecipeResult check = mte.getCheckRecipeResult();
         if (check != null && !check.wasSuccessful()
             && !CheckRecipeResultRegistry.NONE.getID()
                 .equals(check.getID())) {
-            in.failedRecipeCheck = check.getDisplayString();
+            in.failedRecipeCheck = GTStatusMapper.stripFormatting(check.getDisplayString());
         }
         GTStatusMapper.Result status = GTStatusMapper.map(in);
         m.status = status.status;
@@ -164,23 +164,29 @@ public class GTProvider implements IGTProvider {
 
     private static GTStatusMapper.Reason classify(ShutDownReason reason) {
         if (reason == null) return GTStatusMapper.Reason.NONE;
-        String id = reason.getID();
-        if (is(id, ShutDownReasonRegistry.NONE) || is(id, ShutDownReasonRegistry.CRITICAL_NONE)) {
+        if (is(reason, ShutDownReasonRegistry.NONE) || is(reason, ShutDownReasonRegistry.CRITICAL_NONE)) {
             return GTStatusMapper.Reason.NONE;
         }
-        if (is(id, ShutDownReasonRegistry.POWER_LOSS) || is(id, ShutDownReasonRegistry.INSUFFICIENT_DYNAMO)) {
+        if (is(reason, ShutDownReasonRegistry.POWER_LOSS) || is(reason, ShutDownReasonRegistry.INSUFFICIENT_DYNAMO)) {
             return GTStatusMapper.Reason.POWER;
         }
-        if (is(id, ShutDownReasonRegistry.ITEM_OUTPUT_FAILED) || is(id, ShutDownReasonRegistry.FLUID_OUTPUT_FAILED)) {
+        if (is(reason, ShutDownReasonRegistry.ITEM_OUTPUT_FAILED)
+            || is(reason, ShutDownReasonRegistry.FLUID_OUTPUT_FAILED)) {
             return GTStatusMapper.Reason.OUTPUT;
         }
-        if (is(id, ShutDownReasonRegistry.NO_REPAIR)) return GTStatusMapper.Reason.MAINTENANCE;
+        if (is(reason, ShutDownReasonRegistry.NO_REPAIR)) return GTStatusMapper.Reason.MAINTENANCE;
         return GTStatusMapper.Reason.OTHER;
     }
 
-    private static boolean is(String id, ShutDownReason known) {
+    /**
+     * Every {@code SimpleShutDownReason} shares one registry id ({@code "simple_result"}); the key tells them apart.
+     * Reasons read back from NBT are fresh instances, so compare by value, not identity.
+     */
+    private static boolean is(ShutDownReason reason, ShutDownReason known) {
         return known.getID()
-            .equals(id);
+            .equals(reason.getID())
+            && known.getKey()
+                .equals(reason.getKey());
     }
 
     private static GTPowerSourceSnapshot lsc(MTELapotronicSuperCapacitor lsc, GTMachineSnapshot m) {
