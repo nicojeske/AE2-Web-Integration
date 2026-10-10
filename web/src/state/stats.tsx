@@ -26,7 +26,7 @@ export interface HistoryBundle {
     fetchedAt: number;
 }
 
-function toBundle(result: ItemHistoryResult): HistoryBundle {
+export function toBundle(result: ItemHistoryResult): HistoryBundle {
     const byItem = new Map<string, (number | null)[]>();
     let count = 0;
     for (const s of result.series) {

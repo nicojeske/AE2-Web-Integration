@@ -7,6 +7,7 @@
 // URL shapes:
 //   #/browser?grid=<key>    #/jobs                  #/jobs/cpu/<gridKey>/<cpuKey>
 //   #/history                #/history/<gridKey>/482 #/favorites?grid=<key> #/stats?grid=all
+//   #/history?item=<itemid>  (Crafting History filtered to one item)
 //   #/machines               #/machines/0%3A120%3A64%3A-340                 #/power   #/production
 //
 // The GregTech sections aren't grid-scoped, so `buildHash` never writes `?grid=` for them and
@@ -29,6 +30,8 @@ export interface Route {
     /** `null` when the URL carries no `?grid=` - the caller falls back to the persisted selection. */
     grid: GridSelection | null;
     detail: RouteDetail;
+    /** Crafting History's item filter (an itemid) - `null` everywhere else. */
+    item: string | null;
 }
 
 const SECTIONS: readonly Section[] = [
@@ -60,7 +63,9 @@ export function parseHash(hash: string): Route {
         .map(decodeURIComponent);
 
     const section = isSection(segments[0] ?? "") ? (segments[0] as Section) : "browser";
-    const grid = isGTSection(section) ? null : parseGridParam(new URLSearchParams(queryPart ?? "").get("grid"));
+    const params = new URLSearchParams(queryPart ?? "");
+    const grid = isGTSection(section) ? null : parseGridParam(params.get("grid"));
+    const item = section === "history" ? params.get("item") || null : null;
 
     let detail: RouteDetail = null;
     if (section === "jobs" && segments[1] === "cpu" && segments.length >= 4) {
@@ -75,7 +80,7 @@ export function parseHash(hash: string): Route {
         detail = { type: "machine", id: segments[1] };
     }
 
-    return { section, grid, detail };
+    return { section, grid, detail, item };
 }
 
 export function buildHash(route: Route): string {
@@ -87,8 +92,10 @@ export function buildHash(route: Route): string {
     } else if (route.detail?.type === "machine") {
         path += `/${encodeURIComponent(route.detail.id)}`;
     }
-    const query = route.grid !== null && !isGTSection(route.section) ? `?grid=${encodeURIComponent(route.grid)}` : "";
-    return `#${path}${query}`;
+    const params: string[] = [];
+    if (route.grid !== null && !isGTSection(route.section)) params.push(`grid=${encodeURIComponent(route.grid)}`);
+    if (route.item && route.section === "history") params.push(`item=${encodeURIComponent(route.item)}`);
+    return `#${path}${params.length ? `?${params.join("&")}` : ""}`;
 }
 
 function currentRoute(): Route {

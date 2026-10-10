@@ -16,12 +16,17 @@ import { useMeasuredColumns } from "../ui/useMeasuredColumns";
 import { useVirtualWindow } from "../ui/useVirtualWindow";
 import { filterItems, isLowStock, ITEMS_TYPE, SORT_BY, sortItems, STORED_CRAFTABLE } from "./browserModel";
 import type { BrowserItem } from "../state/items";
+import type { GridKey } from "../api/types";
+import { ItemDetail } from "./ItemDetail";
 
 /** Tooltip for a craftable item without a stable key (`identityStatus`), which the API can't order. */
 const NOT_ORDERABLE = "AE2 can't identify this item uniquely, so it can't be ordered from here";
 
 export interface BrowserProps {
     search: string;
+    /** Crafting History filtered to one item (the item panel's "View all in History"). */
+    onOpenHistory: (itemid: string) => void;
+    onOpenCraft: (entry: { gridKey: GridKey; id: number }) => void;
 }
 
 /** Matches `.item-grid`'s own `gap` (`browser.css`) - column-count math has to use the same number the
@@ -36,7 +41,7 @@ const GRID_ROW_HEIGHT_PX = 150;
 const TABLE_ROW_HEIGHT_PX = 44;
 const OVERSCAN_ROWS = 4;
 
-export function Browser({ search }: BrowserProps) {
+export function Browser({ search, onOpenHistory, onOpenCraft }: BrowserProps) {
     const { items, loading, error, failedGrids, refresh } = useItems();
     const { selected, selectedGrid } = useNetwork();
     const { isFavorite, toggleFavorite, browserFilters, setBrowserFilters, settings } = usePrefs();
@@ -81,6 +86,11 @@ export function Browser({ search }: BrowserProps) {
     const cycleItemsType = () => setBrowserFilters((s) => ({ ...s, itemsType: ((s.itemsType + 1) % 3) as 0 | 1 | 2 }));
     const cycleSortBy = () => setBrowserFilters((s) => ({ ...s, sortBy: ((s.sortBy + 1) % 3) as 0 | 1 | 2 }));
     const cycleSortOrder = () => setBrowserFilters((s) => ({ ...s, sortOrder: s.sortOrder === 0 ? 1 : 0 }));
+
+    // By identity rather than the row object, so the open panel follows the item through a refresh.
+    const [detailKey, setDetailKey] = useState<string | null>(null);
+    const detailItem =
+        detailKey === null ? null : (items.find((it) => prefsKey(it.sourceGridKey, it.itemid) === detailKey) ?? null);
 
     const onCraft = (item: BrowserItem) => {
         startOrder({
@@ -159,7 +169,12 @@ export function Browser({ search }: BrowserProps) {
                                 >
                                     <StarIcon size={14} />
                                 </button>
-                                <div className="item-table-identity">
+                                <button
+                                    type="button"
+                                    className="item-table-identity item-open"
+                                    title="Show stock, crafts and stock rule"
+                                    onClick={() => setDetailKey(key)}
+                                >
                                     <ItemIcon itemid={item.itemid} name={item.itemname} size={24} />
                                     <div className="item-table-text">
                                         <FormattedText text={item.itemname} className="item-table-name" />
@@ -173,7 +188,7 @@ export function Browser({ search }: BrowserProps) {
                                             Low
                                         </Badge>
                                     )}
-                                </div>
+                                </button>
                                 <span className="item-table-qty">
                                     {formatNumber(item.quantity, settings.numberFormat)}
                                 </span>
@@ -222,7 +237,12 @@ export function Browser({ search }: BrowserProps) {
                                 >
                                     <StarIcon size={16} />
                                 </button>
-                                <div className="item-card__head">
+                                <button
+                                    type="button"
+                                    className="item-card__head item-open"
+                                    title="Show stock, crafts and stock rule"
+                                    onClick={() => setDetailKey(key)}
+                                >
                                     <ItemIcon itemid={item.itemid} name={item.itemname} size={44} />
                                     <div className="item-card__title">
                                         <FormattedText text={item.itemname} className="item-card__name" />
@@ -231,7 +251,7 @@ export function Browser({ search }: BrowserProps) {
                                             {isAllGrids ? ` - ${item.gridLabel}` : ""}
                                         </span>
                                     </div>
-                                </div>
+                                </button>
                                 <div className="item-card__stored">
                                     <span className="item-card__stored-value">
                                         {formatNumber(item.quantity, settings.numberFormat)}
@@ -268,6 +288,21 @@ export function Browser({ search }: BrowserProps) {
                         );
                     })}
                 </section>
+            )}
+            {detailItem && (
+                <ItemDetail
+                    item={detailItem}
+                    onClose={() => setDetailKey(null)}
+                    onCraft={onCraft}
+                    onOpenHistory={(itemid) => {
+                        setDetailKey(null);
+                        onOpenHistory(itemid);
+                    }}
+                    onOpenCraft={(entry) => {
+                        setDetailKey(null);
+                        onOpenCraft(entry);
+                    }}
+                />
             )}
         </>
     );

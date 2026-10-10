@@ -42,7 +42,7 @@ function Shell() {
     const { selected, selectGrid, refresh: refreshGrids } = useNetwork();
     const { items, fetchedAt, refresh: refreshItems } = useItems();
     const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
-    const { refresh: refreshHistory } = useHistory();
+    const { refresh: refreshHistory, setItemFilter: setHistoryItemFilter } = useHistory();
     const { setActive: setStatsActive, refresh: refreshStats } = useStats();
     const { notifyEnabled, setNotifyEnabled, settings } = usePrefs();
     const { rules: stockRules, refresh: refreshStockRules } = useStockRules();
@@ -58,6 +58,11 @@ function Shell() {
     const section = isGTSection(route.section) && !gt.enabled ? "browser" : route.section;
     const craftDetail = route.detail?.type === "cpu" ? route.detail : null;
     const historyDetail = route.detail?.type === "history" ? route.detail : null;
+
+    // The URL's `?item=` drives Crafting History's server-side filter; other sections leave it as it was.
+    useEffect(() => {
+        if (section === "history") setHistoryItemFilter(route.item);
+    }, [section, route.item, setHistoryItemFilter]);
 
     const machineDetail = route.detail?.type === "machine" ? route.detail : null;
 
@@ -201,7 +206,17 @@ function Shell() {
                         <PlanDetail onSubmitted={onOrderSubmitted} />
                     ) : (
                         <>
-                            {section === "browser" && <Browser search={search} />}
+                            {section === "browser" && (
+                                <Browser
+                                    search={search}
+                                    onOpenHistory={(item) =>
+                                        route.push({ section: "history", detail: null, grid: selected, item })
+                                    }
+                                    onOpenCraft={({ gridKey, id }) =>
+                                        route.push({ section: "history", detail: { type: "history", gridKey, id } })
+                                    }
+                                />
+                            )}
                             {section === "jobs" && (
                                 <Jobs
                                     onOpenCraftDetail={(cpu) =>
@@ -217,6 +232,8 @@ function Shell() {
                                     onOpen={({ gridKey, id }) =>
                                         route.push({ section: "history", detail: { type: "history", gridKey, id } })
                                     }
+                                    item={route.item}
+                                    onItemChange={(item) => route.push({ section: "history", detail: null, item })}
                                 />
                             )}
                             {section === "favorites" && <Favorites />}

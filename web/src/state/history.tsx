@@ -32,6 +32,9 @@ export interface HistoryContextValue {
     loadingMore: boolean;
     /** Appends the page of entries finished before the oldest one loaded. */
     loadMore: () => Promise<void>;
+    /** Only jobs whose final output is this itemid (the server filters), or `null` for all. */
+    itemFilter: string | null;
+    setItemFilter: (itemid: string | null) => void;
 }
 
 /** Entries per grid per request. */
@@ -53,6 +56,7 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
 
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [itemFilter, setItemFilter] = useState<string | null>(null);
 
     /** One page from every selected grid, finished before `before` - merged newest first. */
     const fetchPage = useCallback(
@@ -63,7 +67,11 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
             let full = false;
             for (const grid of targets) {
                 try {
-                    const page = await getTrackingHistory(grid.key, { before, limit: PAGE_SIZE });
+                    const page = await getTrackingHistory(grid.key, {
+                        before,
+                        limit: PAGE_SIZE,
+                        itemid: itemFilter ?? undefined,
+                    });
                     full ||= page.length === PAGE_SIZE;
                     rows.push(...toHistoryEntries(page, grid.key, gridOptionLabel(grid, grids)));
                 } catch (e) {
@@ -75,7 +83,7 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
             rows.sort((a, b) => b.timeDone - a.timeDone);
             return { rows, failed, full };
         },
-        [grids, selected, selectedGrid],
+        [grids, selected, selectedGrid, itemFilter],
     );
 
     const refresh = useCallback(async () => {
@@ -130,8 +138,19 @@ export function HistoryProvider({ children }: { children?: ComponentChildren }) 
     }, [busyCount, refresh]);
 
     const value = useMemo<HistoryContextValue>(
-        () => ({ entries, loading, error, failedGrids, refresh, hasMore, loadingMore, loadMore }),
-        [entries, loading, error, failedGrids, refresh, hasMore, loadingMore, loadMore],
+        () => ({
+            entries,
+            loading,
+            error,
+            failedGrids,
+            refresh,
+            hasMore,
+            loadingMore,
+            loadMore,
+            itemFilter,
+            setItemFilter,
+        }),
+        [entries, loading, error, failedGrids, refresh, hasMore, loadingMore, loadMore, itemFilter],
     );
 
     return <HistoryContext.Provider value={value}>{children}</HistoryContext.Provider>;

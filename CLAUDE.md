@@ -174,7 +174,7 @@ stock rules and statistics stay keyed by `itemid`. Read
 is an **untracked local reference copy**, not part of any branch, so it needs to be re-requested if missing.
 
 Routing is a small hand-rolled hash router (`src/shell/route.ts`): `#/<section>[/<detail>]?grid=<selection>`,
-where the selection is a grid key or `all`.
+where the selection is a grid key or `all` (Crafting History also takes `&item=<itemid>`, its server-side filter).
 The order/plan flow (`state/order.tsx`) is deliberately **not** addressable — it's server-side job state (a
 computed-but-not-submitted plan), not a page to re-enter from a URL. The shell is responsive down to phone
 width in three CSS tiers (see `app-shell.css`'s "Responsive shell" section): full sidebar >=1024px, a

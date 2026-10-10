@@ -212,3 +212,123 @@
     font-size: 11px;
     color: var(--text-dim);
 }
+
+/* An item's icon+name opens its detail panel (views/ItemDetail.tsx) - a button that looks like the row. */
+.item-open {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+}
+.item-open:hover .item-card__name,
+.item-open:hover .item-table-name {
+    text-decoration: underline;
+}
+.item-open:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Item detail drawer */
+.item-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.item-detail__stored {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.item-detail__stored-value {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    color: var(--text-primary);
+}
+
+.item-detail__label,
+.item-detail__hint,
+.item-detail__empty,
+.item-detail__id,
+.item-detail__craft-meta {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin: 0;
+}
+
+.item-detail__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.item-detail__section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.item-detail__heading {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.item-detail__link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 12px;
+    color: var(--accent-selected-text);
+    cursor: pointer;
+}
+.item-detail__link:hover {
+    text-decoration: underline;
+}
+
+.item-detail__crafts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.item-detail__craft {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+.item-detail__craft:hover {
+    border-color: var(--border-hover);
+}
+
+.item-detail__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
