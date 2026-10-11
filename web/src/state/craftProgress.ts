@@ -50,3 +50,48 @@ export function estimateRemaining(elapsedMs: number, fraction: number): number |
     if (fraction < 0.15 || fraction >= 1 || elapsedMs <= 20_000) return null;
     return (elapsedMs * (1 - fraction)) / fraction;
 }
+
+/** One reading of a job's progress: server-measured elapsed ms and crafted units (`craftTotals`) at that moment. */
+export interface ProgressSample {
+    elapsed: number;
+    crafted: number;
+}
+
+/** How far back the recent rate looks, and the least history it needs to say anything. */
+export const RECENT_WINDOW_MS = 5 * 60_000;
+const RECENT_MIN_SPAN_MS = 60_000;
+
+/**
+ * Units crafted per second over the last `RECENT_WINDOW_MS` of `samples` (oldest first), or `null` with
+ * under a minute of history or no progress in it. Unlike the whole-job average this follows a job that
+ * front-loads its quick steps and slows down on the long ones.
+ */
+export function recentRate(samples: ProgressSample[]): number | null {
+    const last = samples[samples.length - 1];
+    if (!last) return null;
+    const first = samples.find((s) => s.elapsed >= last.elapsed - RECENT_WINDOW_MS)!;
+    const span = last.elapsed - first.elapsed;
+    if (span < RECENT_MIN_SPAN_MS || last.crafted <= first.crafted) return null;
+    return ((last.crafted - first.crafted) / span) * 1000;
+}
+
+/** Remaining time at the recent rate, or `null` when `recentRate` has no answer. */
+export function recentRemaining(samples: ProgressSample[], requested: number): number | null {
+    const rate = recentRate(samples);
+    const last = samples[samples.length - 1];
+    if (rate === null || !last) return null;
+    return (Math.max(0, requested - last.crafted) / rate) * 1000;
+}
+
+/** Units crafted in each whole minute of elapsed time that `samples` cover, oldest first. */
+export function craftedPerMinute(samples: ProgressSample[]): number[] {
+    if (samples.length < 2) return [];
+    const start = Math.floor(samples[0]!.elapsed / 60_000);
+    const buckets: number[] = [];
+    for (let i = 1; i < samples.length; i++) {
+        const minute = Math.floor(samples[i]!.elapsed / 60_000) - start;
+        while (buckets.length <= minute) buckets.push(0);
+        buckets[minute]! += Math.max(0, samples[i]!.crafted - samples[i - 1]!.crafted);
+    }
+    return buckets;
+}

@@ -648,3 +648,48 @@
 .craft-detail__col-toggle:hover {
     color: var(--text-primary);
 }
+
+/* Item cards and consumed chips that open the item's detail panel. */
+.craft-detail__item-head--link,
+.craft-detail__chip--link {
+    width: 100%;
+    border: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.craft-detail__item-head--link {
+    background: none;
+    padding: 0;
+}
+.craft-detail__item-head--link:hover .craft-detail__item-name,
+.craft-detail__chip--link:hover .craft-detail__chip-name {
+    color: var(--accent-soft-text);
+}
+.craft-detail__chip--link:hover {
+    background: var(--bg-hover);
+}
+
+.craft-detail__throughput {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Column tabs replace the three side-by-side columns on phones. */
+.craft-detail__col-tabs {
+    display: none;
+}
+@media (max-width: 767px) {
+    .craft-detail__col-tabs {
+        display: flex;
+        align-self: flex-start;
+    }
+    .craft-detail__columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .craft-detail__column--inactive {
+        display: none;
+    }
+}

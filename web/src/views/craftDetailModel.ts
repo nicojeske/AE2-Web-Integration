@@ -2,7 +2,14 @@
 // orderModel.ts). No Preact here so the arithmetic is reviewable/testable in isolation - mirrors
 // claude-design's `craftDetailVals()` (AE2 Web Terminal.dc.html:895-1048) against the real DTOs.
 import { formatBytes, formatDuration, formatNumber } from "../api/format";
-import { craftTotals, estimateRemaining, formatResourceAmount } from "../state/craftProgress";
+import {
+    craftTotals,
+    estimateRemaining,
+    formatResourceAmount,
+    recentRate,
+    recentRemaining,
+} from "../state/craftProgress";
+import type { ProgressSample } from "../state/craftProgress";
 import type {
     CompactedItem,
     ConsumedItem,
@@ -24,6 +31,8 @@ export interface CraftDetailItemRow {
     badgeText: string;
     /** `0..1`, or `null` when untracked or this item has no recorded time. */
     sharePct: number | null;
+    /** `0..1` of this item's planned amount crafted so far; `null` when untracked or finished. */
+    progress: number | null;
 }
 
 export interface CraftDetailColumn {
@@ -218,6 +227,8 @@ function buildRow(
         stats,
         badgeText,
         sharePct: share > 0 ? share : null,
+        progress:
+            tracked && badgeText !== "complete" && requested > 0 ? Math.min(1, item.craftedTotal / requested) : null,
     };
 }
 
@@ -226,6 +237,8 @@ export function buildActiveCraftDetail(
     live: CpuView | null,
     snapshot: CraftDetailSnapshot | null,
     now: number,
+    /** This job's progress readings so far (`CraftDetail.tsx` collects them), for the recent-rate ETA. */
+    samples: ProgressSample[] = [],
 ): CraftDetailView | null {
     if (!live || isJobFinished(live)) {
         if (!snapshot) return null;
@@ -240,7 +253,13 @@ export function buildActiveCraftDetail(
     const elapsed = liveElapsed(live, now) ?? 0;
     const progressFraction = totals.requested > 0 ? Math.min(1, totals.crafted / totals.requested) : 0;
     const stalled = detail.stalledSince > 0;
-    const remaining = tracked && !stalled ? estimateRemaining(elapsed, progressFraction) : null;
+    // The recent rate once there's a minute of it - a job's early steps are often much quicker than its
+    // late ones, so the whole-job average promises too soon - else the linear extrapolation.
+    const recent = tracked ? recentRate(samples) : null;
+    const remaining =
+        tracked && !stalled
+            ? (recentRemaining(samples, totals.requested) ?? estimateRemaining(elapsed, progressFraction))
+            : null;
     const jobRate = tracked && elapsed > 0 ? totals.crafted / (elapsed / 1000) : 0;
 
     const stats: CraftDetailStat[] = [{ label: "Elapsed", value: tracked ? formatDuration(elapsed) : "—" }];
@@ -250,6 +269,7 @@ export function buildActiveCraftDetail(
             value: stalled ? "Stalled" : remaining !== null ? `~${formatDuration(remaining)}` : "Calculating",
         });
         stats.push({ label: "Crafts / sec", value: jobRate.toFixed(2) });
+        if (recent !== null) stats.push({ label: "Last 5 min / sec", value: recent.toFixed(2) });
     }
 
     return {

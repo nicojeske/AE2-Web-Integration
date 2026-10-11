@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { ApiError, cancelCpu } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
-import type { GridKey } from "../api/types";
+import type { GridKey, ResourceRef } from "../api/types";
+import { craftedPerMinute, craftTotals } from "../state/craftProgress";
+import type { ProgressSample } from "../state/craftProgress";
 import { useCpus } from "../state/cpus";
 import { useFastMachinesPoll, useGT } from "../state/gt";
 import { useNetwork } from "../state/network";
@@ -10,6 +12,7 @@ import { useOrder } from "../state/order";
 import { usePrefs } from "../state/prefs";
 import { useToast } from "../state/toast";
 import { Button } from "../ui/Button";
+import { Chart } from "../ui/Chart";
 import { FormattedText } from "../ui/FormattedText";
 import { Modal } from "../ui/Modal";
 import { ProgressBar } from "../ui/ProgressBar";
@@ -19,6 +22,10 @@ import type { WorkingMachinesGT } from "./craftDetailParts";
 import { buildActiveCraftDetail, isJobFinished, snapshotOf } from "./craftDetailModel";
 import { matchGTMachines } from "./craftMachinesModel";
 import type { CraftDetailColumn, CraftDetailColumnKey, CraftDetailSnapshot } from "./craftDetailModel";
+import { JobItemDetail } from "./JobItemDetail";
+
+/** Progress readings kept for the recent-rate ETA and the throughput chart (one per poll, ~2.5-5 s apart). */
+const MAX_SAMPLES = 720;
 
 export interface CraftDetailProps {
     gridKey: GridKey;
@@ -39,6 +46,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
     const [filter, setFilter] = useState("");
     // Done grows all job long and is the least interesting column while it runs.
     const [collapsed, setCollapsed] = useState<CraftDetailColumnKey[]>(["done"]);
+    const [openItem, setOpenItem] = useState<ResourceRef | null>(null);
 
     // Counts Elapsed/ETA up between polls (the poll cadence is 2.5s/5s; this ticks every 1s), mirroring
     // the poller's own document.hidden pause so a backgrounded tab doesn't keep a timer running.
@@ -61,7 +69,23 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
         if (snap) snapshotRef.current = snap;
     }
 
-    const view = buildActiveCraftDetail(live, snapshotRef.current, now);
+    // One reading per fresh detail, on the server's elapsed clock so poll jitter doesn't skew the rate. Only
+    // what this page has seen - the server keeps no progress history - and reset if the CPU starts a new job.
+    const samplesRef = useRef<{ started: number; samples: ProgressSample[] }>({ started: 0, samples: [] });
+    const detail = live?.isBusy ? live.detail : null;
+    if (detail?.items && detail.hasTrackingInfo) {
+        const kept = samplesRef.current;
+        if (kept.started !== detail.timeStarted) samplesRef.current = { started: detail.timeStarted, samples: [] };
+        const samples = samplesRef.current.samples;
+        const last = samples[samples.length - 1];
+        if (!last || detail.timeElapsed > last.elapsed) {
+            samples.push({ elapsed: detail.timeElapsed, crafted: craftTotals(detail.items).crafted });
+            if (samples.length > MAX_SAMPLES) samples.shift();
+        }
+    }
+    const samples = samplesRef.current.samples;
+
+    const view = buildActiveCraftDetail(live, snapshotRef.current, now, samples);
     const cpuName = live?.name ?? snapshotRef.current?.cpuName ?? "this CPU";
     const finished = isJobFinished(live);
 
@@ -170,6 +194,8 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                 </section>
             )}
 
+            {!view.finished && <ThroughputChart samples={samples} />}
+
             {!view.finished && view.consumed !== null && <WorkingMachines rows={view.machines} gt={workingGT} />}
 
             <section className="plan-toolbar">
@@ -184,6 +210,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
 
             <CraftDetailColumns
                 columns={filterColumns(view.columns, filter)}
+                onOpenItem={setOpenItem}
                 collapsed={view.finished || filter.trim() !== "" ? [] : collapsed}
                 onToggleCollapsed={
                     view.finished
@@ -192,7 +219,8 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                 }
             />
 
-            {view.consumed !== null && <ConsumedSection rows={view.consumed} />}
+            {view.consumed !== null && <ConsumedSection rows={view.consumed} onOpenItem={setOpenItem} />}
+            {openItem && <JobItemDetail gridKey={gridKey} item={openItem} onClose={() => setOpenItem(null)} />}
 
             {view.bottleneck && view.bottleneck.length > 0 && (
                 <section className="craft-detail__bottleneck">
@@ -274,6 +302,31 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                     </p>
                 </Modal>
             )}
+        </section>
+    );
+}
+
+/** Units crafted per minute since this page opened; hidden until there are two minutes to compare. */
+function ThroughputChart({ samples }: { samples: ProgressSample[] }) {
+    const perMinute = craftedPerMinute(samples);
+    if (perMinute.length < 2) return null;
+    const lastMinuteAt = Date.now();
+    const timestamps = perMinute.map((_, i) => lastMinuteAt - (perMinute.length - 1 - i) * 60_000);
+    return (
+        <section className="craft-detail__throughput">
+            <span className="craft-detail__progress-caption">Crafted per minute, since this page opened</span>
+            <Chart
+                values={perMinute}
+                timestamps={timestamps}
+                range="custom"
+                spanMillis={perMinute.length * 60_000}
+                width={600}
+                height={64}
+                zeroBased
+                showAxes
+                yTickCount={2}
+                ariaLabel="Crafted per minute"
+            />
         </section>
     );
 }

@@ -5,7 +5,7 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 
 import { gtTierName } from "../api/format";
-import type { GTMachine, WorkingMachine } from "../api/types";
+import type { GTMachine, ResourceRef, WorkingMachine } from "../api/types";
 import { buildHash } from "../shell/route";
 import type { MachineLabels } from "../state/prefs";
 
@@ -14,6 +14,7 @@ import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
 import { ProgressBar } from "../ui/ProgressBar";
+import { SegmentedControl } from "../ui/SegmentedControl";
 import { progressCycle, summarizeMachines } from "./craftMachinesModel";
 import type { MachineGroupSummary, MachineMatches } from "./craftMachinesModel";
 import { useNow } from "./gtCommon";
@@ -87,66 +88,131 @@ export interface CraftDetailColumnsProps {
     /** Columns showing only their count and a "Show" button instead of their rows. */
     collapsed?: CraftDetailColumnKey[];
     onToggleCollapsed?: (key: CraftDetailColumnKey) => void;
+    /** Makes each item card open that item's detail panel. */
+    onOpenItem?: (item: ResourceRef) => void;
 }
 
-export function CraftDetailColumns({ columns, collapsed = [], onToggleCollapsed }: CraftDetailColumnsProps) {
+/**
+ * The Crafting / Waiting / Done columns side by side; below 768px (`craft-detail.css`) one at a time, picked
+ * with tabs - three columns of item cards don't fit a phone.
+ */
+export function CraftDetailColumns({
+    columns,
+    collapsed = [],
+    onToggleCollapsed,
+    onOpenItem,
+}: CraftDetailColumnsProps) {
+    const [chosen, setChosen] = useState<CraftDetailColumnKey | null>(null);
+    const active = chosen ?? columns.find((c) => c.rows.length > 0)?.key ?? columns[0]?.key;
     return (
-        <section className="craft-detail__columns">
-            {columns.map((col) => (
-                <section className="craft-detail__column" key={col.key}>
-                    <div className={`craft-detail__col-head craft-detail__col-head--${col.color}`}>
-                        <span className="craft-detail__col-title">{col.title}</span>
-                        <span className="craft-detail__col-count">{col.rows.length}</span>
-                        {onToggleCollapsed && col.rows.length > 0 && (
-                            <button
-                                type="button"
-                                className="craft-detail__col-toggle"
-                                onClick={() => onToggleCollapsed(col.key)}
-                            >
-                                {collapsed.includes(col.key) ? "Show" : "Hide"}
-                            </button>
-                        )}
+        <>
+            <SegmentedControl<CraftDetailColumnKey>
+                className="craft-detail__col-tabs"
+                options={columns.map((c) => ({ value: c.key, label: `${c.title} ${c.rows.length}` }))}
+                value={active ?? "crafting"}
+                onChange={setChosen}
+            />
+            <section className="craft-detail__columns">
+                {columns.map((col) => (
+                    <section
+                        className={cx("craft-detail__column", col.key !== active && "craft-detail__column--inactive")}
+                        key={col.key}
+                    >
+                        <div className={`craft-detail__col-head craft-detail__col-head--${col.color}`}>
+                            <span className="craft-detail__col-title">{col.title}</span>
+                            <span className="craft-detail__col-count">{col.rows.length}</span>
+                            {onToggleCollapsed && col.rows.length > 0 && (
+                                <button
+                                    type="button"
+                                    className="craft-detail__col-toggle"
+                                    onClick={() => onToggleCollapsed(col.key)}
+                                >
+                                    {collapsed.includes(col.key) ? "Show" : "Hide"}
+                                </button>
+                            )}
+                        </div>
+                        {!collapsed.includes(col.key) &&
+                            col.rows.map((row) => (
+                                <ItemCard key={row.itemid} row={row} col={col} onOpenItem={onOpenItem} />
+                            ))}
+                        {col.rows.length === 0 && <div className="craft-detail__col-empty">{col.emptyText}</div>}
+                    </section>
+                ))}
+            </section>
+        </>
+    );
+}
+
+function ItemCard({
+    row,
+    col,
+    onOpenItem,
+}: {
+    row: CraftDetailColumn["rows"][number];
+    col: CraftDetailColumn;
+    onOpenItem?: (item: ResourceRef) => void;
+}) {
+    const head = (
+        <>
+            <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
+            <FormattedText text={row.itemname} className="craft-detail__item-name" />
+            <span className={`craft-detail__item-badge craft-detail__item-badge--${col.color}`}>{row.badgeText}</span>
+        </>
+    );
+    return (
+        <div className="craft-detail__item-card">
+            {onOpenItem ? (
+                <button
+                    type="button"
+                    className="craft-detail__item-head craft-detail__item-head--link"
+                    title="Stock, history and stock rule"
+                    onClick={() => onOpenItem(row)}
+                >
+                    {head}
+                </button>
+            ) : (
+                <div className="craft-detail__item-head">{head}</div>
+            )}
+            {row.progress !== null && (
+                <ProgressBar
+                    className="craft-detail__item-progress"
+                    percent={row.progress * 100}
+                    height={4}
+                    color={col.color === "amber" ? "var(--amber)" : undefined}
+                />
+            )}
+            <div className="craft-detail__item-stats">
+                {row.stats.map((st) => (
+                    <div className="craft-detail__item-stat" key={st.label}>
+                        <span>{st.label}</span>
+                        <span>{st.value}</span>
                     </div>
-                    {!collapsed.includes(col.key) &&
-                        col.rows.map((row) => (
-                            <div className="craft-detail__item-card" key={row.itemid}>
-                                <div className="craft-detail__item-head">
-                                    <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
-                                    <FormattedText text={row.itemname} className="craft-detail__item-name" />
-                                    <span className={`craft-detail__item-badge craft-detail__item-badge--${col.color}`}>
-                                        {row.badgeText}
-                                    </span>
-                                </div>
-                                <div className="craft-detail__item-stats">
-                                    {row.stats.map((st) => (
-                                        <div className="craft-detail__item-stat" key={st.label}>
-                                            <span>{st.label}</span>
-                                            <span>{st.value}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                                {row.sharePct !== null && (
-                                    <div className="craft-detail__share">
-                                        <div className="craft-detail__share-track">
-                                            <div
-                                                className="craft-detail__share-fill"
-                                                style={{ width: `${Math.round(row.sharePct * 100)}%` }}
-                                            />
-                                        </div>
-                                        <span>{Math.round(row.sharePct * 100)}% of craft time</span>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    {col.rows.length === 0 && <div className="craft-detail__col-empty">{col.emptyText}</div>}
-                </section>
-            ))}
-        </section>
+                ))}
+            </div>
+            {row.sharePct !== null && (
+                <div className="craft-detail__share">
+                    <div className="craft-detail__share-track">
+                        <div
+                            className="craft-detail__share-fill"
+                            style={{ width: `${Math.round(row.sharePct * 100)}%` }}
+                        />
+                    </div>
+                    <span>{Math.round(row.sharePct * 100)}% of craft time</span>
+                </div>
+            )}
+        </div>
     );
 }
 
 /** Everything the job's pushed patterns used up - live while crafting and in the history record. */
-export function ConsumedSection({ rows }: { rows: ConsumedRow[] }) {
+export function ConsumedSection({
+    rows,
+    onOpenItem,
+}: {
+    rows: ConsumedRow[];
+    /** Makes each chip open that item's detail panel. */
+    onOpenItem?: (item: ResourceRef) => void;
+}) {
     const raw = rows.filter((r) => !r.intermediate).length;
     return (
         <section className="craft-detail__panel">
@@ -161,17 +227,26 @@ export function ConsumedSection({ rows }: { rows: ConsumedRow[] }) {
                 <span className="craft-detail__panel-empty">No patterns pushed yet.</span>
             ) : (
                 <div className="craft-detail__chips">
-                    {rows.map((row) => (
-                        <div
-                            key={row.itemid}
-                            className={cx("craft-detail__chip", row.intermediate && "craft-detail__chip--intermediate")}
-                            title={row.intermediate ? "Also crafted by this job" : "Taken from storage"}
-                        >
-                            <ItemIcon itemid={row.itemid} name={row.itemname} size={24} />
-                            <FormattedText text={row.itemname} className="craft-detail__chip-name" />
-                            <span className="craft-detail__chip-amount">x{row.amount}</span>
-                        </div>
-                    ))}
+                    {rows.map((row) => {
+                        const Tag = onOpenItem ? "button" : "div";
+                        return (
+                            <Tag
+                                key={row.itemid}
+                                type={onOpenItem ? "button" : undefined}
+                                className={cx(
+                                    "craft-detail__chip",
+                                    row.intermediate && "craft-detail__chip--intermediate",
+                                    onOpenItem && "craft-detail__chip--link",
+                                )}
+                                title={row.intermediate ? "Also crafted by this job" : "Taken from storage"}
+                                onClick={onOpenItem ? () => onOpenItem(row) : undefined}
+                            >
+                                <ItemIcon itemid={row.itemid} name={row.itemname} size={24} />
+                                <FormattedText text={row.itemname} className="craft-detail__chip-name" />
+                                <span className="craft-detail__chip-amount">x{row.amount}</span>
+                            </Tag>
+                        );
+                    })}
                 </div>
             )}
         </section>

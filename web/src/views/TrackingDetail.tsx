@@ -8,8 +8,9 @@ import { FormattedText } from "../ui/FormattedText";
 import { Timeline } from "../ui/Timeline";
 import { ItemIcon } from "../ui/ItemIcon";
 import { ConsumedSection, CraftDetailHeader, StatCard } from "./craftDetailParts";
+import { JobItemDetail } from "./JobItemDetail";
 import { buildTrackingDetail } from "./trackingDetailModel";
-import type { GridKey, TrackingDetail as TrackingDetailData } from "../api/types";
+import type { GridKey, ResourceRef, TrackingDetail as TrackingDetailData } from "../api/types";
 
 export interface TrackingDetailProps {
     gridKey: GridKey;
@@ -26,6 +27,7 @@ export interface TrackingDetailProps {
 export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
     const [detail, setDetail] = useState<TrackingDetailData | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [openItem, setOpenItem] = useState<ResourceRef | null>(null);
     const { startOrder } = useOrder();
 
     useEffect(() => {
@@ -148,7 +150,8 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
                 </Button>
             </section>
 
-            <ConsumedSection rows={view.consumed} />
+            <ConsumedSection rows={view.consumed} onOpenItem={setOpenItem} />
+            {openItem && <JobItemDetail gridKey={gridKey} item={openItem} onClose={() => setOpenItem(null)} />}
 
             <div className="tracking-detail__timeline-card">
                 <span className="tracking-detail__timeline-title">Item share</span>
