@@ -365,6 +365,8 @@ export interface GTMachine {
     inputs: GTStack[];
     lastSeenMillis: number;
     loaded: boolean;
+    /** When a scan first saw the machine in its current `status` (server clock). */
+    statusSinceMillis: number;
 }
 
 /** `/api/gt/machines` response. `summary` counts loaded machines only and always carries every status. */

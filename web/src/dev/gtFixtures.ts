@@ -68,7 +68,10 @@ const WATER = { id: "water", name: "Water", fluid: true };
 type StackDef = { id: string; name: string; fluid: boolean };
 
 interface MockMachine {
-    base: Omit<GTMachine, "id" | "lastSeenMillis" | "loaded" | "outputs" | "inputs" | "progressTicks">;
+    base: Omit<
+        GTMachine,
+        "id" | "lastSeenMillis" | "loaded" | "outputs" | "inputs" | "progressTicks" | "statusSinceMillis"
+    >;
     /** Per-recipe outputs while running. */
     outputs: (StackDef & { amount: number })[];
     /** Per-recipe inputs while running; empty like a recipe started before a restart. */
@@ -362,6 +365,8 @@ function toMachine(m: MockMachine, now: number): GTMachine {
         inputs,
         lastSeenMillis: lastSeen,
         loaded,
+        // Somewhere in the 3 hours before the mock server started, stable per machine.
+        statusSinceMillis: serverStart - (hashString(`${machineId(m)}:since`) % 10_800_000),
     };
 }
 

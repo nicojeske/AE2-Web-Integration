@@ -55,6 +55,8 @@ public class GTMachineSnapshot {
     public long lastSeenMillis;
     /** Set by core: whether it was part of the most recent scan (its chunk is loaded). */
     public boolean loaded;
+    /** Set by core: when a scan first saw the machine in its current {@link #status}. */
+    public long statusSinceMillis;
 
     public static String idOf(int dim, int x, int y, int z) {
         return dim + ":" + x + ":" + y + ":" + z;
@@ -85,6 +87,7 @@ public class GTMachineSnapshot {
         copy.inputs = inputs == null ? new ArrayList<>() : new ArrayList<>(inputs);
         copy.lastSeenMillis = lastSeenMillis;
         copy.loaded = loaded;
+        copy.statusSinceMillis = statusSinceMillis;
         return copy;
     }
 }

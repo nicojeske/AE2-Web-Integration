@@ -43,6 +43,9 @@ public final class GTMachineRegistry {
                 GTMachineSnapshot stored = machine.copy();
                 stored.loaded = true;
                 stored.lastSeenMillis = nowMillis;
+                GTMachineSnapshot previous = machines.get(stored.id);
+                stored.statusSinceMillis = previous != null && previous.status == stored.status
+                    && previous.statusSinceMillis > 0 ? previous.statusSinceMillis : nowMillis;
                 machines.put(stored.id, stored);
                 seen.add(stored.id);
             }

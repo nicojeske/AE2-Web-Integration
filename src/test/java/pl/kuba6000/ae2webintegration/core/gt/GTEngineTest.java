@@ -117,6 +117,24 @@ class GTEngineTest {
     }
 
     @Test
+    void statusSinceSurvivesRescansAndUnloadButResetsOnChange() {
+        provider.next.machines.add(GTTestSupport.machine(1, ALICE, GTMachineStatus.OUTPUT_FULL));
+        GTTestSupport.scan(provider, NOW);
+        String id = GTMachineSnapshot.idOf(0, 1, 64, 0);
+
+        GTTestSupport.scan(provider, NOW + 10_000);
+        assertEquals(NOW, GTMachineRegistry.get(id).statusSinceMillis, "same status keeps its start");
+
+        provider.next.machines.clear();
+        GTTestSupport.scan(provider, NOW + 20_000);
+        assertEquals(NOW, GTMachineRegistry.get(id).statusSinceMillis, "unloading keeps it");
+
+        provider.next.machines.add(GTTestSupport.machine(1, ALICE, GTMachineStatus.RUNNING));
+        GTTestSupport.scan(provider, NOW + 30_000);
+        assertEquals(NOW + 30_000, GTMachineRegistry.get(id).statusSinceMillis, "a new status starts over");
+    }
+
+    @Test
     void removedMachinesDisappearImmediately() {
         provider.next.machines.add(GTTestSupport.machine(1, ALICE, GTMachineStatus.IDLE));
         GTTestSupport.scan(provider, NOW);

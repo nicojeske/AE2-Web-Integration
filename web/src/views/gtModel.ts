@@ -1,7 +1,7 @@
 // Pure helpers shared by the GregTech hub views (Machines, Power, Production).
 import { formatLiters, formatNumber } from "../api/format";
 import type { GTMachine, GTMachines, GTMachineStatus, GTRange } from "../api/types";
-import { GT_STATUS_ORDER } from "../api/types";
+import { GT_PROBLEM_STATUSES, GT_STATUS_ORDER } from "../api/types";
 import type { BadgeVariant } from "../ui/Badge";
 import type { SegmentedOption } from "../ui/SegmentedControl";
 import type { MachineFilters, PassiveMachines } from "../state/prefs";
@@ -89,6 +89,20 @@ export function remainingLabel(m: GTMachine, progressTicks: number): string {
     return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s left` : `${seconds}s left`;
 }
 
+/**
+ * How long the machine has been in its status, `"14m"` / `"2h 13m"` / `"3d 4h"` - only for problems and
+ * idling, where the duration is the point; null for running/disabled machines or an unknown start.
+ */
+export function statusDuration(m: GTMachine, now: number): string | null {
+    if (m.statusSinceMillis <= 0 || (!GT_PROBLEM_STATUSES.has(m.status) && m.status !== "IDLE")) return null;
+    const minutes = Math.floor(Math.max(0, now - m.statusSinceMillis) / 60_000);
+    if (minutes < 1) return "<1m";
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ${minutes % 60}m`;
+    return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
 /** Every whitespace-separated token must appear in name, type, coordinates, owner or dimension. */
 export function matchesMachineSearch(m: GTMachine, search: string): boolean {
     const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -132,8 +146,8 @@ export function groupMachines(machines: GTMachine[], passive: PassiveMachines, p
     const groups: MachineGroup[] = GT_STATUS_ORDER.map((status) => ({
         key: status,
         label: GT_STATUS_LABELS[status],
-        machines: machines.filter(
-            (m) => m.loaded && m.status === status && !isTuckedPassive(m, passive, passiveProblems),
+        machines: sortProblemsLongestFirst(
+            machines.filter((m) => m.loaded && m.status === status && !isTuckedPassive(m, passive, passiveProblems)),
         ),
     }));
     groups.push({
@@ -143,6 +157,12 @@ export function groupMachines(machines: GTMachine[], passive: PassiveMachines, p
     });
     groups.push({ key: "unloaded", label: "Not loaded", machines: machines.filter((m) => !m.loaded) });
     return groups.filter((g) => g.machines.length > 0);
+}
+
+/** Machines in a problem status, the one stuck longest first (it has likely cost the most); others as given. */
+function sortProblemsLongestFirst(machines: GTMachine[]): GTMachine[] {
+    if (machines.length === 0 || !GT_PROBLEM_STATUSES.has(machines[0]!.status)) return machines;
+    return [...machines].sort((a, b) => (a.statusSinceMillis || Infinity) - (b.statusSinceMillis || Infinity));
 }
 
 /** The server's passive suggestions the user hasn't marked or dismissed yet, in list order. */

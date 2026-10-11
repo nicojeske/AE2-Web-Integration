@@ -217,6 +217,12 @@ th.gt-table__num {
     margin-left: auto;
     flex: 0 0 auto;
 }
+.machine-card__since {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
 
 .machine-card__detail {
     font-size: 12px;

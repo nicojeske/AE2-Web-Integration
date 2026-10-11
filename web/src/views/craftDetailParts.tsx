@@ -23,6 +23,7 @@ import {
     GT_STATUS_VARIANTS,
     liveProgressTicks,
     remainingLabel,
+    statusDuration,
 } from "./gtModel";
 import { RecipeStrip } from "./RecipeFlow";
 import type { ConsumedRow, CraftDetailColumn, CraftDetailColumnKey, WorkingMachineRow } from "./craftDetailModel";
@@ -344,6 +345,7 @@ function MatchedMachineRow({
     const progress = liveProgressTicks(m, gt.scannedAt, now);
     const variant = GT_STATUS_VARIANTS[m.status];
     const label = GT_STATUS_LABELS[m.status];
+    const duration = statusDuration(m, now);
     const tooltip = [
         `${m.name} at ${coordsText(m)} (${dimensionKey(m)})`,
         m.statusDetail && m.statusDetail.toLowerCase() !== label.toLowerCase() ? m.statusDetail : null,
@@ -363,7 +365,7 @@ function MatchedMachineRow({
                 {m.voltageTier >= 0 && <span className="craft-detail__gt-tier">{gtTierName(m.voltageTier)}</span>}
                 {withCoords && <span className="craft-detail__gt-coords">{coordsText(m)}</span>}
                 <span className={`craft-detail__gt-state craft-detail__gt-state--${variant}`}>
-                    {running ? remainingLabel(m, progress) : label}
+                    {running ? remainingLabel(m, progress) : duration ? `${label} · ${duration}` : label}
                 </span>
             </span>
             <ProgressBar

@@ -38,6 +38,7 @@ import {
     liveProgressTicks,
     pendingPassiveSuggestions,
     remainingLabel,
+    statusDuration,
 } from "./gtModel";
 import { pointTimestamps } from "./statsModel";
 
@@ -320,6 +321,7 @@ function MachineCard({
     const showProgress = m.loaded && m.status === "RUNNING" && m.maxProgressTicks > 0;
     const detail = m.statusDetail && m.statusDetail.toLowerCase() !== label.toLowerCase() ? m.statusDetail : null;
     const foreignOwner = m.ownerName !== null && m.ownerName !== getContext().username ? m.ownerName : null;
+    const duration = m.loaded ? statusDuration(m, now) : null;
 
     return (
         <Card
@@ -341,6 +343,11 @@ function MachineCard({
                 <Badge variant={GT_STATUS_VARIANTS[m.status]} size="sm" className="machine-card__badge">
                     {label}
                 </Badge>
+                {duration && (
+                    <span className="machine-card__since" title={`${label} for ${duration}`}>
+                        {duration}
+                    </span>
+                )}
             </div>
 
             {detail && <div className="machine-card__detail">{detail}</div>}
@@ -461,8 +468,12 @@ function MachineDrawer({
     const values = history.data?.points ?? [];
     const timestamps = history.data ? pointTimestamps(history.data.from, history.data.stepMillis, values.length) : [];
 
+    const duration = statusDuration(m, now);
+    const statusText = m.statusDetail
+        ? `${GT_STATUS_LABELS[m.status]} - ${m.statusDetail}`
+        : GT_STATUS_LABELS[m.status];
     const fields: [string, string][] = [
-        ["Status", m.statusDetail ? `${GT_STATUS_LABELS[m.status]} - ${m.statusDetail}` : GT_STATUS_LABELS[m.status]],
+        ["Status", duration ? `${statusText} (for ${duration})` : statusText],
         ...(m.status === "RUNNING" && m.maxProgressTicks > 0
             ? ([
                   [
