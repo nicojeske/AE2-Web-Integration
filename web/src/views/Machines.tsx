@@ -25,7 +25,7 @@ import { ProgressBar } from "../ui/ProgressBar";
 import { SectionLabel } from "../ui/SectionLabel";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import type { SegmentedOption } from "../ui/SegmentedControl";
-import { GTPollState, useNow } from "./gtCommon";
+import { GTPollState, RecipeCountdown, RecipePercent, useNow } from "./gtCommon";
 import { RecipeDetail, RecipeTiles } from "./RecipeFlow";
 import {
     coordsText,
@@ -40,10 +40,9 @@ import {
     GT_STATUS_VARIANTS,
     gtRangeOptions,
     lineNames,
-    liveProgressTicks,
     machineLabel,
     pendingPassiveSuggestions,
-    remainingLabel,
+    recipeClock,
     statusDuration,
 } from "./gtModel";
 import type { MachineGroup, MachineNaming } from "./gtModel";
@@ -625,8 +624,7 @@ function MachineRow({
     const line = showLine ? naming.lines[m.id] : undefined;
     const label = GT_STATUS_LABELS[m.status];
     const color = STATUS_COLORS[GT_STATUS_VARIANTS[m.status]] ?? "var(--text-dim)";
-    const progress = liveProgressTicks(m, scannedAt, now);
-    const running = m.loaded && m.status === "RUNNING" && m.maxProgressTicks > 0;
+    const clock = recipeClock(m, scannedAt);
     const detail = m.statusDetail && m.statusDetail.toLowerCase() !== label.toLowerCase() ? m.statusDetail : null;
     const foreignOwner = m.ownerName !== null && m.ownerName !== getContext().username ? m.ownerName : null;
     const duration = m.loaded ? statusDuration(m, now) : null;
@@ -639,8 +637,14 @@ function MachineRow({
     ]
         .filter(Boolean)
         .join(" · ");
-    const state = running ? remainingLabel(m, progress) : duration ? `${label} · ${duration}` : label;
-    const barPct = m.maxProgressTicks > 0 ? Math.min(100, (progress / m.maxProgressTicks) * 100) : running ? 0 : 100;
+    const state = clock ? (
+        <RecipeCountdown clocks={[clock]} suffix=" left" />
+    ) : duration ? (
+        `${label} · ${duration}`
+    ) : (
+        label
+    );
+    const barPct = m.maxProgressTicks > 0 ? (m.progressTicks / m.maxProgressTicks) * 100 : 100;
 
     return (
         <div
@@ -676,9 +680,14 @@ function MachineRow({
             <span className="mrow__tier">{m.voltageTier >= 0 ? gtTierName(m.voltageTier) : "—"}</span>
             <div className="mrow__status">
                 <span style={{ color: m.status === "RUNNING" ? "var(--text-secondary)" : color }}>{state}</span>
-                <div className="mrow__bar">
-                    <div style={{ width: `${barPct}%`, background: color }} />
-                </div>
+                <ProgressBar
+                    className="mrow__bar"
+                    percent={barPct}
+                    cycle={clock}
+                    height={3}
+                    color={color}
+                    animated={false}
+                />
             </div>
             <span className={cx("cell-num", m.euPerTick < 0 && "green")}>
                 {m.euPerTick === 0 ? "—" : m.euPerTick < 0 ? `+${formatEUt(-m.euPerTick)}` : formatEUt(m.euPerTick)}
@@ -740,8 +749,7 @@ function MachineInspector({
         );
     }
 
-    const progress = scannedAt !== null ? liveProgressTicks(m, scannedAt, now) : m.progressTicks;
-    const running = m.status === "RUNNING" && m.maxProgressTicks > 0;
+    const clock = scannedAt !== null ? recipeClock(m, scannedAt) : null;
     const production = detail.data?.production ?? null;
     const consumption = detail.data?.consumption ?? null;
     const values = history.data?.points ?? [];
@@ -824,12 +832,16 @@ function MachineInspector({
                 </label>
             </div>
 
-            {running && (
+            {clock && (
                 <div className="machine-panel__progress">
-                    <ProgressBar percent={(progress / m.maxProgressTicks) * 100} color="var(--green)" />
+                    <ProgressBar percent={0} cycle={clock} color="var(--green)" />
                     <div className="machine-panel__progress-label">
-                        <span>{Math.round((progress / m.maxProgressTicks) * 100)}%</span>
-                        <span>{remainingLabel(m, progress)}</span>
+                        <span>
+                            <RecipePercent clock={clock} />
+                        </span>
+                        <span>
+                            <RecipeCountdown clocks={[clock]} suffix=" left" />
+                        </span>
                     </div>
                 </div>
             )}
@@ -861,7 +873,8 @@ function MachineInspector({
                     <RecipeDetail
                         inputs={m.inputs}
                         outputs={m.outputs}
-                        progress={m.maxProgressTicks > 0 ? progress / m.maxProgressTicks : 0}
+                        progress={m.maxProgressTicks > 0 ? m.progressTicks / m.maxProgressTicks : 0}
+                        clock={clock}
                         numberFormat={fmt}
                     />
                 </section>

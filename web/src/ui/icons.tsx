@@ -1,4 +1,8 @@
 import type { JSX } from "preact";
+import { useId, useRef } from "preact/hooks";
+
+import { useCycleAnimation } from "./useCycleAnimation";
+import type { FillCycle } from "./useCycleAnimation";
 
 export interface IconProps {
     size?: number;
@@ -144,19 +148,30 @@ export function ConveyorIcon({ size = 18, style, className }: IconProps) {
     );
 }
 
-/** GregTech/NEI-style recipe arrow; `fill` (0..1) paints it left to right like a machine's progress. */
-export function RecipeArrowIcon({ size = 22, fill = 0, style, className }: IconProps & { fill?: number }) {
-    const clip = `recipe-arrow-${Math.round(Math.max(0, Math.min(1, fill)) * 1000)}`;
+/**
+ * GregTech/NEI-style recipe arrow; `fill` (0..1) paints it left to right like a machine's progress, or `cycle`
+ * keeps painting it continuously while a recipe runs.
+ */
+export function RecipeArrowIcon({
+    size = 22,
+    fill = 0,
+    cycle,
+    style,
+    className,
+}: IconProps & { fill?: number; cycle?: FillCycle | null }) {
+    const clip = `recipe-arrow-${useId()}`;
+    const rect = useRef<SVGRectElement>(null);
+    useCycleAnimation(rect, cycle);
     const path = "M2 9.5h12V5l8 7-8 7v-4.5H2z";
     return (
         <svg {...base(size)} style={style} className={className} aria-hidden="true">
             <defs>
                 <clipPath id={clip}>
-                    <rect x="0" y="0" width={24 * Math.max(0, Math.min(1, fill))} height="24" />
+                    <rect ref={rect} x="0" y="0" width={cycle ? 24 : 24 * Math.max(0, Math.min(1, fill))} height="24" />
                 </clipPath>
             </defs>
             <path d={path} fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
-            {fill > 0 && <path d={path} fill="currentColor" clip-path={`url(#${clip})`} />}
+            {(cycle || fill > 0) && <path d={path} fill="currentColor" clip-path={`url(#${clip})`} />}
         </svg>
     );
 }

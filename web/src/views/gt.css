@@ -243,13 +243,6 @@ th.gt-table__num {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.mrow__bar {
-    height: 3px;
-    background: var(--border-subtle);
-}
-.mrow__bar > div {
-    height: 100%;
-}
 .cell-num.green {
     color: var(--green);
 }

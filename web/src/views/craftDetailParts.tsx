@@ -14,17 +14,16 @@ import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
 import { ProgressBar } from "../ui/ProgressBar";
-import { progressCycle, summarizeMachines } from "./craftMachinesModel";
+import { summarizeMachines } from "./craftMachinesModel";
 import type { MachineGroupSummary, MachineMatches } from "./craftMachinesModel";
-import { useNow } from "./gtCommon";
+import { RecipeCountdown, useNow } from "./gtCommon";
 import {
     coordsText,
     dimensionKey,
     GT_STATUS_LABELS,
     GT_STATUS_VARIANTS,
-    liveProgressTicks,
     machineLabel,
-    remainingLabel,
+    recipeClock,
     statusDuration,
 } from "./gtModel";
 import { RecipeStrip } from "./RecipeFlow";
@@ -354,9 +353,12 @@ interface WorkingMachinesPanelProps {
     onToggle: (source: WorkingMachine) => void;
 }
 
-/** Re-renders 4x a second so recipe progress bars move smoothly - only mounted while a machine matched. */
+/**
+ * Re-renders once a second for the status durations - only mounted while a machine matched. Recipe bars and
+ * countdowns animate on their own (`ProgressBar` `cycle`, `RecipeCountdown`).
+ */
 function LiveWorkingMachinesPanel(props: WorkingMachinesPanelProps) {
-    const now = useNow(250);
+    const now = useNow(1000);
     return <WorkingMachinesPanel {...props} now={now} />;
 }
 
@@ -377,7 +379,7 @@ function WorkingMachinesPanel({ rows, gt, expanded, onToggle, now }: WorkingMach
                 <div className={cx("craft-detail__machines", machineCount > 0 && "craft-detail__machines--gt")}>
                     {rows.map((m, i) => {
                         const matched = gt?.matches.get(m.source) ?? [];
-                        const summary = gt && matched.length > 0 ? summarizeMachines(matched, gt.scannedAt, now) : null;
+                        const summary = gt && matched.length > 0 ? summarizeMachines(matched) : null;
                         return (
                             <div
                                 key={`${m.name}:${i}`}
@@ -441,13 +443,18 @@ function MatchedMachineList({
 }) {
     const shown = expanded || machines.length <= MACHINES_SHOWN ? machines : machines.slice(0, MACHINES_SHOWN - 1);
     const hidden = machines.length - shown.length;
+    const clocks = machines.map((m) => recipeClock(m, gt.scannedAt)).filter((c) => c !== null);
     return (
         <div className="craft-detail__gt">
             <div className="craft-detail__gt-head">
                 <span>
                     {summary.running}/{summary.total} running
                 </span>
-                {summary.nextSeconds !== null && <span>next in {formatSeconds(summary.nextSeconds)}</span>}
+                {clocks.length > 0 && (
+                    <span>
+                        <RecipeCountdown clocks={clocks} prefix="next in " />
+                    </span>
+                )}
             </div>
             {shown.map((machine) => (
                 <MatchedMachineRow
@@ -484,8 +491,7 @@ function MatchedMachineRow({
     /** Another machine in the group has the same name - the coordinates tell them apart. */
     withCoords: boolean;
 }) {
-    const running = m.status === "RUNNING" && m.maxProgressTicks > 0;
-    const progress = liveProgressTicks(m, gt.scannedAt, now);
+    const clock = recipeClock(m, gt.scannedAt);
     const variant = GT_STATUS_VARIANTS[m.status];
     const label = GT_STATUS_LABELS[m.status];
     const duration = statusDuration(m, now);
@@ -509,25 +515,26 @@ function MatchedMachineRow({
                 {m.voltageTier >= 0 && <span className="craft-detail__gt-tier">{gtTierName(m.voltageTier)}</span>}
                 {withCoords && <span className="craft-detail__gt-coords">{coordsText(m)}</span>}
                 <span className={`craft-detail__gt-state craft-detail__gt-state--${variant}`}>
-                    {running ? remainingLabel(m, progress) : duration ? `${label} · ${duration}` : label}
+                    {clock ? (
+                        <RecipeCountdown clocks={[clock]} suffix=" left" />
+                    ) : duration ? (
+                        `${label} · ${duration}`
+                    ) : (
+                        label
+                    )}
                 </span>
             </span>
             <ProgressBar
-                // A new key per recipe pass, so the bar restarts from 0 instead of sliding backwards.
-                key={progressCycle(m, gt.scannedAt, now)}
                 className="craft-detail__gt-bar"
                 // A stopped machine keeps its bar where the recipe halted, in the status colour.
-                percent={m.maxProgressTicks > 0 ? (progress / m.maxProgressTicks) * 100 : 100}
+                percent={m.maxProgressTicks > 0 ? (m.progressTicks / m.maxProgressTicks) * 100 : 100}
+                cycle={clock}
                 height={4}
-                color={running ? "var(--green)" : VARIANT_COLORS[variant]}
+                color={clock ? "var(--green)" : VARIANT_COLORS[variant]}
+                animated={false}
             />
             {withRecipe && (
-                <RecipeStrip
-                    inputs={m.inputs}
-                    outputs={m.outputs}
-                    progress={running ? progress / m.maxProgressTicks : 0}
-                    numberFormat={gt.numberFormat}
-                />
+                <RecipeStrip inputs={m.inputs} outputs={m.outputs} clock={clock} numberFormat={gt.numberFormat} />
             )}
         </a>
     );
@@ -541,8 +548,3 @@ const VARIANT_COLORS: Record<BadgeVariant, string> = {
     teal: "var(--teal)",
     purple: "var(--accent)",
 };
-
-/** `"4s"` / `"2m 5s"`. */
-function formatSeconds(seconds: number): string {
-    return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
-}

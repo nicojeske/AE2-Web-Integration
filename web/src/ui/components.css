@@ -226,6 +226,10 @@
     height: 100%;
     transition: width 0.4s ease;
 }
+.progress-fill--cycle {
+    width: 100%;
+    transform-origin: left;
+}
 
 /* Segmented control */
 .segmented {

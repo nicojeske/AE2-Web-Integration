@@ -71,22 +71,36 @@ export function coordsText(m: Pick<GTMachine, "x" | "y" | "z">): string {
 }
 
 /**
- * Recipe progress as of `now`: the scan's `progressTicks`, advanced by the wall time since the scan
- * (20 ticks/s) so a bar keeps moving between 10 s polls instead of jumping. Wraps past the recipe length
- * rather than clamping: a running machine nearly always starts the same recipe again, and short recipes
- * (a few seconds) would otherwise sit at 100% for most of every scan interval. The next scan corrects it
- * either way.
+ * A running recipe's timing, for showing its progress between 10 s polls: one pass takes `cycleMs`, and a pass
+ * began at wall time `epoch` (the scan's `progressTicks` back from `scannedAt`, 20 ticks/s). Progress wraps past
+ * the recipe length rather than clamping: a running machine nearly always starts the same recipe again, and short
+ * recipes (a few seconds) would otherwise sit at 100% for most of every poll. The next scan corrects it either way.
+ * `null` unless the machine is loaded and running.
  */
-export function liveProgressTicks(m: GTMachine, scannedAt: number, now: number): number {
-    if (!m.loaded || m.status !== "RUNNING" || m.maxProgressTicks <= 0) return m.progressTicks;
-    const elapsedTicks = Math.max(0, Math.floor((now - scannedAt) / 50));
-    return (m.progressTicks + elapsedTicks) % m.maxProgressTicks;
+export interface RecipeClock {
+    cycleMs: number;
+    epoch: number;
 }
 
-/** `"12s left"` / `"3m 4s left"` - what's left of the running recipe at `progressTicks`. */
-export function remainingLabel(m: GTMachine, progressTicks: number): string {
-    const seconds = Math.max(0, Math.ceil((m.maxProgressTicks - progressTicks) / 20));
-    return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s left` : `${seconds}s left`;
+export function recipeClock(m: GTMachine, scannedAt: number): RecipeClock | null {
+    if (!m.loaded || m.status !== "RUNNING" || m.maxProgressTicks <= 0) return null;
+    return { cycleMs: m.maxProgressTicks * 50, epoch: scannedAt - m.progressTicks * 50 };
+}
+
+/** Milliseconds into the current pass at `now`. */
+export function clockProgressMs(c: RecipeClock, now: number): number {
+    return (((now - c.epoch) % c.cycleMs) + c.cycleMs) % c.cycleMs;
+}
+
+/** Milliseconds until the current pass finishes. */
+export function clockRemainingMs(c: RecipeClock, now: number): number {
+    return c.cycleMs - clockProgressMs(c, now);
+}
+
+/** `"12s"` / `"3m 4s"`. */
+export function formatSecondsLeft(remainingMs: number): string {
+    const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
 
 /**

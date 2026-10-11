@@ -4,7 +4,9 @@ import type { GTStack } from "../api/types";
 import { cx } from "../ui/cx";
 import { RecipeArrowIcon } from "../ui/icons";
 import { ItemIcon } from "../ui/ItemIcon";
+import { RecipePercent } from "./gtCommon";
 import { formatGTAmount } from "./gtModel";
+import type { RecipeClock } from "./gtModel";
 
 /** Slots shown per side on a card before the rest fold into a "+N" slot. */
 const CARD_SLOTS = 4;
@@ -62,12 +64,13 @@ function SlotGroup({
 export function RecipeStrip({
     inputs,
     outputs,
-    progress,
+    clock,
     numberFormat,
 }: {
     inputs: GTStack[];
     outputs: GTStack[];
-    progress: number;
+    /** The running recipe the arrow follows; an empty arrow without one. */
+    clock: RecipeClock | null;
     numberFormat: "full" | "compact";
 }) {
     if (outputs.length === 0 && inputs.length === 0) return null;
@@ -76,7 +79,7 @@ export function RecipeStrip({
             {inputs.length > 0 && (
                 <>
                     <SlotGroup stacks={inputs} kind="in" numberFormat={numberFormat} />
-                    <RecipeArrowIcon size={22} fill={progress} className="recipe-flow__arrow" />
+                    <RecipeArrowIcon size={22} cycle={clock} className="recipe-flow__arrow" />
                 </>
             )}
             {outputs.length > 0 && <SlotGroup stacks={outputs} kind="out" numberFormat={numberFormat} />}
@@ -112,11 +115,14 @@ export function RecipeDetail({
     inputs,
     outputs,
     progress,
+    clock,
     numberFormat,
 }: {
     inputs: GTStack[];
     outputs: GTStack[];
+    /** 0..1 where a stopped recipe halted; `clock` takes over while it runs. */
     progress: number;
+    clock: RecipeClock | null;
     numberFormat: "full" | "compact";
 }) {
     return (
@@ -133,8 +139,8 @@ export function RecipeDetail({
                 </div>
             )}
             <div className="recipe-detail__arrow">
-                <RecipeArrowIcon size={26} fill={progress} />
-                <span>{Math.round(progress * 100)}%</span>
+                <RecipeArrowIcon size={26} fill={progress} cycle={clock} />
+                <span>{clock ? <RecipePercent clock={clock} /> : `${Math.round(progress * 100)}%`}</span>
             </div>
             <StackList title="Outputs" stacks={outputs} numberFormat={numberFormat} />
         </div>

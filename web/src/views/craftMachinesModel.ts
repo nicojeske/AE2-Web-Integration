@@ -6,7 +6,7 @@
 import type { DimensionalCoords, GTMachine, GTMachines, WorkingMachine } from "../api/types";
 import { GT_PROBLEM_STATUSES, GT_STATUS_ORDER } from "../api/types";
 import type { PassiveMachines } from "../state/prefs";
-import { GT_STATUS_VARIANTS, liveProgressTicks } from "./gtModel";
+import { GT_STATUS_VARIANTS } from "./gtModel";
 
 /** Each provider group's machines, problems first, then soonest to finish. Unmatched providers are absent. */
 export type MachineMatches = Map<WorkingMachine, GTMachine[]>;
@@ -72,40 +72,21 @@ function nearestDistance(m: GTMachine, locations: DimensionalCoords[]): number {
 export interface MachineGroupSummary {
     running: number;
     total: number;
-    /** Seconds until the soonest running recipe finishes; `null` when none is running. */
-    nextSeconds: number | null;
     /** Any machine in a `GT_PROBLEM_STATUSES` status - colours the provider card. */
     problem: "red" | "amber" | null;
 }
 
-export function summarizeMachines(machines: GTMachine[], scannedAt: number, now: number): MachineGroupSummary {
+export function summarizeMachines(machines: GTMachine[]): MachineGroupSummary {
     let running = 0;
-    let nextTicks: number | null = null;
     let problem: MachineGroupSummary["problem"] = null;
     for (const m of machines) {
         if (m.status === "RUNNING") {
             running++;
-            if (m.maxProgressTicks > 0) {
-                const left = m.maxProgressTicks - liveProgressTicks(m, scannedAt, now);
-                nextTicks = nextTicks === null ? left : Math.min(nextTicks, left);
-            }
         } else if (GT_PROBLEM_STATUSES.has(m.status)) {
             const variant = GT_STATUS_VARIANTS[m.status];
             if (variant === "red") problem = "red";
             else if (variant === "amber" && problem === null) problem = "amber";
         }
     }
-    return {
-        running,
-        total: machines.length,
-        nextSeconds: nextTicks === null ? null : Math.max(0, Math.ceil(nextTicks / 20)),
-        problem,
-    };
-}
-
-/** Which full pass of the recipe the live progress is on - a key that changes when the bar wraps to 0. */
-export function progressCycle(m: GTMachine, scannedAt: number, now: number): number {
-    if (m.status !== "RUNNING" || m.maxProgressTicks <= 0) return 0;
-    const elapsedTicks = Math.max(0, Math.floor((now - scannedAt) / 50));
-    return Math.floor((m.progressTicks + elapsedTicks) / m.maxProgressTicks);
+    return { running, total: machines.length, problem };
 }

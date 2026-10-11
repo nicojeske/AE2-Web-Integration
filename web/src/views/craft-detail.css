@@ -379,11 +379,6 @@
     color: var(--red);
 }
 
-/* Matches the poll tick, so a running bar glides between updates. */
-.craft-detail__gt-bar .progress-fill {
-    transition: width 0.25s linear;
-}
-
 .craft-detail__gt-more {
     align-self: flex-start;
     background: none;
