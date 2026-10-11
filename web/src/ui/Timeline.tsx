@@ -34,8 +34,9 @@ interface HoverState {
     pct: number;
 }
 
+/** 24h `13:43:05` - the axis needs it narrow, the tooltip precise. */
 function fmtClock(ms: number): string {
-    return new Date(ms).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export function Timeline({ rows, domain, color }: TimelineProps) {

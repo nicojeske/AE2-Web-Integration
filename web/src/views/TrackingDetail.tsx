@@ -2,29 +2,31 @@ import { useEffect, useState } from "preact/hooks";
 
 import { getTracking } from "../api/client";
 import { describeApiError } from "../api/errors";
+import type { GridKey, ResourceRef, TrackingDetail as TrackingDetailData } from "../api/types";
+import { formatNumber } from "../api/format";
 import { useOrder } from "../state/order";
+import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
-import { Timeline } from "../ui/Timeline";
 import { ItemIcon } from "../ui/ItemIcon";
-import { ConsumedSection, CraftDetailHeader, StatCard } from "./craftDetailParts";
+import { SectionLabel } from "../ui/SectionLabel";
+import { Timeline } from "../ui/Timeline";
+import { ConsumedSection } from "./craftDetailParts";
 import { JobItemDetail } from "./JobItemDetail";
 import { buildTrackingDetail } from "./trackingDetailModel";
-import type { GridKey, ResourceRef, TrackingDetail as TrackingDetailData } from "../api/types";
 
 export interface TrackingDetailProps {
     gridKey: GridKey;
     id: number;
-    onClose: () => void;
+    /** Crafting History filtered to this job's output. */
+    onShowItemHistory: (itemid: string) => void;
 }
 
 /**
- * Full-page tracking detail for one `trackinghistory` entry (M5) - a design deviation, decided with the
- * user: the handoff's own detail surface is a 420px drawer, which can't hold a timeline. The record is
- * immutable once it exists (only added to `trackingInfos` after `timeDone` is set) so this fetches once
- * on mount - no polling, no ticking clock.
+ * One finished job's record in the History inspector. The record is immutable once it exists, so this
+ * fetches once per job - no polling, no ticking clock.
  */
-export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
+export function TrackingDetail({ gridKey, id, onShowItemHistory }: TrackingDetailProps) {
     const [detail, setDetail] = useState<TrackingDetailData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [openItem, setOpenItem] = useState<ResourceRef | null>(null);
@@ -46,97 +48,97 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
         };
     }, [gridKey, id]);
 
-    if (error) {
-        return (
-            <section className="craft-detail">
-                <CraftDetailHeader
-                    outputName="Tracking history"
-                    outputQty={null}
-                    subtitle="Couldn't load"
-                    statusLabel="Error"
-                    statusVariant="grey"
-                    onClose={onClose}
-                    closeTitle="Back to history"
-                />
-                <div className="placeholder-panel browser__error">
-                    <p>{error}</p>
-                    <Button variant="secondary" onClick={onClose}>
-                        Back to history
-                    </Button>
-                </div>
-            </section>
-        );
-    }
-
-    if (!detail) {
-        return <div className="placeholder-panel">Loading tracking data…</div>;
-    }
+    if (error) return <p className="item-panel__empty">{error}</p>;
+    if (!detail) return <p className="item-panel__empty">Loading tracking data…</p>;
 
     const view = buildTrackingDetail(detail);
     const missingItemRows = detail.items.length - view.itemTimelineRows.length;
     const missingInterfaceRows = detail.interfaceShare.length - view.interfaceTimelineRows.length;
 
     return (
-        <section className="craft-detail">
-            <CraftDetailHeader
-                outputItemid={detail.finalOutput.itemid}
-                outputName={view.outputName}
-                outputQty={view.outputQty}
-                subtitle={`${detail.wasCancelled ? "This job was cancelled" : "Crafting history"}${
-                    detail.requestedBy ? ` - requested by ${detail.requestedBy}` : ""
-                }`}
-                statusLabel={view.statusLabel}
-                statusVariant={view.statusVariant}
-                onClose={onClose}
-                closeTitle="Back to history"
-            />
+        <div className="tracking">
+            <div className="tracking__head">
+                <ItemIcon itemid={detail.finalOutput.itemid} name={view.outputName} size={44} />
+                <div className="tracking__title-block">
+                    <span className="tracking__title">
+                        <FormattedText text={view.outputName} />{" "}
+                        <span className="craft__qty">×{formatNumber(view.outputQty)}</span>
+                    </span>
+                    <span className="tracking__sub">
+                        {detail.requestedBy ? `by ${detail.requestedBy}` : "Crafting history"}
+                    </span>
+                </div>
+                <Badge variant={view.statusVariant} size="sm">
+                    {view.statusLabel}
+                </Badge>
+            </div>
 
-            <section className="craft-detail__stats">
-                <StatCard label="Output">
-                    <FormattedText text={view.outputName} /> x{view.outputQty.toLocaleString("en-US")}
-                </StatCard>
+            <div className="kv-grid tracking__stats">
                 {view.stats.map((st) => (
-                    <StatCard key={st.label} label={st.label}>
-                        {st.value}
-                    </StatCard>
+                    <div className="kv-grid__cell" key={st.label}>
+                        <span className="kv-grid__key">{st.label}</span>
+                        <span className="kv-grid__value kv-grid__value--mono">{st.value}</span>
+                    </div>
                 ))}
-            </section>
+            </div>
 
             {view.items.length > 0 && (
-                <section className="tracking-detail__items">
+                <div className="tracking__steps">
+                    <div className="tracking__step tracking__step--head">
+                        <span />
+                        <span>Step</span>
+                        <span className="right">Crafted</span>
+                        <span className="right">Time</span>
+                    </div>
                     {view.items.map((row) => (
-                        <div className="craft-detail__item-card" key={row.itemid}>
-                            <div className="craft-detail__item-head">
-                                <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
-                                <FormattedText text={row.itemname} className="craft-detail__item-name" />
+                        <button
+                            type="button"
+                            key={row.itemid}
+                            className="tracking__step-row"
+                            title={`${row.rate} · stock, history and stock rule`}
+                            onClick={() => setOpenItem(row)}
+                        >
+                            <div className="tracking__step">
+                                <ItemIcon itemid={row.itemid} name={row.itemname} size={20} />
+                                <FormattedText text={row.itemname} className="cell-text tracking__step-name" />
+                                <span className="cell-num">{row.crafted}</span>
+                                <span className="cell-num dim">{row.time}</span>
                             </div>
-                            <div className="craft-detail__item-stats">
-                                {row.stats.map((st) => (
-                                    <div className="craft-detail__item-stat" key={st.label}>
-                                        <span>{st.label}</span>
-                                        <span>{st.value}</span>
-                                    </div>
-                                ))}
+                            <div className="tracking__share">
+                                <div style={{ width: `${Math.round((row.sharePct ?? 0) * 100)}%` }} />
                             </div>
-                            {row.sharePct !== null && (
-                                <div className="craft-detail__share">
-                                    <div className="craft-detail__share-track">
-                                        <div
-                                            className="craft-detail__share-fill"
-                                            style={{ width: `${Math.round(row.sharePct * 100)}%` }}
-                                        />
-                                    </div>
-                                    <span>{Math.round(row.sharePct * 100)}% of craft time</span>
-                                </div>
-                            )}
-                        </div>
+                        </button>
                     ))}
-                </section>
+                </div>
             )}
 
-            <section className="craft-detail__actions">
+            <ConsumedSection rows={view.consumed} onOpenItem={setOpenItem} />
+
+            <section className="tracking__timeline">
+                <SectionLabel>Item share</SectionLabel>
+                {view.itemTimelineRows.length > 0 ? (
+                    <Timeline rows={view.itemTimelineRows} domain={view.domain} color="purple" />
+                ) : (
+                    <span className="item-panel__empty">No per-item timing recorded.</span>
+                )}
+                {missingItemRows > 0 && <span className="item-panel__empty">+{missingItemRows} more not shown</span>}
+            </section>
+            <section className="tracking__timeline">
+                <SectionLabel>Interface share</SectionLabel>
+                {view.interfaceTimelineRows.length > 0 ? (
+                    <Timeline rows={view.interfaceTimelineRows} domain={view.domain} color="teal" />
+                ) : (
+                    <span className="item-panel__empty">No interface usage recorded.</span>
+                )}
+                {missingInterfaceRows > 0 && (
+                    <span className="item-panel__empty">+{missingInterfaceRows} more not shown</span>
+                )}
+            </section>
+
+            <div className="tracking__actions">
                 <Button
                     variant="primary"
+                    className="tracking__again"
                     onClick={() =>
                         startOrder({
                             sourceGridKey: gridKey,
@@ -146,36 +148,13 @@ export function TrackingDetail({ gridKey, id, onClose }: TrackingDetailProps) {
                         })
                     }
                 >
-                    Craft again
+                    Craft again ×{formatNumber(detail.finalOutput.quantity)}
                 </Button>
-            </section>
-
-            <ConsumedSection rows={view.consumed} onOpenItem={setOpenItem} />
+                <Button variant="secondary" onClick={() => onShowItemHistory(detail.finalOutput.itemid)}>
+                    All crafts of this item
+                </Button>
+            </div>
             {openItem && <JobItemDetail gridKey={gridKey} item={openItem} onClose={() => setOpenItem(null)} />}
-
-            <div className="tracking-detail__timeline-card">
-                <span className="tracking-detail__timeline-title">Item share</span>
-                {view.itemTimelineRows.length > 0 ? (
-                    <Timeline rows={view.itemTimelineRows} domain={view.domain} color="purple" />
-                ) : (
-                    <span className="tracking-detail__timeline-more">No per-item timing recorded.</span>
-                )}
-                {missingItemRows > 0 && (
-                    <span className="tracking-detail__timeline-more">+{missingItemRows} more not shown</span>
-                )}
-            </div>
-
-            <div className="tracking-detail__timeline-card">
-                <span className="tracking-detail__timeline-title">Interface share</span>
-                {view.interfaceTimelineRows.length > 0 ? (
-                    <Timeline rows={view.interfaceTimelineRows} domain={view.domain} color="teal" />
-                ) : (
-                    <span className="tracking-detail__timeline-more">No interface usage recorded.</span>
-                )}
-                {missingInterfaceRows > 0 && (
-                    <span className="tracking-detail__timeline-more">+{missingInterfaceRows} more not shown</span>
-                )}
-            </div>
-        </section>
+        </div>
     );
 }

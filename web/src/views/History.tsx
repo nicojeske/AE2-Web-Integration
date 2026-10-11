@@ -7,15 +7,20 @@ import { useNetwork } from "../state/network";
 import { useOrder } from "../state/order";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
+import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
+import { Inspector } from "../ui/Inspector";
 import { ItemIcon } from "../ui/ItemIcon";
+import { SegmentedControl } from "../ui/SegmentedControl";
 import { useVirtualWindow } from "../ui/useVirtualWindow";
 import type { HistoryEntry } from "../state/history";
 import type { GridKey } from "../api/types";
+import { TrackingDetail } from "./TrackingDetail";
 
 export interface HistoryProps {
-    onOpen: (entry: { gridKey: GridKey; id: number }) => void;
+    /** The job in the inspector (the URL's detail), or `null`. */
+    open: { gridKey: GridKey; id: number } | null;
+    onOpen: (entry: { gridKey: GridKey; id: number } | null) => void;
     /** The item filter (an itemid, from the URL's `?item=`), or `null` for every job. */
     item: string | null;
     onItemChange: (itemid: string | null) => void;
@@ -24,12 +29,11 @@ export interface HistoryProps {
 /** Suggestions shown under the item filter while typing. */
 const MAX_ITEM_SUGGESTIONS = 8;
 
-/** `.history-row`'s rendered height plus one `.history-list` row gap (`history.css`) - measured against
- *  the real layout, same reasoning as Browser's own `GRID_ROW_HEIGHT_PX` (`views/Browser.tsx`). */
-const ROW_HEIGHT_PX = 66;
+/** `.history-row`'s fixed height (`history.css`). */
+const ROW_HEIGHT_PX = 44;
 const OVERSCAN_ROWS = 6;
 
-export function History({ onOpen, item, onItemChange }: HistoryProps) {
+export function History({ open, onOpen, item, onItemChange }: HistoryProps) {
     const { entries, loading, error, failedGrids, refresh, hasMore, loadingMore, loadMore } = useHistory();
     const { items } = useItems();
     const [itemQuery, setItemQuery] = useState("");
@@ -105,121 +109,166 @@ export function History({ onOpen, item, onItemChange }: HistoryProps) {
     }
 
     return (
-        <>
-            <section className="browser__toolbar">
-                {item ? (
-                    <Button variant="pill" title="Show every item" onClick={() => pickItem(null)}>
-                        Item: {skipSpecialFormat(nameOf(item))} ×
-                    </Button>
-                ) : (
-                    <div className="compare__add">
-                        <input
-                            type="text"
-                            placeholder="Filter by item…"
-                            aria-label="Filter by item"
-                            value={itemQuery}
-                            onInput={(e) => setItemQuery((e.target as HTMLInputElement).value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter" && suggestions[0]) pickItem(suggestions[0].itemid);
-                                if (e.key === "Escape") setItemQuery("");
-                            }}
-                        />
-                        {suggestions.length > 0 && (
-                            <div className="compare__dropdown">
-                                {suggestions.map((s) => (
-                                    <button
-                                        key={s.itemid}
-                                        type="button"
-                                        className="compare__dropdown-row"
-                                        onClick={() => pickItem(s.itemid)}
+        <div className="page">
+            <div className="page__main">
+                <header className="page-header">
+                    <h2 className="page-header__title">History</h2>
+                    {item ? (
+                        <button
+                            type="button"
+                            className="chip chip--active"
+                            title="Show every item"
+                            onClick={() => pickItem(null)}
+                        >
+                            {skipSpecialFormat(nameOf(item))} ×
+                        </button>
+                    ) : (
+                        <div className="compare__add history__filter">
+                            <input
+                                type="text"
+                                className="field"
+                                placeholder="Filter by item…"
+                                aria-label="Filter by item"
+                                value={itemQuery}
+                                onInput={(e) => setItemQuery((e.target as HTMLInputElement).value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && suggestions[0]) pickItem(suggestions[0].itemid);
+                                    if (e.key === "Escape") setItemQuery("");
+                                }}
+                            />
+                            {suggestions.length > 0 && (
+                                <div className="compare__dropdown">
+                                    {suggestions.map((s) => (
+                                        <button
+                                            key={s.itemid}
+                                            type="button"
+                                            className="compare__dropdown-row"
+                                            onClick={() => pickItem(s.itemid)}
+                                        >
+                                            {skipSpecialFormat(s.name)}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    <SegmentedControl
+                        options={[
+                            { value: "all", label: "All jobs" },
+                            { value: "cancelled", label: "Cancelled" },
+                        ]}
+                        value={cancelledOnly ? "cancelled" : "all"}
+                        onChange={(v) => setCancelledOnly(v === "cancelled")}
+                    />
+                    <span className="page-header__end mono-count">
+                        {filtered.length} of {entries.length} shown
+                    </span>
+                </header>
+
+                {isAllGrids && failedGrids.length > 0 && (
+                    <p className="browser__warning">{`Couldn't load history from: ${failedGrids.join(", ")}`}</p>
+                )}
+
+                <div className="page__scroll">
+                    {filtered.length === 0 ? (
+                        <div className="placeholder-panel">
+                            {item
+                                ? `No ${cancelledOnly ? "cancelled " : ""}crafts of ${skipSpecialFormat(nameOf(item))} in this history.`
+                                : cancelledOnly
+                                  ? "No cancelled jobs in this history."
+                                  : "No crafting history yet. Finished and cancelled jobs on a tracked network show up here."}
+                        </div>
+                    ) : (
+                        <div className="dtable history-table">
+                            <div className="dtable__head">
+                                <span />
+                                <span>Output</span>
+                                <span>Finished ↓</span>
+                                <span className="right">Took</span>
+                                <span>Result</span>
+                                <span />
+                            </div>
+                            <div ref={setContainer} style={{ paddingTop: topSpacerPx, paddingBottom: bottomSpacerPx }}>
+                                {visible.map((entry: HistoryEntry) => (
+                                    <div
+                                        key={entry.key}
+                                        className={cx(
+                                            "dtable__row dtable__row--clickable history-row",
+                                            open?.gridKey === entry.sourceGridKey &&
+                                                open.id === entry.id &&
+                                                "dtable__row--selected",
+                                        )}
+                                        onClick={() => onOpen({ gridKey: entry.sourceGridKey, id: entry.id })}
                                     >
-                                        {skipSpecialFormat(s.name)}
-                                    </button>
+                                        <ItemIcon
+                                            itemid={entry.finalOutput.itemid}
+                                            name={entry.finalOutput.itemname}
+                                            size={26}
+                                        />
+                                        <div className="cell-stack">
+                                            <span className="cell-text">
+                                                <FormattedText text={entry.finalOutput.itemname} />{" "}
+                                                <span className="history-row__qty">
+                                                    ×{formatNumber(entry.finalOutput.quantity)}
+                                                </span>
+                                            </span>
+                                            <span className="cell-sub">
+                                                {entry.requestedBy ? `by ${entry.requestedBy}` : "unknown requester"}
+                                                {isAllGrids ? ` · ${entry.gridLabel}` : ""}
+                                            </span>
+                                        </div>
+                                        <span className="history-row__when">{formatTimestamp(entry.timeDone)}</span>
+                                        <span className="cell-num">
+                                            {formatDuration(entry.timeDone - entry.timeStarted)}
+                                        </span>
+                                        <Badge variant={entry.wasCancelled ? "red" : "green"} size="sm">
+                                            {entry.wasCancelled ? "Cancelled" : "Completed"}
+                                        </Badge>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={(e) => {
+                                                e.stopPropagation(); // the row itself opens the record
+                                                startOrder({
+                                                    sourceGridKey: entry.sourceGridKey,
+                                                    itemid: entry.finalOutput.itemid,
+                                                    itemname: entry.finalOutput.itemname,
+                                                    quantity: entry.finalOutput.quantity,
+                                                });
+                                            }}
+                                        >
+                                            Craft again
+                                        </Button>
+                                    </div>
                                 ))}
                             </div>
-                        )}
-                    </div>
-                )}
-                <Button variant="pill" onClick={() => setCancelledOnly((v) => !v)}>
-                    {cancelledOnly ? "Cancelled only" : "All jobs"}
-                </Button>
-                <span className="browser__count">
-                    {filtered.length} of {entries.length} shown
-                </span>
-            </section>
-
-            {isAllGrids && failedGrids.length > 0 && (
-                <p className="browser__warning">{`Couldn't load history from: ${failedGrids.join(", ")}`}</p>
-            )}
-
-            {filtered.length === 0 ? (
-                <div className="placeholder-panel">
-                    {item
-                        ? `No ${cancelledOnly ? "cancelled " : ""}crafts of ${skipSpecialFormat(nameOf(item))} in this history.`
-                        : cancelledOnly
-                          ? "No cancelled jobs in this history."
-                          : "No crafting history yet. Finished and cancelled jobs on a tracked network show up here."}
-                </div>
-            ) : (
-                <section
-                    className="history-list"
-                    ref={setContainer}
-                    style={{ paddingTop: topSpacerPx, paddingBottom: bottomSpacerPx }}
-                >
-                    {visible.map((entry: HistoryEntry) => (
-                        <Card
-                            key={entry.key}
-                            clickable
-                            className="history-row"
-                            onClick={() => onOpen({ gridKey: entry.sourceGridKey, id: entry.id })}
-                        >
-                            <ItemIcon itemid={entry.finalOutput.itemid} name={entry.finalOutput.itemname} size={32} />
-                            <div className="history-row__main">
-                                <span className="history-row__item">
-                                    <FormattedText text={entry.finalOutput.itemname} /> x
-                                    {formatNumber(entry.finalOutput.quantity)}
-                                    {isAllGrids && (
-                                        <span className="history-row__grid-label"> - {entry.gridLabel}</span>
-                                    )}
-                                </span>
-                                <span className="history-row__timestamp">
-                                    {formatTimestamp(entry.timeDone)}
-                                    {entry.requestedBy && ` - by ${entry.requestedBy}`}
-                                </span>
-                            </div>
-                            <span className="history-row__duration">
-                                {formatDuration(entry.timeDone - entry.timeStarted)}
-                            </span>
-                            <Badge variant={entry.wasCancelled ? "red" : "green"} size="sm">
-                                {entry.wasCancelled ? "Cancelled" : "Completed"}
-                            </Badge>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={(e) => {
-                                    e.stopPropagation(); // the row itself opens the detail page
-                                    startOrder({
-                                        sourceGridKey: entry.sourceGridKey,
-                                        itemid: entry.finalOutput.itemid,
-                                        itemname: entry.finalOutput.itemname,
-                                        quantity: entry.finalOutput.quantity,
-                                    });
-                                }}
-                            >
-                                Craft again
+                        </div>
+                    )}
+                    {hasMore && (
+                        <div className="history-more">
+                            <Button variant="secondary" onClick={() => void loadMore()} disabled={loadingMore}>
+                                {loadingMore ? "Loading…" : "Load older jobs"}
                             </Button>
-                        </Card>
-                    ))}
-                </section>
-            )}
-
-            {hasMore && (
-                <div className="history-more">
-                    <Button variant="secondary" onClick={() => void loadMore()} disabled={loadingMore}>
-                        {loadingMore ? "Loading…" : "Load older jobs"}
-                    </Button>
+                        </div>
+                    )}
                 </div>
-            )}
-        </>
+            </div>
+            <Inspector
+                label="Job"
+                width={440}
+                open={open !== null}
+                onClose={() => onOpen(null)}
+                placeholder="Select a job to see its steps, what it consumed and where the time went."
+            >
+                {open && (
+                    <TrackingDetail
+                        key={`${open.gridKey}:${open.id}`}
+                        gridKey={open.gridKey}
+                        id={open.id}
+                        onShowItemHistory={(itemid) => onItemChange(itemid)}
+                    />
+                )}
+            </Inspector>
+        </div>
     );
 }

@@ -37,7 +37,6 @@ import { Power } from "./views/Power";
 import { Production } from "./views/Production";
 import { SettingsModal } from "./views/SettingsModal";
 import { Statistics } from "./views/Statistics";
-import { TrackingDetail } from "./views/TrackingDetail";
 import { isLowStock } from "./views/browserModel";
 
 function Shell() {
@@ -120,9 +119,9 @@ function Shell() {
     }, [craftDetail, setDetailScope]);
 
     // Same precedent as `detailScope` above: Statistics only polls while it's actually the visible
-    // surface, not just the selected section - CraftDetail/TrackingDetail/PlanDetail can all replace
+    // surface, not just the selected section - CraftDetail and PlanDetail can both replace
     // the section's own content regardless of `section`'s value.
-    const statsVisible = section === "stats" && !craftDetail && !historyDetail && !order.flow?.previewing;
+    const statsVisible = section === "stats" && !craftDetail && !order.flow?.previewing;
     useEffect(() => {
         setStatsActive(statsVisible);
     }, [statsVisible, setStatsActive]);
@@ -269,12 +268,6 @@ function Shell() {
                                 route.push({ section: "jobs", detail: { type: "cpu", gridKey, cpuKey } })
                             }
                         />
-                    ) : historyDetail ? (
-                        <TrackingDetail
-                            gridKey={historyDetail.gridKey}
-                            id={historyDetail.id}
-                            onClose={() => route.push({ detail: null })}
-                        />
                     ) : order.flow?.previewing ? (
                         <PlanDetail onSubmitted={onOrderSubmitted} />
                     ) : (
@@ -310,8 +303,12 @@ function Shell() {
                             )}
                             {section === "history" && (
                                 <History
-                                    onOpen={({ gridKey, id }) =>
-                                        route.push({ section: "history", detail: { type: "history", gridKey, id } })
+                                    open={historyDetail}
+                                    onOpen={(entry) =>
+                                        route.push({
+                                            section: "history",
+                                            detail: entry && { type: "history", gridKey: entry.gridKey, id: entry.id },
+                                        })
                                     }
                                     item={route.item}
                                     onItemChange={(item) => route.push({ section: "history", detail: null, item })}

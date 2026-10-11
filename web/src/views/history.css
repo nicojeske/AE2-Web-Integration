@@ -1,87 +1,140 @@
-/* Crafting History list + tracking detail (M5) */
+/* Crafting History: job table + tracking inspector */
 
-.history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    /* See `.item-table`'s comment in browser.css - `.content` must never shrink this below its natural
-       (virtualization-padded) height, or `useVirtualWindow`'s row-height math and the real layout
-       disagree. */
-    flex-shrink: 0;
+.history__filter {
+    width: 240px;
 }
-
+.history__filter input {
+    width: 100%;
+}
+.history-table {
+    --cols: 26px minmax(0, 1fr) 150px 90px 96px 96px;
+}
 .history-row {
-    border-radius: var(--radius-card-sm);
-    padding: 14px 16px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    height: 44px;
+    min-height: 44px;
 }
-
-.history-row__main {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-width: 0;
-    gap: 2px;
-}
-
-.history-row__item {
-    font-size: 13.5px;
-    font-weight: 500;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.history-row__grid-label {
-    font-weight: 400;
-    color: var(--text-dim);
-}
-
-.history-row__timestamp {
-    font-size: 11.5px;
-    color: var(--text-dim);
-}
-
-.history-row__duration {
+.history-row__qty {
     font-family: var(--font-mono);
-    font-size: 12px;
+    color: var(--text-muted);
+}
+.history-row__when {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
     color: var(--text-muted);
     white-space: nowrap;
 }
 
-/* Tracking detail - item cards reuse .craft-detail__item-card/__item-stats/__share from
-   craft-detail.css (a flat grid rather than CraftDetailColumns' fixed three-column layout, since a
-   tracking record has no crafting/waiting/done split). */
-.tracking-detail__items {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 12px;
-}
-
-/* Timelines */
-.tracking-detail__timeline-card {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-card-sm);
-    padding: 16px;
+/* Tracking inspector */
+.tracking {
     display: flex;
     flex-direction: column;
+    gap: 16px;
+}
+.tracking__head {
+    display: flex;
+    align-items: center;
     gap: 12px;
 }
-
-.tracking-detail__timeline-title {
+.tracking__title-block {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.tracking__title {
     font-family: var(--font-display);
-    font-size: 12.5px;
+    font-size: 17px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-primary);
+}
+.tracking__sub {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.tracking__stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.tracking__steps {
+    display: flex;
+    flex-direction: column;
+}
+.tracking__step {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 70px 70px;
+    gap: 10px;
+    align-items: center;
+}
+.tracking__step--head {
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.tracking__step-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px 0;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--row-divider);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.tracking__step-row:hover .tracking__step-name {
+    color: var(--cyan);
+}
+.tracking__step-name {
+    font-size: 12.5px;
+}
+.tracking__share {
+    height: 3px;
+    margin-left: 30px;
+    background: var(--border-subtle);
+}
+.tracking__share > div {
+    height: 100%;
+    background: var(--amber);
+}
+.tracking__timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.tracking .craft-detail__panel {
+    padding: 0;
+    background: none;
+    border: 0;
+}
+.tracking__actions {
+    display: flex;
+    gap: 8px;
+}
+.tracking__again {
+    flex: 1;
 }
 
-.tracking-detail__timeline-more {
-    font-size: 11px;
-    color: var(--text-dim);
+@media (max-width: 1023.98px) {
+    .history-table {
+        --cols: 26px minmax(0, 1fr) 90px 96px;
+    }
+    .history-row__when,
+    .history-table .dtable__head > :nth-child(3),
+    .history-table .dtable__head > :nth-child(6),
+    .history-row > :last-child {
+        display: none;
+    }
+}
+@media (max-width: 767.98px) {
+    .history__filter {
+        width: 100%;
+        order: 5;
+    }
 }
 
 .timeline {
