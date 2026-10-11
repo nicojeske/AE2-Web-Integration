@@ -91,7 +91,11 @@ export function StatCard({
             : [];
 
     return (
-        <Card className="stat-card">
+        <Card
+            className={
+                item && threshold !== null && item.quantity < threshold ? "stat-card stat-card--low" : "stat-card"
+            }
+        >
             <div className="stat-card__head">
                 <ItemIcon itemid={itemid} name={name} size={40} className="stat-card__icon" />
                 <div className="stat-card__identity">

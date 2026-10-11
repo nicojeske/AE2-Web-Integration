@@ -28,10 +28,10 @@ export const RANGE_OPTIONS: SegmentedOption<StatsRange>[] = [
     { value: "15m", label: "15m" },
     { value: "1h", label: "1h" },
     { value: "6h", label: "6h" },
-    { value: "24h", label: "Last 24h" },
-    { value: "7d", label: "Last 7 days" },
-    { value: "30d", label: "Last 30 days" },
-    { value: "all", label: "All time" },
+    { value: "24h", label: "24h" },
+    { value: "7d", label: "7d" },
+    { value: "30d", label: "30d" },
+    { value: "all", label: "All" },
     { value: "custom", label: "Custom" },
 ];
 

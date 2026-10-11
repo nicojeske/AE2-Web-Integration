@@ -1,24 +1,21 @@
-// Statistics dashboard header (chart-quality/derived-metrics pass) - a KPI row plus one aggregate
-// chart, both computed from the `history` bundle `state/stats.tsx` already polls; no extra requests.
-import type { GridKey, StatsRange } from "../api/types";
-import { formatNumber, formatRelativeAge } from "../api/format";
+// The Statistics KPI strip: pinned count, items below their alert level, and the range's biggest gain and
+// drop - all computed from the `history` bundle `state/stats.tsx` already polls; no extra requests.
+import type { GridKey, StatsRange, StockRule } from "../api/types";
+import { formatNumber, skipSpecialFormat } from "../api/format";
 import { MAX_PINNED, type HistoryBundle } from "../state/stats";
 import type { BrowserItem } from "../state/items";
-import type { StockRule } from "../api/types";
-import { Badge } from "../ui/Badge";
-import { Card } from "../ui/Card";
-import { Chart } from "../ui/Chart";
 import { isLowStock } from "./browserModel";
-import { COMPARE_W, deltaPercent, describeResolution, isTrendSignificant, seriesStats, sumSeries } from "./statsModel";
+import { RANGE_OPTIONS, seriesStats } from "./statsModel";
 
 export interface StatsOverviewProps {
     gridKey: GridKey;
     pinned: string[];
     items: BrowserItem[];
+    /** Last-seen names of pinned items that left storage. */
+    names: Record<string, string>;
     stockRules: Record<string, StockRule>;
     history: HistoryBundle | null;
     range: StatsRange;
-    spanMillis?: number;
     numberFormat: "full" | "compact";
 }
 
@@ -26,102 +23,67 @@ export function StatsOverview({
     gridKey,
     pinned,
     items,
+    names,
     stockRules,
     history,
     range,
-    spanMillis,
     numberFormat,
 }: StatsOverviewProps) {
     const stepMillis = history?.stepMillis ?? 0;
-    const totalSeries = sumSeries(pinned.map((id) => history?.byItem.get(id) ?? []));
-    const totalStats = seriesStats(totalSeries, stepMillis);
-    const netChangePct = deltaPercent(totalSeries);
+    const nameOf = (id: string) =>
+        skipSpecialFormat(
+            items.find((it) => it.sourceGridKey === gridKey && it.itemid === id)?.itemname ?? names[id] ?? id,
+        );
+    const rangeLabel = RANGE_OPTIONS.find((o) => o.value === range)?.label ?? range;
 
-    let rising = 0;
-    let falling = 0;
-    let flat = 0;
-    for (const id of pinned) {
-        const s = seriesStats(history?.byItem.get(id) ?? [], stepMillis);
-        if (s.slopePerHour === null) continue;
-        // A trend that doesn't clear isTrendSignificant's noise gate counts as flat here too - a
-        // sample-to-sample sawtooth around a steady mean has a nonzero slope by chance, but it isn't
-        // "rising" or "falling" in any actionable sense.
-        if (!isTrendSignificant(s)) flat++;
-        else if (s.slopePerHour > 0) rising++;
-        else falling++;
-    }
-
-    let lowStockCount = 0;
-    for (const id of pinned) {
+    const low = pinned.filter((id) => {
         const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === id);
-        // Reuses the Browser badge's own rule - a pinned item only counts here if its grid has a stock rule
-        // for it (otherwise there's no `alertBelow` to compare against) and it's still on the network.
-        if (item && isLowStock(item, stockRules)) lowStockCount++;
+        return item !== undefined && isLowStock(item, stockRules);
+    });
+
+    let gain: { id: string; change: number } | null = null;
+    let drop: { id: string; change: number } | null = null;
+    for (const id of pinned) {
+        const change = seriesStats(history?.byItem.get(id) ?? [], stepMillis).changeAbs;
+        if (change === null) continue;
+        if (change > 0 && (!gain || change > gain.change)) gain = { id, change };
+        if (change < 0 && (!drop || change < drop.change)) drop = { id, change };
     }
+    const signed = (n: number) => `${n > 0 ? "+" : "−"}${formatNumber(Math.abs(n), numberFormat)}`;
 
     return (
-        <div className="stats-overview">
-            <div className="stats-overview__tiles">
-                <Card className="stats-tile">
-                    <span className="stats-tile__label">Pinned</span>
-                    <span className="stats-tile__value">
-                        {pinned.length}/{MAX_PINNED}
-                    </span>
-                </Card>
-                <Card className="stats-tile">
-                    <span className="stats-tile__label">Net change</span>
-                    <span className="stats-tile__value">
-                        {totalStats.changeAbs === null
-                            ? "—"
-                            : `${totalStats.changeAbs >= 0 ? "+" : ""}${formatNumber(totalStats.changeAbs, numberFormat)}`}
-                    </span>
-                    {netChangePct !== null && (
-                        <Badge variant={netChangePct >= 0 ? "green" : "red"} size="sm">
-                            {`${netChangePct >= 0 ? "+" : ""}${netChangePct.toFixed(1)}%`}
-                        </Badge>
-                    )}
-                </Card>
-                <Card className="stats-tile">
-                    <span className="stats-tile__label">Rising / falling</span>
-                    <span className="stats-tile__value">
-                        {rising} / {falling}
-                    </span>
-                    {flat > 0 && <span className="stats-tile__sub">{flat} flat</span>}
-                </Card>
-                <Card className="stats-tile">
-                    <span className="stats-tile__label">Low stock</span>
-                    <span className={`stats-tile__value${lowStockCount > 0 ? " stats-tile__value--warn" : ""}`}>
-                        {lowStockCount}
-                    </span>
-                </Card>
-                <Card className="stats-tile">
-                    <span className="stats-tile__label">Freshness</span>
-                    <span className="stats-tile__value stats-tile__value--sm">
-                        {history ? formatRelativeAge(history.fetchedAt) : "—"}
-                    </span>
-                    {history && (
-                        <span className="stats-tile__sub">
-                            {describeResolution(history.bucketMillis, history.stepMillis)}
-                        </span>
-                    )}
-                </Card>
-            </div>
-            {history && totalStats.samples > 0 && (
-                <Card className="stats-overview__chart-card">
-                    <span className="stats-overview__chart-title">Total pinned stock</span>
-                    <Chart
-                        values={totalSeries}
-                        timestamps={history.timestamps}
-                        range={range}
-                        spanMillis={spanMillis}
-                        width={COMPARE_W}
-                        height={90}
-                        numberFormat={numberFormat}
-                        showAxes
-                        ariaLabel="Total pinned stock"
-                    />
-                </Card>
-            )}
+        <div className="kpis">
+            <Kpi label="Pinned items" value={`${pinned.length}`} sub={`of at most ${MAX_PINNED}`} />
+            <Kpi
+                label="Below alert"
+                value={`${low.length}`}
+                sub={low.length > 0 ? low.map(nameOf).join(", ") : "Every pinned item is above its alert level"}
+                tone={low.length > 0 ? "red" : undefined}
+            />
+            <Kpi
+                label="Biggest gain"
+                value={gain ? signed(gain.change) : "—"}
+                sub={gain ? `${nameOf(gain.id)} · ${rangeLabel}` : "Nothing rose"}
+                tone={gain ? "green" : undefined}
+            />
+            <Kpi
+                label="Biggest drop"
+                value={drop ? signed(drop.change) : "—"}
+                sub={drop ? `${nameOf(drop.id)} · ${rangeLabel}` : "Nothing fell"}
+                tone={drop ? "red" : undefined}
+            />
+        </div>
+    );
+}
+
+function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: "red" | "green" }) {
+    return (
+        <div className="kpi">
+            <span className="section-label">{label}</span>
+            <span className={tone ? `kpi__value ${tone}` : "kpi__value"}>{value}</span>
+            <span className="kpi__sub" title={sub}>
+                {sub}
+            </span>
         </div>
     );
 }

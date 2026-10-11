@@ -1,5 +1,5 @@
-// Statistics section (M8, dashboard/chart-quality pass): range control, an overview KPI row, and
-// pinned-item chart cards, plus the entry points into the Pinned Items and Compare modals.
+// Statistics: range and chart controls, a KPI strip, and a grid of pinned-item chart cards, plus the entry
+// points into the Pinned Items and Compare modals.
 // Single-grid only - history is per grid server-side, so All-Grids mode gets a notice instead of a
 // fan-out like every other section.
 import { useState } from "preact/hooks";
@@ -34,7 +34,7 @@ export function Statistics() {
     if (selected === "all") {
         return (
             <div className="placeholder-panel">
-                Statistics is per-network. Pick a single network in the sidebar to see sampled item history.
+                Statistics is per-network. Pick a single network in the topbar to see sampled item history.
             </div>
         );
     }
@@ -66,13 +66,80 @@ export function Statistics() {
         setCompareIds(v.itemids);
     };
 
+    const body =
+        historyError === "HISTORY_DISABLED" ? (
+            <div className="placeholder-panel">
+                This server records no item history - it needs a history database (history.jdbc_url in the mod&apos;s
+                config).
+            </div>
+        ) : historyError ? (
+            <div className="placeholder-panel browser__error">
+                <p>{historyError}</p>
+                <Button variant="secondary" onClick={() => void refresh()}>
+                    Retry
+                </Button>
+            </div>
+        ) : pinned.length === 0 ? (
+            <div className="placeholder-panel">
+                Every item&apos;s stock is recorded. Use &quot;Choose items&quot; to pick which ones show up here.
+            </div>
+        ) : historyLoading && !history ? (
+            <div className="placeholder-panel">Loading statistics…</div>
+        ) : (
+            <>
+                <StatsOverview
+                    gridKey={gridKey}
+                    pinned={pinned}
+                    items={items}
+                    names={names}
+                    stockRules={stockRules}
+                    history={history}
+                    range={range}
+                    numberFormat={settings.numberFormat}
+                />
+                <div className="stats__grid">
+                    {pinned.map((itemid) => {
+                        const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === itemid);
+                        const key = prefsKey(gridKey, itemid);
+                        const threshold = alertBelowFor(stockRules, key);
+                        return (
+                            <StatCard
+                                key={itemid}
+                                itemid={itemid}
+                                item={item}
+                                storedName={names[itemid]}
+                                values={history?.byItem.get(itemid) ?? []}
+                                timestamps={history?.timestamps ?? []}
+                                range={range}
+                                spanMillis={spanMillis}
+                                stepMillis={history?.stepMillis ?? 0}
+                                numberFormat={settings.numberFormat}
+                                chartHeight={chartHeight}
+                                scale={settings.chartScale}
+                                smoothing={settings.chartSmoothing}
+                                threshold={threshold}
+                                onExpand={() => setCompareIds([itemid])}
+                            />
+                        );
+                    })}
+                </div>
+            </>
+        );
+
     return (
-        <>
-            <section className="stats">
-                <div className="stats__header">
-                    <SegmentedControl<StatsRange> options={RANGE_OPTIONS} value={range} onChange={setRange} />
+        <div className="page">
+            <div className="page__main">
+                <header className="page-header">
+                    <h2 className="page-header__title">Statistics</h2>
+                    <SegmentedControl<StatsRange>
+                        className="segmented--mono"
+                        options={RANGE_OPTIONS}
+                        value={range}
+                        onChange={setRange}
+                    />
                     {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
                     <SegmentedControl
+                        className="segmented--mono"
                         options={CHART_SCALE_OPTIONS}
                         value={settings.chartScale}
                         onChange={(chartScale) => setSettings((s) => ({ ...s, chartScale }))}
@@ -84,21 +151,22 @@ export function Statistics() {
                     >
                         <span>Smoothing</span>
                     </Checkbox>
-                    <Button variant="secondary" size="sm" className="stats__manage" onClick={() => setManageOpen(true)}>
-                        Choose items
-                    </Button>
-                </div>
-
-                {history && (
-                    <p className="stats__meta">
-                        {describeResolution(history.bucketMillis, history.stepMillis)}
-                        {range === "all" && ` · ${retentionNote(history.from, history.to)}`}
-                    </p>
-                )}
+                    {history && (
+                        <span className="mono-count">
+                            {describeResolution(history.bucketMillis, history.stepMillis)}
+                            {range === "all" && ` · ${retentionNote(history.from, history.to)}`}
+                        </span>
+                    )}
+                    <div className="page-header__end">
+                        <Button variant="secondary" size="sm" onClick={() => setManageOpen(true)}>
+                            Choose items
+                        </Button>
+                    </div>
+                </header>
 
                 {views.length > 0 && (
-                    <div className="stats__views">
-                        <span className="stats__views-label">Saved views</span>
+                    <div className="page-toolbar">
+                        <span className="section-label">Saved views</span>
                         {views.map((v) => (
                             <div key={v.id} className="stats__view-chip">
                                 <button type="button" className="stats__view-chip-open" onClick={() => openView(v)}>
@@ -118,69 +186,11 @@ export function Statistics() {
                     </div>
                 )}
 
-                {historyError === "HISTORY_DISABLED" ? (
-                    <div className="placeholder-panel">
-                        This server records no item history - it needs a history database (history.jdbc_url in the
-                        mod&apos;s config).
-                    </div>
-                ) : historyError ? (
-                    <div className="placeholder-panel browser__error">
-                        <p>{historyError}</p>
-                        <Button variant="secondary" onClick={() => void refresh()}>
-                            Retry
-                        </Button>
-                    </div>
-                ) : pinned.length === 0 ? (
-                    <div className="placeholder-panel">
-                        Every item&apos;s stock is recorded. Use &quot;Choose items&quot; to pick which ones show up
-                        here.
-                    </div>
-                ) : historyLoading && !history ? (
-                    <div className="placeholder-panel">Loading statistics…</div>
-                ) : (
-                    <>
-                        <StatsOverview
-                            gridKey={gridKey}
-                            pinned={pinned}
-                            items={items}
-                            stockRules={stockRules}
-                            history={history}
-                            range={range}
-                            spanMillis={spanMillis}
-                            numberFormat={settings.numberFormat}
-                        />
-                        <div className="stats__grid">
-                            {pinned.map((itemid) => {
-                                const item = items.find((it) => it.sourceGridKey === gridKey && it.itemid === itemid);
-                                const key = prefsKey(gridKey, itemid);
-                                const threshold = alertBelowFor(stockRules, key);
-                                return (
-                                    <StatCard
-                                        key={itemid}
-                                        itemid={itemid}
-                                        item={item}
-                                        storedName={names[itemid]}
-                                        values={history?.byItem.get(itemid) ?? []}
-                                        timestamps={history?.timestamps ?? []}
-                                        range={range}
-                                        spanMillis={spanMillis}
-                                        stepMillis={history?.stepMillis ?? 0}
-                                        numberFormat={settings.numberFormat}
-                                        chartHeight={chartHeight}
-                                        scale={settings.chartScale}
-                                        smoothing={settings.chartSmoothing}
-                                        threshold={threshold}
-                                        onExpand={() => setCompareIds([itemid])}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </>
-                )}
-            </section>
+                <div className="page__scroll stats__scroll">{body}</div>
+            </div>
 
             {manageOpen && <ManagePinnedModal onClose={() => setManageOpen(false)} />}
             {compareIds && <CompareModal itemids={compareIds} onClose={() => setCompareIds(null)} />}
-        </>
+        </div>
     );
 }
