@@ -319,7 +319,7 @@ export const GT_STATUS_ORDER: GTMachineStatus[] = [
     "DISABLED",
 ];
 
-/** Statuses that count towards the sidebar's Machines badge. DISABLED is deliberate, so it isn't one. */
+/** Statuses that count towards the rail's Machines badge. DISABLED is deliberate, so it isn't one. */
 export const GT_PROBLEM_STATUSES = new Set<GTMachineStatus>([
     "STRUCTURE_INCOMPLETE",
     "MAINTENANCE",

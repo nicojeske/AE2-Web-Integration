@@ -40,9 +40,14 @@ function readBanner(): Banner {
 
 function BrandMark() {
     return (
-        <div className="sidebar__brand login-brand">
-            <div className="sidebar__brand-mark" />
-            <span className="sidebar__brand-name">AE2 TERMINAL</span>
+        <div className="brand login-brand">
+            <span className="brand__mark" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+            </span>
+            <span className="brand__name">AE2 TERMINAL</span>
         </div>
     );
 }

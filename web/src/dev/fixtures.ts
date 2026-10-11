@@ -714,7 +714,7 @@ export const mockGrids: MockGrid[] = [
         idleCpus: [{ name: "Outpost CPU", coProcessors: 1, availableStorage: 1024 * 1024 }],
         busyCpus: [
             {
-                // Short craftDurationMs so completion (toast + notification + sidebar pill decrement,
+                // Short craftDurationMs so completion (toast + notification + rail pill decrement,
                 // and M3's Craft Detail freezing in place) fires well within a manual dev-testing
                 // session, instead of requiring a long wait - also the only busy CPU on a second grid,
                 // so the All-Grids fan-in touches both grids. 25s (not M2's original 8s) so it also

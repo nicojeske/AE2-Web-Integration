@@ -63,35 +63,6 @@
     gap: 14px;
 }
 
-.brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.brand__mark {
-    display: grid;
-    grid-template-columns: repeat(2, 9px);
-    gap: 2px;
-}
-.brand__mark > span {
-    height: 9px;
-}
-.brand__mark > span:nth-child(1),
-.brand__mark > span:nth-child(4) {
-    background: var(--accent);
-}
-.brand__mark > span:nth-child(2),
-.brand__mark > span:nth-child(3) {
-    background: var(--cyan);
-}
-.brand__name {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 15px;
-    letter-spacing: 2px;
-    color: var(--text-primary);
-}
-
 .network-menu {
     position: relative;
     margin-left: 6px;
@@ -499,21 +470,21 @@
     margin: 16px;
 }
 
-/* Density setting: compact tightens the card surfaces not yet reworked into tables. */
-.app-shell--density-compact .content {
-    gap: 12px;
+/* Density setting: compact tightens the table rows (the Browser list sets its own, and History's
+   virtualized rows keep one height) and the chart cards. */
+.app-shell--density-compact :is(.mrow, .steps__row, .prod-row) {
+    height: 32px;
 }
-.app-shell--density-compact .cpu-grid,
-.app-shell--density-compact .stats__grid {
-    gap: 8px;
+.app-shell--density-compact :is(.fav-row, .power-row) {
+    height: 40px;
 }
-.app-shell--density-compact .cpu-card,
+.app-shell--density-compact .cpu-row {
+    padding: 8px 16px;
+    gap: 5px;
+}
 .app-shell--density-compact .stat-card {
-    padding: 10px;
+    padding: 10px 14px;
     gap: 6px;
-}
-.app-shell--density-compact .history-row {
-    padding: 10px 12px;
 }
 
 /* ---- Responsive shell ----
@@ -552,18 +523,6 @@
     }
     .content {
         padding: 12px;
-    }
-    .favorites-list {
-        padding: 16px;
-    }
-    .item-grid,
-    .cpu-grid,
-    .stats__grid,
-    .tracking-detail__items {
-        grid-template-columns: minmax(0, 1fr);
-    }
-    .craft-detail__columns {
-        grid-template-columns: minmax(0, 1fr);
     }
     .timeline__label {
         width: 110px;

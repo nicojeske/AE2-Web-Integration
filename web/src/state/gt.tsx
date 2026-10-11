@@ -1,7 +1,7 @@
 // GregTech hub state (docs/gt-hub/phase-2-frontend.md §3). `/gt/*` endpoints are async on the server -
 // they read what GTEngine stored on its last scan, never live GregTech state - so unlike `/list`/`/get`
 // polling them costs no server-thread drain budget. That's why the machines poll runs app-wide (it feeds
-// the sidebar badge) and why none of these follow `settings.autoRefreshItems`, which only governs the
+// the rail badge) and why none of these follow `settings.autoRefreshItems`, which only governs the
 // item list's own (server-thread) `/items` poll.
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
@@ -14,7 +14,7 @@ import { getContext } from "../context";
 
 /** Matches the default `gt_scan_interval_seconds` - polling faster only re-reads the same scan. */
 export const GT_FAST_POLL_MS = 10_000;
-/** Machines while another section is showing - just enough to keep the sidebar badge honest. */
+/** Machines while another section is showing - just enough to keep the rail badge honest. */
 const GT_BACKGROUND_POLL_MS = 30_000;
 export const GT_PRODUCTION_POLL_MS = 60_000;
 
@@ -104,7 +104,7 @@ export interface GTContextValue {
     /** `getContext().hasGT` - false means every GT section is hidden and nothing here ever polls. */
     enabled: boolean;
     machines: GTPoll<GTMachines>;
-    /** Loaded machines in a `GT_PROBLEM_STATUSES` status - the sidebar badge. */
+    /** Loaded machines in a `GT_PROBLEM_STATUSES` status - the rail badge. */
     problemCount: number;
     /** Holds the machines poll at the scan rate; returns the release. See `useFastMachinesPoll`. */
     holdFastMachinesPoll: () => () => void;

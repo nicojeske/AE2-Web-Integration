@@ -82,7 +82,7 @@ function Shell() {
     );
 
     // Two-way sync between the URL's `?grid=` and network selection - the URL wins on load and on
-    // Back/Forward (this effect, which only reacts to `route.grid`); a manual switch (Sidebar calls
+    // Back/Forward (this effect, which only reacts to `route.grid`); a manual switch (NetworkMenu calls
     // `selectGrid` directly via `useNetwork`, not through Shell - kept that way so it stays oblivious to
     // routing) is mirrored into the URL by the second effect below instead.
     useEffect(() => {

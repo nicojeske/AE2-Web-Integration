@@ -481,6 +481,36 @@
     border-top: 1px solid var(--border-subtle);
 }
 
+/* The AE2 mark: four squares and the wordmark (topbar, login page). */
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.brand__mark {
+    display: grid;
+    grid-template-columns: repeat(2, 9px);
+    gap: 2px;
+}
+.brand__mark > span {
+    height: 9px;
+}
+.brand__mark > span:nth-child(1),
+.brand__mark > span:nth-child(4) {
+    background: var(--accent);
+}
+.brand__mark > span:nth-child(2),
+.brand__mark > span:nth-child(3) {
+    background: var(--cyan);
+}
+.brand__name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--text-primary);
+}
+
 /* ---- Console patterns shared by every page ---- */
 
 /* A page's own header row (title, filters, count, toggles) right under the topbar. */

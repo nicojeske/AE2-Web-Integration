@@ -13,9 +13,10 @@
 .login-card {
     width: 100%;
     max-width: 400px;
-    background: var(--bg-card);
+    background: var(--bg-panel);
     border: 1px solid var(--border);
     border-radius: var(--radius-modal);
+    box-shadow: var(--shadow-modal);
     padding: 28px 24px;
     display: flex;
     flex-direction: column;
@@ -23,7 +24,6 @@
 }
 
 .login-brand {
-    padding: 0;
     justify-content: center;
 }
 
@@ -93,9 +93,10 @@
 }
 
 .login-form__label {
-    font-size: 11px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     color: var(--text-muted);
     margin-top: 6px;
 }
@@ -113,7 +114,7 @@
 }
 .login-form__input:focus {
     outline: none;
-    border-color: var(--border-hover);
+    border-color: var(--accent);
 }
 .login-form__input:read-only {
     color: var(--text-muted);

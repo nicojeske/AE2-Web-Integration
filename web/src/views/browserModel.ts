@@ -124,7 +124,7 @@ export function alertBelowFor(rules: Record<string, StockRule>, key: string): nu
 /**
  * Low = the item's grid has a stock rule for it and the live stored amount is under its `alertBelow`. Uses the
  * Browser's quantity rather than the server's last check, so the badge agrees with the number beside it.
- * Shared by the Browser badge, the sidebar pill (`App.tsx`) and the Favorites pane so they never disagree.
+ * Shared by the Browser badge, the rail pill (`App.tsx`) and the Favorites pane so they never disagree.
  */
 export function isLowStock(
     item: Pick<BrowserItem, "sourceGridKey" | "itemid" | "quantity">,

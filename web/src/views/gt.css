@@ -523,15 +523,6 @@ th.gt-table__num {
     gap: 20px;
 }
 
-.production__detail-label {
-    display: block;
-    font-size: 10.5px;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    margin-bottom: 6px;
-}
-
 .production__breakdown-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -539,10 +530,6 @@ th.gt-table__num {
     align-items: center;
     padding: 3px 0;
     font-size: 12px;
-}
-
-.production__breakdown-rate {
-    color: var(--text-dim);
 }
 
 .production__link {

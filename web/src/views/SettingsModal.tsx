@@ -11,7 +11,7 @@ import { SegmentedControl } from "../ui/SegmentedControl";
 
 export interface SettingsModalProps {
     onClose: () => void;
-    /** Notify-on-completion moved here from the sidebar (M11) - state/prefs.tsx still owns the value and
+    /** Notify-on-completion lives here (it was a sidebar toggle once) - state/prefs.tsx still owns the value and
      *  persistence; App.tsx still owns the lazy `Notification.requestPermission()` call on enabling. */
     notifyEnabled: boolean;
     onToggleNotify: () => void;
@@ -71,7 +71,9 @@ export function SettingsModal({ onClose, notifyEnabled, onToggleNotify }: Settin
                 </div>
 
                 <div className="settings__row">
-                    <span className="settings__label">Density</span>
+                    <span className="settings__label" title="Row height of the item list and the other tables">
+                        Row density
+                    </span>
                     <SegmentedControl
                         options={DENSITY_OPTIONS}
                         value={settings.density}
@@ -80,7 +82,9 @@ export function SettingsModal({ onClose, notifyEnabled, onToggleNotify }: Settin
                 </div>
 
                 <div className="settings__row">
-                    <span className="settings__label">Item tile size</span>
+                    <span className="settings__label" title="The Item Browser's Grid view">
+                        Grid tile size
+                    </span>
                     <div className="settings__slider">
                         <input
                             type="range"

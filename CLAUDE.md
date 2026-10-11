@@ -168,10 +168,10 @@ backlog. All server calls go through `src/api/client.ts` (relative `api/...` pat
 proxy sub-path). API quirks worth knowing before touching data code: no `requested` field for craft progress
 (approximated from crafted totals), and the CPU list carries no per-CPU progress (a sequential per-CPU detail
 fan-in covers busy CPUs). Grids, CPUs and orderable items are addressed by their string keys; favourites,
-stock rules and statistics stay keyed by `itemid`. Read
-`claude-design/README.md` and open `claude-design/AE2 Web Terminal.dc.html` (needs `support.js` and
-`image-slot.js` alongside it) for the original design handoff if it's ever needed again — `claude-design/`
-is an **untracked local reference copy**, not part of any branch, so it needs to be re-requested if missing.
+stock rules and statistics stay keyed by `itemid`. The current look comes from the "Fluix Console" Claude
+Design handoff (`Rework.dc.html` 1a, `Fluix Console.dc.html`, the `ConsoleTopbar`/`ConsoleRail` components;
+open them with their `support.js`); like the original `claude-design/` handoff it is an **untracked local
+reference copy**, not part of any branch, so it needs to be re-requested if missing.
 
 Routing is a small hand-rolled hash router (`src/shell/route.ts`): `#/<section>[/<detail>]?grid=<selection>`,
 where the selection is a grid key or `all` (`&item=<itemid>` is Crafting History's server-side filter, and the
@@ -197,7 +197,7 @@ must preserve the `_REPLACE_ME_USERNAME` / `_REPLACE_ME_IS_ADMIN` / `_REPLACE_ME
 `http/WebHandler` substitutes them with plain string replacement, not templating.
 
 Layout: `src/api/` (typed endpoint client, `{status,data}` envelope, error copy, formatting helpers), `src/state/` (Preact context stores — network selection, items, prefs, toasts),
-`src/shell/` (sidebar/topbar/app chrome, the hash router), `src/ui/` (design-system primitives), `src/views/`
+`src/shell/` (topbar, rail, phone nav, command palette, the hash router), `src/ui/` (design-system primitives), `src/views/`
 (per-section panes: Browser, Jobs, History, Favorites, Statistics, Settings, and the GregTech hub's Machines,
 Power and Production — shown only when `hasGT`, see `docs/gt-hub/`), `src/login/` (the separate login page
 entry), `src/dev/mock-server.ts` + `src/dev/fixtures.ts` + `src/dev/gtFixtures.ts` (Vite dev-only middleware
