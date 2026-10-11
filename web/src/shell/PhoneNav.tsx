@@ -8,6 +8,7 @@ import { CpuLeds, cpuRank } from "../ui/CpuLeds";
 import { cx } from "../ui/cx";
 import { Drawer } from "../ui/Drawer";
 import { GearIcon, MenuIcon } from "../ui/icons";
+import { ItemIcon } from "../ui/ItemIcon";
 import type { NavBadges } from "./nav";
 import { badgeFor, navItems } from "./nav";
 import type { Section } from "./section";
@@ -49,10 +50,18 @@ export function PhoneNav({ section, onSectionChange, hasGT, badges, cpus, onOpen
                         {stalled > 0 && <span className="phone-nav__stalled"> · {stalled} stalled</span>}
                     </span>
                     {top?.finalOutput && (
-                        <span className="phone-nav__cpus-top">
-                            {skipSpecialFormat(top.finalOutput.itemname)}
-                            {top.progressPct !== null ? ` ${top.progressPct}%` : ""}
-                        </span>
+                        <>
+                            <ItemIcon
+                                itemid={top.finalOutput.itemid}
+                                name={top.finalOutput.itemname}
+                                size={18}
+                                className="phone-nav__cpus-icon"
+                            />
+                            <span className="phone-nav__cpus-top">
+                                {skipSpecialFormat(top.finalOutput.itemname)}
+                                {top.progressPct !== null ? ` ${top.progressPct}%` : ""}
+                            </span>
+                        </>
                     )}
                 </button>
             )}

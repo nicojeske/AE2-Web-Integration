@@ -362,6 +362,10 @@
 .phone-nav__stalled {
     color: var(--red);
 }
+.phone-nav__cpus-icon {
+    flex-shrink: 0;
+    margin-right: -4px;
+}
 .phone-nav__cpus-top {
     font-family: var(--font-mono);
     font-size: 11px;
