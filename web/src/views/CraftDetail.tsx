@@ -349,6 +349,14 @@ function CpuTabs({
                     >
                         <span className="led led--sm" style={{ background: cpuLedColor(cpu) }} />
                         <span className="cpu-tabs__name">{cpu.name}</span>
+                        {cpu.isBusy && cpu.finalOutput && (
+                            <ItemIcon
+                                itemid={cpu.finalOutput.itemid}
+                                name={cpu.finalOutput.itemname}
+                                size={18}
+                                className="cpu-tabs__icon"
+                            />
+                        )}
                         <span className={cx("cpu-tabs__pct", stalled && "red")}>
                             {!cpu.isBusy
                                 ? "idle"

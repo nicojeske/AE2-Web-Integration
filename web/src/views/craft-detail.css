@@ -450,6 +450,9 @@
     font-family: var(--font-mono);
     font-size: 11.5px;
 }
+.cpu-tabs__icon {
+    flex-shrink: 0;
+}
 .cpu-tabs__pct {
     font-family: var(--font-mono);
     font-size: 11px;
