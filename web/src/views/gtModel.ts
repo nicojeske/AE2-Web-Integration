@@ -83,6 +83,12 @@ export function liveProgressTicks(m: GTMachine, scannedAt: number, now: number):
     return (m.progressTicks + elapsedTicks) % m.maxProgressTicks;
 }
 
+/** `"12s left"` / `"3m 4s left"` - what's left of the running recipe at `progressTicks`. */
+export function remainingLabel(m: GTMachine, progressTicks: number): string {
+    const seconds = Math.max(0, Math.ceil((m.maxProgressTicks - progressTicks) / 20));
+    return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s left` : `${seconds}s left`;
+}
+
 /** Every whitespace-separated token must appear in name, type, coordinates, owner or dimension. */
 export function matchesMachineSearch(m: GTMachine, search: string): boolean {
     const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);

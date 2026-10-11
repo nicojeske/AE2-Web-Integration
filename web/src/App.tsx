@@ -4,7 +4,7 @@ import { formatRelativeAge } from "./api/format";
 import { logout } from "./api/client";
 import { getContext } from "./context";
 import { CpusProvider, useCpus } from "./state/cpus";
-import { GTProvider, useGT } from "./state/gt";
+import { GTProvider, useFastMachinesPoll, useGT } from "./state/gt";
 import { HistoryProvider, useHistory } from "./state/history";
 import { ItemsProvider, useItems } from "./state/items";
 import { NetworkProvider, useNetwork } from "./state/network";
@@ -127,9 +127,7 @@ function Shell() {
 
     // Machines polls at the scan rate while it's on screen, and only slowly (for the badge) otherwise.
     const machinesVisible = section === "machines" && !order.flow?.previewing;
-    useEffect(() => {
-        gt.setMachinesActive(machinesVisible);
-    }, [machinesVisible, gt.setMachinesActive]);
+    useFastMachinesPoll(machinesVisible);
 
     const onToggleNotify = useCallback(() => {
         const next = !notifyEnabled;

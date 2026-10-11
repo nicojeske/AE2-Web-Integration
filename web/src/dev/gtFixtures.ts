@@ -58,6 +58,12 @@ const NITROGEN = { id: "nitrogen", name: "Nitrogen", fluid: true };
 const OXYGEN = { id: "oxygen", name: "Oxygen", fluid: true };
 const HYDROGEN = { id: "hydrogen", name: "Hydrogen", fluid: true };
 const STEAM = { id: "steam", name: "Steam", fluid: true };
+// What the busy "Processor (Calculation)" job's providers owe (fixtures.ts), so Craft Detail matches these.
+const SILICON = { id: "appliedenergistics2:material_silicon", name: "Silicon", fluid: false };
+const SILICON_DUST = { id: "gregtech:gt.metaitem.01:2020", name: "Silicon Dust", fluid: false };
+const CERTUS = { id: "appliedenergistics2:crystal_certus", name: "Certus Quartz Crystal", fluid: false };
+const CERTUS_SEED = { id: "appliedenergistics2:crystal_seed_certus", name: "Certus Quartz Seed", fluid: false };
+const WATER = { id: "water", name: "Water", fluid: true };
 
 type StackDef = { id: string; name: string; fluid: boolean };
 
@@ -74,6 +80,8 @@ interface MockMachine {
     consumes: (StackDef & { perHour: number })[];
     /** Unloaded machines: how long ago they were last scanned. */
     unloadedFor?: number;
+    /** A stopped machine still holding its recipe (outputs, progress), like one whose output bus filled up. */
+    stuck?: boolean;
 }
 
 function machine(
@@ -87,11 +95,12 @@ function machine(
         produces?: MockMachine["produces"];
         consumes?: MockMachine["consumes"];
         unloadedFor?: number;
+        stuck?: boolean;
         by?: typeof DEV | null;
     } = {},
 ): MockMachine {
     const [dim, x, y, z] = pos;
-    const { outputs = [], inputs = [], produces = [], consumes = [], unloadedFor, by = DEV, ...rest } = extra;
+    const { outputs = [], inputs = [], produces = [], consumes = [], unloadedFor, stuck, by = DEV, ...rest } = extra;
     return {
         base: {
             dim,
@@ -117,6 +126,7 @@ function machine(
         produces,
         consumes,
         unloadedFor,
+        stuck,
     };
 }
 
@@ -258,6 +268,49 @@ const MOCK_MACHINES: MockMachine[] = [
         produces: [{ ...ALUMINIUM, perHour: 64 }],
         consumes: [{ ...ALUMINIUM_DUST, perHour: 64 }],
     }),
+    // Working for the busy "Processor (Calculation)" job: the "Electric Blast Furnace" provider feeds three
+    // furnaces (two running, one stuck on a full output bus), "Crystal Growth Chamber" one autoclave.
+    machine([0, 104, 64, -306], "Electric Blast Furnace", "multimachine.blastfurnace", "RUNNING", {
+        maxProgressTicks: 240,
+        euPerTick: 1920,
+        voltageTier: 3,
+        outputs: [{ ...SILICON, amount: 4 }],
+        inputs: [{ ...SILICON_DUST, amount: 4 }],
+        produces: [{ ...SILICON, perHour: 240 }],
+        consumes: [{ ...SILICON_DUST, perHour: 240 }],
+    }),
+    machine([0, 110, 64, -306], "Electric Blast Furnace", "multimachine.blastfurnace", "RUNNING", {
+        maxProgressTicks: 240,
+        euPerTick: 1920,
+        voltageTier: 3,
+        outputs: [{ ...SILICON, amount: 4 }],
+        inputs: [{ ...SILICON_DUST, amount: 4 }],
+        produces: [{ ...SILICON, perHour: 240 }],
+        consumes: [{ ...SILICON_DUST, perHour: 240 }],
+    }),
+    machine([0, 116, 64, -306], "Electric Blast Furnace", "multimachine.blastfurnace", "OUTPUT_FULL", {
+        statusDetail: "Item output full",
+        maxProgressTicks: 240,
+        euPerTick: 1920,
+        voltageTier: 3,
+        stuck: true,
+        outputs: [{ ...SILICON, amount: 4 }],
+        inputs: [{ ...SILICON_DUST, amount: 4 }],
+        produces: [{ ...SILICON, perHour: 120 }],
+        consumes: [{ ...SILICON_DUST, perHour: 120 }],
+    }),
+    machine([0, 103, 64, -296], "Industrial Autoclave", "multimachine.autoclave", "RUNNING", {
+        maxProgressTicks: 100,
+        euPerTick: 120,
+        voltageTier: 2,
+        outputs: [{ ...CERTUS, amount: 8 }],
+        inputs: [
+            { ...CERTUS_SEED, amount: 8 },
+            { ...WATER, amount: 2000 },
+        ],
+        produces: [{ ...CERTUS, perHour: 2880 }],
+        consumes: [{ ...CERTUS_SEED, perHour: 2880 }],
+    }),
 ];
 
 function machineId(m: MockMachine): string {
@@ -288,13 +341,15 @@ function toMachine(m: MockMachine, now: number): GTMachine {
     const loaded = m.unloadedFor === undefined;
     const lastSeen = loaded ? scanTime(now) : serverStart - m.unloadedFor!;
     const running = m.base.status === "RUNNING";
-    const max = running ? m.base.maxProgressTicks : 0;
-    // Advances by real time between polls, so progress bars visibly move in the dev UI.
-    const progressTicks = max > 0 ? Math.floor((lastSeen - serverStart) / 50 + hashString(machineId(m))) % max : 0;
-    const outputs: GTStack[] = running
+    const holdsRecipe = running || m.stuck === true;
+    const max = holdsRecipe ? m.base.maxProgressTicks : 0;
+    // Advances by real time between polls, so progress bars visibly move in the dev UI; a stuck one stays put.
+    const progressTicks =
+        max > 0 ? Math.floor((running ? (lastSeen - serverStart) / 50 : 0) + hashString(machineId(m))) % max : 0;
+    const outputs: GTStack[] = holdsRecipe
         ? m.outputs.map(({ id, name, amount, fluid }) => ({ id, name, amount, fluid }))
         : [];
-    const inputs: GTStack[] = running
+    const inputs: GTStack[] = holdsRecipe
         ? m.inputs.map(({ id, name, amount, fluid }) => ({ id, name, amount, fluid }))
         : [];
     return {

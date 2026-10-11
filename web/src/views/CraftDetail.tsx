@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { ApiError, cancelCpu } from "../api/client";
 import { skipSpecialFormat } from "../api/format";
 import type { GridKey } from "../api/types";
 import { useCpus } from "../state/cpus";
+import { useFastMachinesPoll, useGT } from "../state/gt";
 import { useNetwork } from "../state/network";
 import { useOrder } from "../state/order";
+import { usePrefs } from "../state/prefs";
 import { useToast } from "../state/toast";
 import { Button } from "../ui/Button";
 import { FormattedText } from "../ui/FormattedText";
@@ -13,7 +15,9 @@ import { Modal } from "../ui/Modal";
 import { ProgressBar } from "../ui/ProgressBar";
 import { ItemIcon } from "../ui/ItemIcon";
 import { ConsumedSection, CraftDetailColumns, CraftDetailHeader, StatCard, WorkingMachines } from "./craftDetailParts";
+import type { WorkingMachinesGT } from "./craftDetailParts";
 import { buildActiveCraftDetail, isJobFinished, snapshotOf } from "./craftDetailModel";
+import { matchGTMachines } from "./craftMachinesModel";
 import type { CraftDetailColumn, CraftDetailColumnKey, CraftDetailSnapshot } from "./craftDetailModel";
 
 export interface CraftDetailProps {
@@ -60,6 +64,21 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
     const view = buildActiveCraftDetail(live, snapshotRef.current, now);
     const cpuName = live?.name ?? snapshotRef.current?.cpuName ?? "this CPU";
     const finished = isJobFinished(live);
+
+    // GregTech machines running the recipes this job's providers owe - see craftMachinesModel.ts.
+    const gt = useGT();
+    const { passiveMachines, settings } = usePrefs();
+    const providers = live?.detail?.machines;
+    const gtMachines = gt.machines.data;
+    const matches = useMemo(
+        () => (gt.enabled && providers ? matchGTMachines(providers, gtMachines, passiveMachines) : null),
+        [gt.enabled, providers, gtMachines, passiveMachines],
+    );
+    const workingGT: WorkingMachinesGT | null =
+        matches && gtMachines
+            ? { matches, scannedAt: gtMachines.scannedAt, numberFormat: settings.numberFormat }
+            : null;
+    useFastMachinesPoll(gt.enabled && !finished && (providers?.length ?? 0) > 0);
 
     const onConfirmCancel = async () => {
         setCancelling(true);
@@ -151,7 +170,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                 </section>
             )}
 
-            {!view.finished && view.consumed !== null && <WorkingMachines rows={view.machines} />}
+            {!view.finished && view.consumed !== null && <WorkingMachines rows={view.machines} gt={workingGT} />}
 
             <section className="plan-toolbar">
                 <input

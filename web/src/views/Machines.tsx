@@ -37,6 +37,7 @@ import {
     gtRangeOptions,
     liveProgressTicks,
     pendingPassiveSuggestions,
+    remainingLabel,
 } from "./gtModel";
 import { pointTimestamps } from "./statsModel";
 
@@ -298,11 +299,6 @@ function useCopyCoords(): (m: GTMachine) => void {
             () => toast(`Coordinates: ${text}`),
         );
     };
-}
-
-function remainingLabel(m: GTMachine, progressTicks: number): string {
-    const seconds = Math.max(0, Math.ceil((m.maxProgressTicks - progressTicks) / 20));
-    return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s left` : `${seconds}s left`;
 }
 
 function MachineCard({

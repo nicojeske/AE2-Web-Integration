@@ -3,7 +3,14 @@
 // claude-design's `craftDetailVals()` (AE2 Web Terminal.dc.html:895-1048) against the real DTOs.
 import { formatBytes, formatDuration, formatNumber } from "../api/format";
 import { craftTotals, estimateRemaining } from "../state/craftProgress";
-import type { CompactedItem, ConsumedItem, DimensionalCoords, ItemStack, ResourceRef } from "../api/types";
+import type {
+    CompactedItem,
+    ConsumedItem,
+    DimensionalCoords,
+    ItemStack,
+    ResourceRef,
+    WorkingMachine,
+} from "../api/types";
 import type { CpuView } from "../state/cpus";
 
 export type CraftDetailColumnKey = "crafting" | "waiting" | "done";
@@ -50,6 +57,8 @@ export interface ConsumedRow {
 
 /** A pattern provider (group) still working on the job, for the "Working machines" section. */
 export interface WorkingMachineRow {
+    /** The provider group this row shows - the key into `matchGTMachines`' result. */
+    source: WorkingMachine;
     name: string;
     location: string;
     running: string;
@@ -161,6 +170,7 @@ function buildMachineRows(live: CpuView, now: number): WorkingMachineRow[] {
     // `since` is on the server's clock: measure against the server's "now" at fetch time, then tick on.
     const serverNow = detail.timeStarted + detail.timeElapsed + Math.max(0, now - live.fetchedAt);
     return detail.machines.map((m) => ({
+        source: m,
         name: m.name,
         location: formatLocations(m.location),
         running: formatDuration(Math.max(0, serverNow - m.since)),

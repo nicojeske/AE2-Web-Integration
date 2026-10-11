@@ -493,6 +493,148 @@
     margin-top: 2px;
 }
 
+/* GregTech machines matched to a provider by recipe (craftMachinesModel.ts). The card's accent follows
+   the worst matched machine: green while they run, amber/red when one is stuck. */
+.craft-detail__machines--gt {
+    grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+}
+.craft-detail__machine--running {
+    border-left-color: var(--green);
+}
+.craft-detail__machine--amber {
+    border-left-color: var(--amber);
+}
+.craft-detail__machine--red {
+    border-left-color: var(--red);
+}
+
+.craft-detail__gt-none {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+.craft-detail__gt {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.craft-detail__gt-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+}
+
+.craft-detail__gt-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 0 -6px;
+    padding: 5px 6px;
+    border-radius: var(--radius-xs);
+    color: inherit;
+    text-decoration: none;
+}
+.craft-detail__gt-row:hover,
+.craft-detail__gt-row:focus-visible {
+    background: var(--bg-panel);
+}
+
+.craft-detail__gt-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.craft-detail__gt-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-muted);
+}
+.craft-detail__gt-dot--green {
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.16);
+}
+.craft-detail__gt-dot--amber {
+    background: var(--amber);
+}
+.craft-detail__gt-dot--red {
+    background: var(--red);
+}
+.craft-detail__gt-dot--purple {
+    background: var(--accent);
+}
+
+.craft-detail__gt-name {
+    font-size: 12px;
+    color: var(--text-primary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.craft-detail__gt-tier {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 0 4px;
+    border-radius: var(--radius-xs);
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.craft-detail__gt-coords {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+.craft-detail__gt-state {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+.craft-detail__gt-state--amber {
+    color: var(--amber);
+}
+.craft-detail__gt-state--red {
+    color: var(--red);
+}
+
+/* Matches the poll tick, so a running bar glides between updates. */
+.craft-detail__gt-bar .progress-fill {
+    transition: width 0.25s linear;
+}
+
+.craft-detail__gt-more {
+    align-self: flex-start;
+    background: none;
+    border: 0;
+    padding: 2px 0;
+    font: inherit;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+.craft-detail__gt-more:hover {
+    color: var(--text-primary);
+}
+
 .craft-detail__col-toggle {
     margin-left: auto;
     background: none;

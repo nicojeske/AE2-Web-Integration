@@ -106,8 +106,8 @@ export interface GTContextValue {
     machines: GTPoll<GTMachines>;
     /** Loaded machines in a `GT_PROBLEM_STATUSES` status - the sidebar badge. */
     problemCount: number;
-    /** Shell sets this while Machines is the visible section, which speeds its poll up to the scan rate. */
-    setMachinesActive: (active: boolean) => void;
+    /** Holds the machines poll at the scan rate; returns the release. See `useFastMachinesPoll`. */
+    holdFastMachinesPoll: () => () => void;
     /** Bumped by `refresh` - per-view polls (power, production) take it as their `nonce`. */
     nonce: number;
     refresh: () => void;
@@ -119,12 +119,13 @@ const NEVER = new Promise<GTMachines>(() => {});
 
 export function GTProvider({ children }: { children?: ComponentChildren }) {
     const enabled = getContext().hasGT;
-    const [machinesActive, setMachinesActive] = useState(false);
+    // Count of views that want scan-rate data (Machines on screen, a craft's working machines).
+    const [fastHolders, setFastHolders] = useState(0);
     const [nonce, setNonce] = useState(0);
 
     const machines = useGTPoll(
         () => (enabled ? getGTMachines() : NEVER),
-        enabled ? (machinesActive ? GT_FAST_POLL_MS : GT_BACKGROUND_POLL_MS) : null,
+        enabled ? (fastHolders > 0 ? GT_FAST_POLL_MS : GT_BACKGROUND_POLL_MS) : null,
         "machines",
         nonce,
     );
@@ -136,12 +137,28 @@ export function GTProvider({ children }: { children?: ComponentChildren }) {
 
     const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
+    const holdFastMachinesPoll = useCallback(() => {
+        setFastHolders((n) => n + 1);
+        let released = false;
+        return () => {
+            if (released) return;
+            released = true;
+            setFastHolders((n) => n - 1);
+        };
+    }, []);
+
     const value = useMemo<GTContextValue>(
-        () => ({ enabled, machines, problemCount, setMachinesActive, nonce, refresh }),
-        [enabled, machines, problemCount, nonce, refresh],
+        () => ({ enabled, machines, problemCount, holdFastMachinesPoll, nonce, refresh }),
+        [enabled, machines, problemCount, holdFastMachinesPoll, nonce, refresh],
     );
 
     return <GTContext.Provider value={value}>{children}</GTContext.Provider>;
+}
+
+/** Polls machines at the scan rate while `active` - for views showing live machine progress. */
+export function useFastMachinesPoll(active: boolean): void {
+    const { holdFastMachinesPoll } = useGT();
+    useEffect(() => (active ? holdFastMachinesPoll() : undefined), [active, holdFastMachinesPoll]);
 }
 
 export function useGT(): GTContextValue {
