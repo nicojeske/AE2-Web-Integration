@@ -51,6 +51,10 @@ export interface ChartProps {
     variant?: "line" | "bars";
     /** Overrides `formatNumber` for the y-axis ticks and the hover label (e.g. `formatEU`). */
     formatValue?: (value: number) => string;
+    /** Keep zero inside the y-domain, so a level reads relative to empty (bars always do this). */
+    zeroBased?: boolean;
+    /** A raw (unscaled) value the y-domain extends up to, e.g. a buffer's capacity. */
+    yMax?: number | null;
 }
 
 const PAD = 4;
@@ -75,6 +79,8 @@ export function Chart({
     ariaLabel,
     variant = "line",
     formatValue,
+    zeroBased = false,
+    yMax,
 }: ChartProps) {
     const { index, handlers } = useChartHover(values.length);
     const fmt = formatValue ?? ((v: number) => formatNumber(v, numberFormat));
@@ -83,8 +89,12 @@ export function Chart({
     const scaled = scaleValues(values, scale);
     const dataBounds = extent(scaled);
     // Bars grow from zero, so zero must be inside the domain even when every value is far above it.
-    const bounds =
-        dataBounds && bars ? { min: Math.min(0, dataBounds.min), max: Math.max(0, dataBounds.max) } : dataBounds;
+    const fromZero = bars || zeroBased;
+    const yMaxScaled = yMax != null ? scaleValues([yMax], scale)[0] : null;
+    const bounds = dataBounds && {
+        min: fromZero ? Math.min(0, dataBounds.min) : dataBounds.min,
+        max: Math.max(dataBounds.max, fromZero ? 0 : -Infinity, yMaxScaled ?? -Infinity),
+    };
 
     const plotHeight = showAxes ? height - X_AXIS_HEIGHT : height;
 

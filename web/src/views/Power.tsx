@@ -378,6 +378,8 @@ function PowerHistory({ source, wide = false }: { source: GTPowerSource; wide?: 
                         showAxes
                         formatValue={(v) => formatEU(v).replace(" EU", "")}
                         numberFormat={settings.numberFormat}
+                        zeroBased
+                        yMax={source.capacity !== null ? Number(source.capacity) : null}
                         ariaLabel={`${source.name}, stored EU`}
                     />
                     {capped && (
