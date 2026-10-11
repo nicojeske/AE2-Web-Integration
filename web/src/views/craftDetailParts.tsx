@@ -7,6 +7,7 @@ import { useState } from "preact/hooks";
 import { gtTierName } from "../api/format";
 import type { GTMachine, WorkingMachine } from "../api/types";
 import { buildHash } from "../shell/route";
+import type { MachineLabels } from "../state/prefs";
 
 import { Badge } from "../ui/Badge";
 import { cx } from "../ui/cx";
@@ -22,6 +23,7 @@ import {
     GT_STATUS_LABELS,
     GT_STATUS_VARIANTS,
     liveProgressTicks,
+    machineLabel,
     remainingLabel,
     statusDuration,
 } from "./gtModel";
@@ -179,6 +181,8 @@ export function ConsumedSection({ rows }: { rows: ConsumedRow[] }) {
 /** GregTech data for the Working machines panel; `null` on a server without GT. */
 export interface WorkingMachinesGT {
     matches: MachineMatches;
+    /** The user's machine nicknames. */
+    names: MachineLabels;
     scannedAt: number;
     numberFormat: "full" | "compact";
 }
@@ -315,7 +319,9 @@ function MatchedMachineList({
                     gt={gt}
                     now={now}
                     withRecipe={machines.length <= RECIPE_STRIP_MAX}
-                    withCoords={machines.some((o) => o !== machine && o.name === machine.name)}
+                    withCoords={machines.some(
+                        (o) => o !== machine && machineLabel(o, gt.names) === machineLabel(machine, gt.names),
+                    )}
                 />
             ))}
             {(hidden > 0 || (expanded && machines.length > MACHINES_SHOWN)) && (
@@ -346,8 +352,9 @@ function MatchedMachineRow({
     const variant = GT_STATUS_VARIANTS[m.status];
     const label = GT_STATUS_LABELS[m.status];
     const duration = statusDuration(m, now);
+    const name = machineLabel(m, gt.names);
     const tooltip = [
-        `${m.name} at ${coordsText(m)} (${dimensionKey(m)})`,
+        `${name} at ${coordsText(m)} (${dimensionKey(m)})`,
         m.statusDetail && m.statusDetail.toLowerCase() !== label.toLowerCase() ? m.statusDetail : null,
         "Open in Machines",
     ]
@@ -361,7 +368,7 @@ function MatchedMachineRow({
         >
             <span className="craft-detail__gt-line">
                 <span className={`craft-detail__gt-dot craft-detail__gt-dot--${variant}`} aria-hidden="true" />
-                <span className="craft-detail__gt-name">{m.name}</span>
+                <span className="craft-detail__gt-name">{name}</span>
                 {m.voltageTier >= 0 && <span className="craft-detail__gt-tier">{gtTierName(m.voltageTier)}</span>}
                 {withCoords && <span className="craft-detail__gt-coords">{coordsText(m)}</span>}
                 <span className={`craft-detail__gt-state craft-detail__gt-state--${variant}`}>

@@ -19,16 +19,18 @@ import { SegmentedControl } from "../ui/SegmentedControl";
 import type { SegmentedOption } from "../ui/SegmentedControl";
 import { CustomRangeInput } from "./CustomRangeInput";
 import { GTPollState } from "./gtCommon";
-import { formatGTAmount, formatGTPerHour, gtRangeOptions } from "./gtModel";
+import { aggregateLines, formatGTAmount, formatGTPerHour, gtRangeOptions } from "./gtModel";
 import { DEFAULT_CUSTOM_MINUTES, pointTimestamps } from "./statsModel";
 
-type GroupBy = "item" | "machine";
+/** `"line"` is the user's processing lines, summed client-side from the server's per-machine rows. */
+type GroupBy = "item" | "machine" | "line";
 type Kind = "all" | "items" | "fluids";
 
 const RANGES = gtRangeOptions(["1h", "6h", "24h", "7d", "30d", "90d", "custom"]);
 const GROUP_OPTIONS: SegmentedOption<GroupBy>[] = [
     { value: "item", label: "Items" },
     { value: "machine", label: "Machines" },
+    { value: "line", label: "Lines" },
 ];
 const FLOW_OPTIONS: SegmentedOption<GTFlow>[] = [
     { value: "produced", label: "Produced" },
@@ -50,7 +52,7 @@ const HOUR = 3_600_000;
  * Only the rows of one kind. Machine rows mix items and fluids, so each keeps just the matching entries of
  * its breakdown, with its totals summed again from them; a machine left with none drops out.
  */
-function filterByKind(rows: GTProductionEntry[], groupBy: GroupBy, kind: Kind): GTProductionEntry[] {
+function filterByKind(rows: GTProductionEntry[], groupBy: "item" | "machine", kind: Kind): GTProductionEntry[] {
     if (kind === "all") return rows;
     const wanted = (e: GTProductionEntry) => e.fluid === (kind === "fluids");
     if (groupBy === "item") return rows.filter(wanted);
@@ -73,17 +75,22 @@ export interface ProductionProps {
 
 export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
     const { nonce } = useGT();
+    const { machineLines } = usePrefs();
     const [range, setRange] = useState<GTRange>("24h");
     const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
-    const [groupBy, setGroupBy] = useState<GroupBy>("item");
+    const [chosenGroupBy, setGroupBy] = useState<GroupBy>("item");
+    // Lines only exist once the user puts machines on one (Machines tab), so the option hides until then.
+    const hasLines = Object.keys(machineLines).length > 0;
+    const groupBy = chosenGroupBy === "line" && !hasLines ? "machine" : chosenGroupBy;
+    const serverGroupBy = groupBy === "line" ? "machine" : groupBy;
     const [flow, setFlow] = useState<GTFlow>("produced");
     const [kind, setKind] = useState<Kind>("all");
     const [search, setSearch] = useState("");
     const minutes = range === "custom" ? customMinutes : undefined;
     const production = useGTPoll(
-        () => getGTProduction(range, groupBy, flow, undefined, minutes),
+        () => getGTProduction(range, serverGroupBy, flow, undefined, minutes),
         GT_PRODUCTION_POLL_MS,
-        `${range}|${groupBy}|${flow}|${minutes ?? ""}`,
+        `${range}|${serverGroupBy}|${flow}|${minutes ?? ""}`,
         nonce,
     );
 
@@ -92,13 +99,23 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
             <div className="production__controls">
                 <SegmentedControl<GTRange> options={RANGES} value={range} onChange={setRange} />
                 {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
-                <SegmentedControl<GroupBy> options={GROUP_OPTIONS} value={groupBy} onChange={setGroupBy} />
+                <SegmentedControl<GroupBy>
+                    options={hasLines ? GROUP_OPTIONS : GROUP_OPTIONS.filter((o) => o.value !== "line")}
+                    value={groupBy}
+                    onChange={setGroupBy}
+                />
                 <SegmentedControl<GTFlow> options={FLOW_OPTIONS} value={flow} onChange={setFlow} />
                 <SegmentedControl<Kind> options={KIND_OPTIONS} value={kind} onChange={setKind} />
                 <input
                     type="text"
                     className="gt-input production__search"
-                    placeholder={groupBy === "item" ? SEARCH_PLACEHOLDERS[kind] : "Search machines..."}
+                    placeholder={
+                        groupBy === "item"
+                            ? SEARCH_PLACEHOLDERS[kind]
+                            : groupBy === "line"
+                              ? "Search lines..."
+                              : "Search machines..."
+                    }
                     value={search}
                     onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
                 />
@@ -107,6 +124,7 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
                 {(data) => (
                     <ProductionTable
                         data={data}
+                        lines={groupBy === "line"}
                         range={range}
                         minutes={minutes}
                         kind={kind}
@@ -122,6 +140,7 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
 
 function ProductionTable({
     data,
+    lines,
     range,
     minutes,
     kind,
@@ -130,6 +149,8 @@ function ProductionTable({
     onOpenStats,
 }: {
     data: GTProduction;
+    /** Sum the per-machine rows by processing line. */
+    lines: boolean;
     range: GTRange;
     minutes: number | undefined;
     kind: Kind;
@@ -137,9 +158,19 @@ function ProductionTable({
     onOpenMachine: (id: string) => void;
     onOpenStats: () => void;
 }) {
-    const { settings } = usePrefs();
+    const { settings, machineNames, machineLines } = usePrefs();
     const [expanded, setExpanded] = useState<string | null>(null);
-    const kindRows = useMemo(() => filterByKind(data.rows, data.groupBy, kind), [data.rows, data.groupBy, kind]);
+    // Until a regrouped poll lands, `data` may still hold the other grouping - render what it really holds.
+    const groupBy: GroupBy = lines && data.groupBy === "machine" ? "line" : data.groupBy;
+    const kindRows = useMemo(() => {
+        const byKind = filterByKind(data.rows, data.groupBy, kind);
+        if (groupBy === "line") return aggregateLines(byKind, machineLines);
+        // Machine names appear as rows (by machine) or breakdown entries (by item) - show the user's nicknames.
+        const nick = (e: GTProductionEntry) => (machineNames[e.key] ? { ...e, name: machineNames[e.key]! } : e);
+        return groupBy === "machine"
+            ? byKind.map(nick)
+            : byKind.map((row) => ({ ...row, breakdown: row.breakdown.map(nick) }));
+    }, [data.rows, data.groupBy, groupBy, kind, machineLines, machineNames]);
     const rows = useMemo(() => {
         const q = search.trim().toLowerCase();
         return q ? kindRows.filter((r) => r.name.toLowerCase().includes(q) || r.key.includes(q)) : kindRows;
@@ -169,7 +200,13 @@ function ProductionTable({
                     <thead>
                         <tr>
                             <th>
-                                {data.groupBy === "machine" ? "Machine" : data.flow === "consumed" ? "Input" : "Output"}
+                                {groupBy === "machine"
+                                    ? "Machine"
+                                    : groupBy === "line"
+                                      ? "Line"
+                                      : data.flow === "consumed"
+                                        ? "Input"
+                                        : "Output"}
                             </th>
                             <th className="production__share-col" aria-label="Share" />
                             <th className="gt-table__num">Total</th>
@@ -182,7 +219,7 @@ function ProductionTable({
                             <ProductionRow
                                 key={row.key}
                                 row={row}
-                                groupBy={data.groupBy}
+                                groupBy={groupBy}
                                 flow={data.flow}
                                 share={row.total / maxTotal(row.fluid)}
                                 expanded={expanded === row.key}
@@ -238,7 +275,7 @@ function ProductionRow({
     const actions =
         isItem && !row.fluid ? (
             <StockHistoryButton itemid={row.key} onOpenStats={onOpenStats} />
-        ) : !isItem ? (
+        ) : groupBy === "machine" ? (
             <Button variant="text" onClick={() => onOpenMachine(row.key)}>
                 Open
             </Button>
@@ -310,28 +347,7 @@ function ProductionDetail({
     numberFormat: "full" | "compact";
     onOpenMachine: (id: string) => void;
 }) {
-    const { nonce } = useGT();
     const isItem = groupBy === "item";
-    // The history endpoint has no kind filter, so a machine's chart shows its combined output even when
-    // the table above shows only its items or fluids.
-    const history = useGTPoll(
-        () =>
-            getGTProductionHistory({
-                item: isItem ? row.key : undefined,
-                machine: isItem ? undefined : row.key,
-                flow,
-                range,
-                points: DETAIL_POINTS,
-                minutes,
-            }),
-        GT_PRODUCTION_POLL_MS,
-        `${groupBy}|${flow}|${row.key}|${range}|${minutes ?? ""}`,
-        nonce,
-    );
-    const data = history.data;
-    const verb = flow === "consumed" ? "Consumed" : "Produced";
-    const timestamps = data ? pointTimestamps(data.from, data.stepMillis, data.points.length) : [];
-
     return (
         <div className="production__detail">
             <div className="production__breakdown">
@@ -359,27 +375,78 @@ function ProductionDetail({
                     </div>
                 ))}
             </div>
-            <div className="production__chart">
-                <span className="production__detail-label">
-                    {verb} per {data ? describeStep(data.stepMillis) : "window"}
-                </span>
-                {history.error && <span className="production__detail-label">Couldn't load ({history.error}).</span>}
-                {data && (
-                    <Chart
-                        variant="bars"
-                        values={data.points}
-                        timestamps={timestamps}
-                        range={range}
-                        spanMillis={data.to - data.from}
-                        width={DETAIL_CHART_W}
-                        height={110}
-                        showAxes
-                        numberFormat={numberFormat}
-                        formatValue={isItem && row.fluid ? (v) => formatGTAmount(v, true, numberFormat) : undefined}
-                        ariaLabel={`${row.name}, ${verb.toLowerCase()} per window`}
-                    />
-                )}
-            </div>
+            {/* The history endpoint is per item or per machine, so a line has no chart of its own. */}
+            {groupBy !== "line" && (
+                <ProductionChart
+                    row={row}
+                    isItem={isItem}
+                    flow={flow}
+                    range={range}
+                    minutes={minutes}
+                    numberFormat={numberFormat}
+                />
+            )}
+        </div>
+    );
+}
+
+function ProductionChart({
+    row,
+    isItem,
+    flow,
+    range,
+    minutes,
+    numberFormat,
+}: {
+    row: GTProductionEntry;
+    isItem: boolean;
+    flow: GTFlow;
+    range: GTRange;
+    minutes: number | undefined;
+    numberFormat: "full" | "compact";
+}) {
+    const { nonce } = useGT();
+    // The history endpoint has no kind filter, so a machine's chart shows its combined output even when
+    // the table above shows only its items or fluids.
+    const history = useGTPoll(
+        () =>
+            getGTProductionHistory({
+                item: isItem ? row.key : undefined,
+                machine: isItem ? undefined : row.key,
+                flow,
+                range,
+                points: DETAIL_POINTS,
+                minutes,
+            }),
+        GT_PRODUCTION_POLL_MS,
+        `${isItem ? "item" : "machine"}|${flow}|${row.key}|${range}|${minutes ?? ""}`,
+        nonce,
+    );
+    const data = history.data;
+    const verb = flow === "consumed" ? "Consumed" : "Produced";
+    const timestamps = data ? pointTimestamps(data.from, data.stepMillis, data.points.length) : [];
+
+    return (
+        <div className="production__chart">
+            <span className="production__detail-label">
+                {verb} per {data ? describeStep(data.stepMillis) : "window"}
+            </span>
+            {history.error && <span className="production__detail-label">Couldn't load ({history.error}).</span>}
+            {data && (
+                <Chart
+                    variant="bars"
+                    values={data.points}
+                    timestamps={timestamps}
+                    range={range}
+                    spanMillis={data.to - data.from}
+                    width={DETAIL_CHART_W}
+                    height={110}
+                    showAxes
+                    numberFormat={numberFormat}
+                    formatValue={isItem && row.fluid ? (v) => formatGTAmount(v, true, numberFormat) : undefined}
+                    ariaLabel={`${row.name}, ${verb.toLowerCase()} per window`}
+                />
+            )}
         </div>
     );
 }

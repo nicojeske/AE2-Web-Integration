@@ -67,7 +67,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
 
     // GregTech machines running the recipes this job's providers owe - see craftMachinesModel.ts.
     const gt = useGT();
-    const { passiveMachines, settings } = usePrefs();
+    const { passiveMachines, machineNames, settings } = usePrefs();
     const providers = live?.detail?.machines;
     const gtMachines = gt.machines.data;
     const matches = useMemo(
@@ -76,7 +76,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
     );
     const workingGT: WorkingMachinesGT | null =
         matches && gtMachines
-            ? { matches, scannedAt: gtMachines.scannedAt, numberFormat: settings.numberFormat }
+            ? { matches, names: machineNames, scannedAt: gtMachines.scannedAt, numberFormat: settings.numberFormat }
             : null;
     useFastMachinesPoll(gt.enabled && !finished && (providers?.length ?? 0) > 0);
 

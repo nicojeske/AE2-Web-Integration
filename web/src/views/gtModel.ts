@@ -1,10 +1,10 @@
 // Pure helpers shared by the GregTech hub views (Machines, Power, Production).
 import { formatLiters, formatNumber } from "../api/format";
-import type { GTMachine, GTMachines, GTMachineStatus, GTRange } from "../api/types";
+import type { GTMachine, GTMachines, GTMachineStatus, GTProductionEntry, GTRange } from "../api/types";
 import { GT_PROBLEM_STATUSES, GT_STATUS_ORDER } from "../api/types";
 import type { BadgeVariant } from "../ui/Badge";
 import type { SegmentedOption } from "../ui/SegmentedControl";
-import type { MachineFilters, PassiveMachines } from "../state/prefs";
+import type { MachineFilters, MachineLabels, PassiveMachines } from "../state/prefs";
 
 export const GT_STATUS_LABELS: Record<GTMachineStatus, string> = {
     STRUCTURE_INCOMPLETE: "Structure incomplete",
@@ -103,31 +103,159 @@ export function statusDuration(m: GTMachine, now: number): string | null {
     return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
-/** Every whitespace-separated token must appear in name, type, coordinates, owner or dimension. */
-export function matchesMachineSearch(m: GTMachine, search: string): boolean {
+/** The user's nicknames and processing lines for GT machines (`state/prefs.tsx`). */
+export interface MachineNaming {
+    names: MachineLabels;
+    lines: MachineLabels;
+}
+
+/** The machine's nickname, or its GregTech name. */
+export function machineLabel(m: Pick<GTMachine, "id" | "name">, names: MachineLabels): string {
+    return names[m.id] ?? m.name;
+}
+
+/**
+ * Every whitespace-separated token must appear in name, nickname, line, type, coordinates, owner, dimension or
+ * the running recipe's inputs and outputs ("which machine makes Polyethylene?").
+ */
+export function matchesMachineSearch(m: GTMachine, search: string, naming?: MachineNaming): boolean {
     const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return true;
-    const haystack = [m.name, m.type, coordsText(m), `${m.x},${m.y},${m.z}`, m.ownerName ?? "", dimensionKey(m)]
+    const haystack = [
+        m.name,
+        naming?.names[m.id] ?? "",
+        naming?.lines[m.id] ?? "",
+        m.type,
+        coordsText(m),
+        `${m.x},${m.y},${m.z}`,
+        m.ownerName ?? "",
+        dimensionKey(m),
+        ...m.outputs.map((s) => s.name),
+        ...m.inputs.map((s) => s.name),
+    ]
         .join(" ")
         .toLowerCase();
     return tokens.every((t) => haystack.includes(t));
 }
 
-export function filterMachines(machines: GTMachine[], filters: MachineFilters, search: string): GTMachine[] {
+export function filterMachines(
+    machines: GTMachine[],
+    filters: MachineFilters,
+    search: string,
+    naming?: MachineNaming,
+): GTMachine[] {
     return machines.filter(
         (m) =>
             (filters.showUnloaded || m.loaded) &&
             (filters.statuses.length === 0 || filters.statuses.includes(m.status)) &&
             (filters.dimension === null || dimensionKey(m) === filters.dimension) &&
-            matchesMachineSearch(m, search),
+            matchesMachineSearch(m, search, naming),
     );
 }
 
 export interface MachineGroup {
-    /** A status, `"passive"` for healthy machines marked passive, or `"unloaded"` for the final "Not loaded" group. */
-    key: GTMachineStatus | "passive" | "unloaded";
+    /**
+     * A status, `"passive"` for healthy machines marked passive, `"unloaded"` for the final "Not loaded" group;
+     * in line grouping `"line:<name>"` per processing line and `"unassigned"`.
+     */
+    key: string;
     label: string;
     machines: GTMachine[];
+    /** Line groups only: the processing line's name, for renaming. */
+    line?: string;
+    /** Line groups only. */
+    health?: LineHealth;
+}
+
+export interface LineHealth {
+    /** The most urgent status among the loaded members (`GT_STATUS_ORDER`); null when none is loaded. */
+    worst: GTMachineStatus | null;
+    /** Loaded members per status, in `GT_STATUS_ORDER`, zero counts left out. */
+    counts: [GTMachineStatus, number][];
+    /** Summed over loaded members; negative = the line generates more than it draws. */
+    euPerTick: number;
+}
+
+export function lineHealth(machines: GTMachine[]): LineHealth {
+    const loaded = machines.filter((m) => m.loaded);
+    const counts = GT_STATUS_ORDER.map((s): [GTMachineStatus, number] => [
+        s,
+        loaded.filter((m) => m.status === s).length,
+    ]).filter(([, n]) => n > 0);
+    return {
+        worst: counts[0]?.[0] ?? null,
+        counts,
+        euPerTick: loaded.reduce((sum, m) => sum + m.euPerTick, 0),
+    };
+}
+
+const statusRank = (m: GTMachine) => (m.loaded ? GT_STATUS_ORDER.indexOf(m.status) : GT_STATUS_ORDER.length);
+
+/**
+ * One group per processing line, alphabetical, members by status (unloaded last) then label; then every
+ * machine on no line as "Unassigned". Passive marks don't apply here - putting a machine on a line is
+ * already the user saying where it belongs.
+ */
+export function groupMachinesByLine(machines: GTMachine[], naming: MachineNaming): MachineGroup[] {
+    const byLine = new Map<string, GTMachine[]>();
+    const unassigned: GTMachine[] = [];
+    for (const m of machines) {
+        const line = naming.lines[m.id];
+        if (line === undefined) unassigned.push(m);
+        else byLine.set(line, [...(byLine.get(line) ?? []), m]);
+    }
+    const order = (list: GTMachine[]) =>
+        [...list].sort(
+            (a, b) =>
+                statusRank(a) - statusRank(b) ||
+                machineLabel(a, naming.names).localeCompare(machineLabel(b, naming.names)),
+        );
+    const groups: MachineGroup[] = [...byLine.keys()]
+        .sort((a, b) => a.localeCompare(b))
+        .map((line) => {
+            const members = order(byLine.get(line)!);
+            return { key: `line:${line}`, label: line, line, machines: members, health: lineHealth(members) };
+        });
+    if (unassigned.length > 0) groups.push({ key: "unassigned", label: "Unassigned", machines: order(unassigned) });
+    return groups;
+}
+
+/** Every processing line name in use, alphabetical. */
+export function lineNames(lines: MachineLabels): string[] {
+    return [...new Set(Object.values(lines))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * `/gt/production?groupBy=machine` rows summed per processing line: each line's breakdown merges its
+ * machines' breakdowns by key. Machines on no line become one "Unassigned" row (key `""`), listed last.
+ */
+export function aggregateLines(rows: GTProductionEntry[], lines: MachineLabels): GTProductionEntry[] {
+    const groups = new Map<string, Map<string, GTProductionEntry>>();
+    for (const row of rows) {
+        const line = lines[row.key] ?? "";
+        let merged = groups.get(line);
+        if (!merged) groups.set(line, (merged = new Map()));
+        for (const b of row.breakdown) {
+            const prev = merged.get(b.key);
+            merged.set(
+                b.key,
+                prev ? { ...prev, total: prev.total + b.total, perHour: prev.perHour + b.perHour } : { ...b },
+            );
+        }
+    }
+    return [...groups.entries()]
+        .map(([line, merged]): GTProductionEntry => {
+            const breakdown = [...merged.values()].sort((a, b) => b.total - a.total);
+            return {
+                key: line,
+                name: line === "" ? "Unassigned" : line,
+                fluid: false,
+                total: breakdown.reduce((n, b) => n + b.total, 0),
+                perHour: breakdown.reduce((n, b) => n + b.perHour, 0),
+                breakdown,
+            };
+        })
+        .sort((a, b) => ((a.key === "") !== (b.key === "") ? (a.key === "" ? 1 : -1) : b.total - a.total));
 }
 
 /** Statuses a passive machine stays tucked away in; anything else is worth a look and shows normally. */

@@ -14,6 +14,8 @@ const STATS_PINNED_KEY = "ae2.statsPinned";
 const MACHINE_FILTERS_KEY = "ae2.machineFilters";
 const MAIN_POWER_SOURCE_KEY = "ae2.mainPowerSource";
 const PASSIVE_MACHINES_KEY = "ae2.passiveMachines";
+const MACHINE_NAMES_KEY = "ae2.machineNames";
+const MACHINE_LINES_KEY = "ae2.machineLines";
 const SETTINGS_KEY = "ae2.settings";
 const SCHEMA_KEY = "ae2.schema";
 
@@ -73,6 +75,8 @@ export interface MachineFilters {
      * Passive group whatever its status.
      */
     passiveProblems: boolean;
+    /** Groups by status (problems first), or by the user's processing lines (`MachineLines`). */
+    groupBy: "status" | "line";
 }
 
 export const DEFAULT_MACHINE_FILTERS: MachineFilters = {
@@ -80,6 +84,7 @@ export const DEFAULT_MACHINE_FILTERS: MachineFilters = {
     dimension: null,
     showUnloaded: true,
     passiveProblems: true,
+    groupBy: "status",
 };
 
 /**
@@ -87,6 +92,27 @@ export const DEFAULT_MACHINE_FILTERS: MachineFilters = {
  * collapsed "Passive" group while healthy), `false` = "not passive" (a dismissed server suggestion).
  */
 export type PassiveMachines = Record<string, boolean>;
+
+/**
+ * A user-chosen text per GT machine id: its nickname (`machineNames`) or the processing line it belongs to
+ * (`machineLines`). A line exists for as long as some machine names it, so there's no line list to keep in step.
+ */
+export type MachineLabels = Record<string, string>;
+
+/** `labels` with every one of `ids` set to `value` (trimmed), or removed when it's null or blank. */
+function withLabel(labels: MachineLabels, ids: string[], value: string | null): MachineLabels {
+    const next = { ...labels };
+    const trimmed = value?.trim() ?? "";
+    for (const id of ids) {
+        if (trimmed === "") delete next[id];
+        else next[id] = trimmed;
+    }
+    return next;
+}
+
+function isLabels(value: unknown): value is MachineLabels {
+    return value !== null && typeof value === "object";
+}
 
 /** A saved Statistics compare view (M8). Scoped to the grid it was saved on via `gridKey`. */
 export interface StatsView {
@@ -171,6 +197,8 @@ interface SyncedPrefs {
     /** The Power tab's pinned main LSC (a `/gt/power` source id) - `null` picks the largest one. */
     mainPowerSource: string | null;
     passiveMachines: PassiveMachines;
+    machineNames: MachineLabels;
+    machineLines: MachineLabels;
 }
 
 function serializeSyncedPrefs(p: Omit<SyncedPrefs, "schemaVersion">): string {
@@ -196,6 +224,8 @@ function parseSyncedPrefs(raw: string): SyncedPrefs | null {
                 parsed.passiveMachines !== null && typeof parsed.passiveMachines === "object"
                     ? parsed.passiveMachines
                     : {},
+            machineNames: isLabels(parsed.machineNames) ? parsed.machineNames : {},
+            machineLines: isLabels(parsed.machineLines) ? parsed.machineLines : {},
         };
     } catch {
         return null;
@@ -223,6 +253,14 @@ export interface PrefsContextValue {
     passiveMachines: PassiveMachines;
     /** Marks (`true`), dismisses (`false`) or forgets (`null`) every one of `ids`. */
     setPassive: (ids: string[], value: boolean | null) => void;
+    machineNames: MachineLabels;
+    /** Sets a machine's nickname; blank clears it. */
+    setMachineName: (id: string, name: string) => void;
+    machineLines: MachineLabels;
+    /** Puts every one of `ids` on `line`, or off any line for null/blank. */
+    setMachineLine: (ids: string[], line: string | null) => void;
+    /** Moves every machine on line `from` to `to` (merging into it when `to` already exists). */
+    renameLine: (from: string, to: string) => void;
     statsViews: StatsView[];
     addStatsView: (view: Omit<StatsView, "id">) => void;
     removeStatsView: (id: string) => void;
@@ -251,6 +289,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         readJSON<string | null>(MAIN_POWER_SOURCE_KEY, null),
     );
     const [passiveMachines, setPassiveMachines] = useState<PassiveMachines>(() => readJSON(PASSIVE_MACHINES_KEY, {}));
+    const [machineNames, setMachineNames] = useState<MachineLabels>(() => readJSON(MACHINE_NAMES_KEY, {}));
+    const [machineLines, setMachineLines] = useState<MachineLabels>(() => readJSON(MACHINE_LINES_KEY, {}));
     // Spread over the defaults (not a bare `readJSON` fallback) so a settings blob saved before a future
     // field existed still picks up that field's default instead of `undefined`.
     const [settings, setSettingsState] = useState<Settings>(() => ({
@@ -284,6 +324,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                             machineFilters,
                             mainPowerSource,
                             passiveMachines,
+                            machineNames,
+                            machineLines,
                         }),
                     );
                     return;
@@ -304,6 +346,10 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 writeJSON(MAIN_POWER_SOURCE_KEY, parsed.mainPowerSource);
                 setPassiveMachines(parsed.passiveMachines);
                 writeJSON(PASSIVE_MACHINES_KEY, parsed.passiveMachines);
+                setMachineNames(parsed.machineNames);
+                writeJSON(MACHINE_NAMES_KEY, parsed.machineNames);
+                setMachineLines(parsed.machineLines);
+                writeJSON(MACHINE_LINES_KEY, parsed.machineLines);
             } catch {
                 // Offline, or no /prefs on this server yet - stay on localStorage alone.
             } finally {
@@ -335,11 +381,23 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                     machineFilters,
                     mainPowerSource,
                     passiveMachines,
+                    machineNames,
+                    machineLines,
                 }),
             ).catch(() => {});
         }, PREFS_PUSH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [favorites, browserFilters, statsViews, statsPinned, machineFilters, mainPowerSource, passiveMachines]);
+    }, [
+        favorites,
+        browserFilters,
+        statsViews,
+        statsPinned,
+        machineFilters,
+        mainPowerSource,
+        passiveMachines,
+        machineNames,
+        machineLines,
+    ]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
 
@@ -405,6 +463,31 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
+    const setMachineName = useCallback((id: string, name: string) => {
+        setMachineNames((current) => {
+            const next = withLabel(current, [id], name);
+            writeJSON(MACHINE_NAMES_KEY, next);
+            return next;
+        });
+    }, []);
+
+    const setMachineLine = useCallback((ids: string[], line: string | null) => {
+        setMachineLines((current) => {
+            const next = withLabel(current, ids, line);
+            writeJSON(MACHINE_LINES_KEY, next);
+            return next;
+        });
+    }, []);
+
+    const renameLine = useCallback((from: string, to: string) => {
+        setMachineLines((current) => {
+            const ids = Object.keys(current).filter((id) => current[id] === from);
+            const next = withLabel(current, ids, to);
+            writeJSON(MACHINE_LINES_KEY, next);
+            return next;
+        });
+    }, []);
+
     // `id` is a string, not a bare `Date.now()` - two saves in the same millisecond would collide.
     const addStatsView = useCallback((view: Omit<StatsView, "id">) => {
         setStatsViews((current) => {
@@ -457,6 +540,11 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setMainPowerSource,
             passiveMachines,
             setPassive,
+            machineNames,
+            setMachineName,
+            machineLines,
+            setMachineLine,
+            renameLine,
             statsViews,
             addStatsView,
             removeStatsView,
@@ -480,6 +568,11 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setMainPowerSource,
             passiveMachines,
             setPassive,
+            machineNames,
+            setMachineName,
+            machineLines,
+            setMachineLine,
+            renameLine,
             statsViews,
             addStatsView,
             removeStatsView,
