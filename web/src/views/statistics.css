@@ -340,8 +340,8 @@
 }
 .chart__line {
     fill: none;
-    stroke: var(--accent);
-    stroke-width: 2;
+    stroke: var(--chart-line);
+    stroke-width: 1.6;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
@@ -366,7 +366,7 @@
     height: 7px;
     border-radius: 50%;
     background: var(--text-primary);
-    border: 2px solid var(--accent);
+    border: 2px solid var(--chart-line);
     transform: translate(-50%, -50%);
     pointer-events: none;
 }

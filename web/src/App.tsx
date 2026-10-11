@@ -279,7 +279,14 @@ function Shell() {
                             {section === "browser" && (
                                 <Browser
                                     selectedItem={route.item}
-                                    onSelectItem={(item) => route.push({ item })}
+                                    onSelectItem={(item) => route.replace({ item })}
+                                    onOpenCpu={(cpu) =>
+                                        route.push({
+                                            section: "jobs",
+                                            detail: { type: "cpu", gridKey: cpu.sourceGridKey, cpuKey: cpu.cpuKey },
+                                            item: null,
+                                        })
+                                    }
                                     onOpenHistory={(item) =>
                                         route.push({ section: "history", detail: null, grid: selected, item })
                                     }

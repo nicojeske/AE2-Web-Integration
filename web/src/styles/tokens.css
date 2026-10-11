@@ -75,6 +75,7 @@
     --series-6: var(--emerald);
 
     /* Chart chrome */
+    --chart-line: var(--cyan);
     --chart-area: rgba(79, 214, 224, 0.08);
     --chart-grid: #14171f;
     --chart-axis-text: var(--text-dim);

@@ -54,6 +54,9 @@ export interface BrowserFilters {
     itemsType: 0 | 1 | 2;
     sortBy: 0 | 1 | 2;
     sortOrder: 0 | 1;
+    /** Only items below their stock rule's alert level. */
+    lowStockOnly: boolean;
+    view: "list" | "grid";
 }
 
 export const DEFAULT_BROWSER_FILTERS: BrowserFilters = {
@@ -61,6 +64,8 @@ export const DEFAULT_BROWSER_FILTERS: BrowserFilters = {
     itemsType: 2,
     sortBy: 0,
     sortOrder: 0,
+    lowStockOnly: false,
+    view: "list",
 };
 
 /** The GT Machines view's filters (the free-text search isn't persisted, same as the Browser's). */
@@ -276,9 +281,10 @@ const PrefsContext = createContext<PrefsContextValue | null>(null);
 export function PrefsProvider({ children }: { children?: ComponentChildren }) {
     const [favorites, setFavorites] = useState<Record<string, true>>(() => readJSON(FAVORITES_KEY, {}));
     const [notifyEnabled, setNotifyEnabledState] = useState<boolean>(() => localStorage.getItem(NOTIFY_KEY) === "1");
-    const [browserFilters, setBrowserFiltersState] = useState<BrowserFilters>(() =>
-        readJSON(BROWSER_FILTERS_KEY, DEFAULT_BROWSER_FILTERS),
-    );
+    const [browserFilters, setBrowserFiltersState] = useState<BrowserFilters>(() => ({
+        ...DEFAULT_BROWSER_FILTERS,
+        ...readJSON<Partial<BrowserFilters>>(BROWSER_FILTERS_KEY, {}),
+    }));
     const [statsViews, setStatsViews] = useState<StatsView[]>(() => readJSON(STATS_VIEWS_KEY, []));
     const [statsPinned, setStatsPinnedState] = useState<StatsPinned>(() => readJSON(STATS_PINNED_KEY, {}));
     const [machineFilters, setMachineFiltersState] = useState<MachineFilters>(() => ({

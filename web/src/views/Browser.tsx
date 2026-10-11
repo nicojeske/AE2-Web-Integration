@@ -1,78 +1,92 @@
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 
 import { formatNumber } from "../api/format";
+import type { GridKey } from "../api/types";
+import { useCpus } from "../state/cpus";
+import type { CpuView } from "../state/cpus";
+import type { BrowserItem } from "../state/items";
 import { useItems } from "../state/items";
 import { useNetwork } from "../state/network";
 import { useOrder } from "../state/order";
+import type { BrowserFilters } from "../state/prefs";
 import { prefsKey, usePrefs } from "../state/prefs";
 import { useStockRules } from "../state/stockRules";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
+import { ChipMenu, ToggleChip } from "../ui/ChipMenu";
+import { cpuLedColor, cpuRank } from "../ui/CpuLeds";
+import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
+import { Inspector } from "../ui/Inspector";
 import { ItemIcon } from "../ui/ItemIcon";
 import { StarIcon } from "../ui/icons";
+import { SegmentedControl } from "../ui/SegmentedControl";
 import { useMeasuredColumns } from "../ui/useMeasuredColumns";
 import { useVirtualWindow } from "../ui/useVirtualWindow";
-import { filterItems, isLowStock, ITEMS_TYPE, SORT_BY, sortItems, STORED_CRAFTABLE } from "./browserModel";
-import type { BrowserItem } from "../state/items";
-import type { GridKey } from "../api/types";
-import { ItemDetail } from "./ItemDetail";
-
-/** Tooltip for a craftable item without a stable key (`identityStatus`), which the API can't order. */
-const NOT_ORDERABLE = "AE2 can't identify this item uniquely, so it can't be ordered from here";
+import { filterItems, isLowStock, sortItems } from "./browserModel";
+import type { CraftRequest } from "./ItemDetail";
+import { ItemInspector } from "./ItemDetail";
 
 export interface BrowserProps {
     /** The itemid in the inspector (the URL's `?item=`), or `null`. */
     selectedItem: string | null;
     onSelectItem: (itemid: string | null) => void;
-    /** Crafting History filtered to one item (the item panel's "View all in History"). */
+    /** Crafting History filtered to one item (the inspector's "View all in History"). */
     onOpenHistory: (itemid: string) => void;
     onOpenCraft: (entry: { gridKey: GridKey; id: number }) => void;
+    onOpenCpu: (cpu: CpuView) => void;
 }
 
-/** Matches `.item-grid`'s own `gap` (`browser.css`) - column-count math has to use the same number the
- *  CSS actually lays out with, or windowing groups items into rows the grid doesn't agree with. */
+/** Matches `.item-grid`'s own `gap` (`browser.css`) - column-count math has to use the number the CSS lays out with. */
 const GRID_GAP_PX = 12;
-/** A card's rendered height (`.item-card` in `browser.css`) plus one `.item-grid` row gap - measured
- *  against the real layout rather than derived on paper, so a future design tweak that changes card
- *  height is the only thing that should ever need this constant touched. */
+/** A card's rendered height plus one `.item-grid` row gap. */
 const GRID_ROW_HEIGHT_PX = 150;
-/** `.item-table-row`'s fixed `height` (`browser.css`) - unlike the card grid, this one is exact by
- *  construction: the CSS sets the row to this height rather than the constant chasing the CSS. */
-const TABLE_ROW_HEIGHT_PX = 44;
-const OVERSCAN_ROWS = 4;
+/** `.item-row`'s fixed height per density (`browser.css`). */
+const LIST_ROW_HEIGHT_PX = { comfortable: 34, compact: 28 } as const;
+const OVERSCAN_ROWS = 6;
 
-export function Browser({ selectedItem, onSelectItem, onOpenHistory, onOpenCraft }: BrowserProps) {
-    const [search, setSearch] = useState("");
+const STORED_CRAFTABLE = [
+    { value: 0 as const, label: "Stored only" },
+    { value: 1 as const, label: "Craftable only" },
+    { value: 2 as const, label: "Stored + craftable" },
+];
+const ITEMS_TYPE = [
+    { value: 0 as const, label: "Items only" },
+    { value: 1 as const, label: "Fluids only" },
+    { value: 2 as const, label: "Items + fluids" },
+];
+
+export function Browser({ selectedItem, onSelectItem, onOpenHistory, onOpenCraft, onOpenCpu }: BrowserProps) {
     const { items, loading, error, failedGrids, refresh } = useItems();
     const { selected, selectedGrid } = useNetwork();
     const { isFavorite, toggleFavorite, browserFilters, setBrowserFilters, settings } = usePrefs();
     const { rules: stockRules } = useStockRules();
     const { startOrder } = useOrder();
+    const [search, setSearch] = useState("");
 
     const isAllGrids = selected === "all";
     const hasFluids = useMemo(() => items.some((it) => it.isFluid), [items]);
-    const { storedCraftable, itemsType, sortBy, sortOrder } = browserFilters;
-    const isTable = settings.density === "compact";
+    const { storedCraftable, itemsType, sortBy, sortOrder, lowStockOnly, view } = browserFilters;
+    const setFilter = <K extends keyof BrowserFilters>(key: K, value: BrowserFilters[K]) =>
+        setBrowserFilters((s) => ({ ...s, [key]: value }));
 
     const filtered = useMemo(() => {
-        // When the fluids pill is hidden (this grid has none), don't let a persisted "Fluids only"
-        // silently empty the list - fall back to "Items & fluids" for the actual filtering pass.
+        // When this grid has no fluids, don't let a persisted "Fluids only" silently empty the list.
         const effectiveItemsType = hasFluids ? itemsType : 2;
-        const rows = filterItems(items, { storedCraftable, itemsType: effectiveItemsType, search });
+        let rows = filterItems(items, { storedCraftable, itemsType: effectiveItemsType, search });
+        if (lowStockOnly) rows = rows.filter((it) => isLowStock(it, stockRules));
         return sortItems(rows, sortBy, sortOrder, isFavorite);
-    }, [items, storedCraftable, itemsType, hasFluids, search, sortBy, sortOrder, isFavorite]);
+    }, [items, storedCraftable, itemsType, hasFluids, search, lowStockOnly, stockRules, sortBy, sortOrder, isFavorite]);
 
-    // One state/hook pair shared by both render modes - only ever one of `.item-grid`/`.item-table` is
-    // mounted at a time, so `container` always points at whichever the current render produced (M12).
-    // State (via a callback ref), not `useRef` - see `useMeasuredColumns`'s own comment for why a plain
-    // ref would silently stop working here (the container mounts behind a loading placeholder on the
-    // very first render, and a plain ref's non-reactivity means an effect can miss it forever).
+    const maxLog = useMemo(() => Math.log10(Math.max(10, ...items.map((it) => it.quantity))), [items]);
+
+    // State via a callback ref, not `useRef`: the container mounts behind a loading placeholder on the first
+    // render, and an effect watching a plain ref could miss it forever.
     const [container, setContainer] = useState<HTMLElement | null>(null);
-    const measuredColumns = useMeasuredColumns(container, settings.tileMin, GRID_GAP_PX);
-    const columns = isTable ? 1 : measuredColumns;
-    const rowHeightPx = isTable ? TABLE_ROW_HEIGHT_PX : GRID_ROW_HEIGHT_PX;
+    const isList = view === "list";
+    const measuredColumns = useMeasuredColumns(isList ? null : container, settings.tileMin, GRID_GAP_PX);
+    const columns = isList ? 1 : measuredColumns;
+    const rowHeightPx = isList ? LIST_ROW_HEIGHT_PX[settings.density] : GRID_ROW_HEIGHT_PX;
     const rowCount = Math.ceil(filtered.length / Math.max(1, columns));
     const { startRow, endRow, topSpacerPx, bottomSpacerPx } = useVirtualWindow(
         container,
@@ -80,35 +94,62 @@ export function Browser({ selectedItem, onSelectItem, onOpenHistory, onOpenCraft
         rowHeightPx,
         OVERSCAN_ROWS,
     );
-    const startIndex = startRow * columns;
-    const endIndex = Math.min(filtered.length, endRow * columns);
-    const visible = filtered.slice(startIndex, endIndex);
+    const visible = filtered.slice(startRow * columns, Math.min(filtered.length, endRow * columns));
 
-    const cycleStoredCraftable = () =>
-        setBrowserFilters((s) => ({ ...s, storedCraftable: ((s.storedCraftable + 1) % 3) as 0 | 1 | 2 }));
-    const cycleItemsType = () => setBrowserFilters((s) => ({ ...s, itemsType: ((s.itemsType + 1) % 3) as 0 | 1 | 2 }));
-    const cycleSortBy = () => setBrowserFilters((s) => ({ ...s, sortBy: ((s.sortBy + 1) % 3) as 0 | 1 | 2 }));
-    const cycleSortOrder = () => setBrowserFilters((s) => ({ ...s, sortOrder: s.sortOrder === 0 ? 1 : 0 }));
+    // By itemid rather than the row object, so the inspector follows the item through a refresh.
+    const detailItem =
+        selectedItem === null
+            ? null
+            : (items.find((it) => it.itemid === selectedItem && (isAllGrids || it.sourceGridKey === selected)) ??
+              items.find((it) => it.itemid === selectedItem) ??
+              null);
 
-    // By itemid rather than the row object, so the open panel follows the item through a refresh.
-    const detailItem = selectedItem === null ? null : (items.find((it) => it.itemid === selectedItem) ?? null);
-
-    const onCraft = (item: BrowserItem) => {
+    const craft = (item: BrowserItem, request?: CraftRequest) =>
         startOrder({
             sourceGridKey: item.sourceGridKey,
             itemid: item.itemid,
             itemname: item.itemname,
+            quantity: request?.quantity,
+            preferredCpu: request?.cpuKey,
         });
-    };
+
+    // ↑/↓ walk the list; ⏎ jumps to the inspector's quantity field (⏎ there plans the craft).
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+            if (document.querySelector("[aria-modal='true']")) return;
+            if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter") return;
+            if (e.key === "Enter") {
+                const qty = document.getElementById("craft-qty") as HTMLInputElement | null;
+                if (qty && detailItem) {
+                    e.preventDefault();
+                    qty.focus();
+                    qty.select();
+                }
+                return;
+            }
+            if (filtered.length === 0) return;
+            e.preventDefault();
+            const at = detailItem ? filtered.findIndex((it) => it.itemid === detailItem.itemid) : -1;
+            const step = (e.key === "ArrowDown" ? 1 : -1) * columns;
+            const next = at < 0 ? 0 : Math.min(filtered.length - 1, Math.max(0, at + step));
+            onSelectItem(filtered[next]!.itemid);
+            container
+                ?.closest(".page__scroll")
+                ?.querySelector(`[data-index="${next}"]`)
+                ?.scrollIntoView({ block: "nearest" });
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [filtered, detailItem, columns, container, onSelectItem]);
 
     if (selected !== "all" && !selectedGrid) {
         return <div className="placeholder-panel">No network selected.</div>;
     }
-
     if (loading && items.length === 0) {
         return <div className="placeholder-panel">Loading items…</div>;
     }
-
     if (error) {
         return (
             <div className="placeholder-panel browser__error">
@@ -120,199 +161,296 @@ export function Browser({ selectedItem, onSelectItem, onOpenHistory, onOpenCraft
         );
     }
 
+    const sortHeader = (label: string, by: 0 | 1 | 2, className?: string) => (
+        <button
+            type="button"
+            className={cx("dtable__sort", sortBy === by && "dtable__sort--active", className)}
+            onClick={() =>
+                setBrowserFilters((s) =>
+                    s.sortBy === by
+                        ? { ...s, sortOrder: s.sortOrder === 0 ? 1 : 0 }
+                        : { ...s, sortBy: by, sortOrder: by === 1 ? 1 : 0 },
+                )
+            }
+        >
+            {label}
+            {sortBy === by ? (sortOrder === 0 ? " ↑" : " ↓") : ""}
+        </button>
+    );
+
     return (
-        <>
-            <section className="browser__toolbar">
-                <input
-                    type="search"
-                    className="field"
-                    placeholder="Filter items and fluids…"
-                    title="@mod filters by mod, -word excludes, >100 filters by minimum quantity"
-                    value={search}
-                    onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-                />
-                <Button variant="pill" onClick={cycleStoredCraftable}>
-                    {STORED_CRAFTABLE[storedCraftable]}
-                </Button>
-                {hasFluids && (
-                    <Button variant="pill" onClick={cycleItemsType}>
-                        {ITEMS_TYPE[itemsType]}
-                    </Button>
-                )}
-                <Button variant="pill" onClick={cycleSortBy}>
-                    Sort: {SORT_BY[sortBy]}
-                </Button>
-                <Button variant="pill" onClick={cycleSortOrder}>
-                    {sortOrder === 0 ? "Ascending" : "Descending"}
-                </Button>
-                <span className="browser__count">
-                    {filtered.length} of {items.length} shown
-                </span>
-            </section>
+        <div className="page page--with-dock">
+            <div className="page__body">
+                <div className="page__main">
+                    <header className="page-header">
+                        <h2 className="page-header__title">Items</h2>
+                        <input
+                            type="search"
+                            className="field browser__filter"
+                            placeholder="Filter…"
+                            title="@mod filters by mod, -word excludes, >100 filters by minimum quantity"
+                            value={search}
+                            onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+                        />
+                        <ChipMenu
+                            options={STORED_CRAFTABLE}
+                            value={storedCraftable}
+                            onChange={(v) => setFilter("storedCraftable", v)}
+                        />
+                        {hasFluids && (
+                            <ChipMenu
+                                options={ITEMS_TYPE}
+                                value={itemsType}
+                                onChange={(v) => setFilter("itemsType", v)}
+                            />
+                        )}
+                        <ToggleChip
+                            active={lowStockOnly}
+                            onChange={(v) => setFilter("lowStockOnly", v)}
+                            title="Only items below their stock rule's alert level"
+                        >
+                            Low stock
+                        </ToggleChip>
+                        <div className="page-header__end">
+                            <span className="mono-count">
+                                {formatNumber(filtered.length)} of {formatNumber(items.length)}
+                            </span>
+                            <SegmentedControl
+                                options={[
+                                    { value: "list", label: "List" },
+                                    { value: "grid", label: "Grid" },
+                                ]}
+                                value={view}
+                                onChange={(v) => setFilter("view", v)}
+                            />
+                        </div>
+                    </header>
 
-            {isAllGrids && failedGrids.length > 0 && (
-                <p className="browser__warning">{`Couldn't load items from: ${failedGrids.join(", ")}`}</p>
-            )}
+                    {isAllGrids && failedGrids.length > 0 && (
+                        <p className="browser__warning">{`Couldn't load items from: ${failedGrids.join(", ")}`}</p>
+                    )}
 
-            {filtered.length === 0 ? (
-                <div className="placeholder-panel">No items match the current filters.</div>
-            ) : isTable ? (
-                <section
-                    className="item-table"
-                    ref={setContainer}
-                    style={{ paddingTop: topSpacerPx, paddingBottom: bottomSpacerPx }}
-                >
-                    {visible.map((item) => {
-                        const key = prefsKey(item.sourceGridKey, item.itemid);
-                        const favorited = isFavorite(key);
-                        const lowStock = isLowStock(item, stockRules);
-                        return (
-                            <div key={`${item.sourceGridKey}:${item.itemid}`} className="item-table-row">
-                                <button
-                                    type="button"
-                                    className="item-table-star"
-                                    title="Favorite"
-                                    aria-pressed={favorited}
-                                    style={{ color: favorited ? "var(--amber)" : "var(--star-inactive)" }}
-                                    onClick={() => toggleFavorite(item.sourceGridKey, item.itemid)}
+                    <div className="page__scroll">
+                        {filtered.length === 0 ? (
+                            <div className="placeholder-panel">No items match the current filters.</div>
+                        ) : isList ? (
+                            <div
+                                className={cx(
+                                    "dtable item-list",
+                                    settings.density === "compact" && "item-list--compact",
+                                )}
+                            >
+                                <div className="dtable__head">
+                                    <span />
+                                    <span />
+                                    {sortHeader("Item", 0)}
+                                    {sortHeader("Mod", 2, "item-list__mod")}
+                                    {sortHeader("Stored", 1, "right")}
+                                    <span className="right">Status</span>
+                                </div>
+                                <div
+                                    ref={setContainer}
+                                    style={{ paddingTop: topSpacerPx, paddingBottom: bottomSpacerPx }}
                                 >
-                                    <StarIcon size={14} />
-                                </button>
-                                <button
-                                    type="button"
-                                    className="item-table-identity item-open"
-                                    title="Show stock, crafts and stock rule"
-                                    onClick={() => onSelectItem(item.itemid)}
-                                >
-                                    <ItemIcon itemid={item.itemid} name={item.itemname} size={24} />
-                                    <div className="item-table-text">
-                                        <FormattedText text={item.itemname} className="item-table-name" />
-                                        <span className="item-table-mod">
-                                            {item.mod}
-                                            {isAllGrids ? ` - ${item.gridLabel}` : ""}
-                                        </span>
-                                    </div>
-                                    {lowStock && (
-                                        <Badge variant="red" size="sm">
-                                            Low
-                                        </Badge>
-                                    )}
-                                </button>
-                                <span className="item-table-qty">
-                                    {formatNumber(item.quantity, settings.numberFormat)}
-                                </span>
-                                <div className="item-table-actions">
-                                    {item.craftable ? (
-                                        <Button
-                                            variant="primary"
-                                            size="sm"
-                                            disabled={item.itemKey === null}
-                                            title={item.itemKey === null ? NOT_ORDERABLE : undefined}
-                                            onClick={() => onCraft(item)}
-                                        >
-                                            Craft
-                                        </Button>
-                                    ) : (
-                                        <span className="item-table-notcraft">—</span>
-                                    )}
+                                    {visible.map((item, i) => {
+                                        const favorited = isFavorite(prefsKey(item.sourceGridKey, item.itemid));
+                                        const isSelected = detailItem === item;
+                                        return (
+                                            <div
+                                                key={`${item.sourceGridKey}:${item.itemid}`}
+                                                data-index={startRow + i}
+                                                className={cx(
+                                                    "dtable__row dtable__row--clickable item-row",
+                                                    isSelected && "dtable__row--selected",
+                                                )}
+                                                onClick={() => onSelectItem(item.itemid)}
+                                            >
+                                                <button
+                                                    type="button"
+                                                    className="item-row__star"
+                                                    title={favorited ? "Unfavorite" : "Favorite"}
+                                                    aria-pressed={favorited}
+                                                    style={{
+                                                        color: favorited ? "var(--amber)" : "var(--star-inactive)",
+                                                    }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleFavorite(item.sourceGridKey, item.itemid);
+                                                    }}
+                                                >
+                                                    <StarIcon size={14} />
+                                                </button>
+                                                <ItemIcon itemid={item.itemid} name={item.itemname} size={24} />
+                                                <button
+                                                    type="button"
+                                                    className="cell-text item-row__name"
+                                                    aria-current={isSelected || undefined}
+                                                >
+                                                    <FormattedText text={item.itemname} />
+                                                </button>
+                                                <span className="cell-sub item-list__mod">
+                                                    {item.mod}
+                                                    {isAllGrids ? ` · ${item.gridLabel}` : ""}
+                                                </span>
+                                                <div className="item-row__stored">
+                                                    <div className="item-row__logbar">
+                                                        <div
+                                                            style={{
+                                                                width: `${item.quantity > 0 ? Math.round((Math.log10(item.quantity + 1) / maxLog) * 100) : 0}%`,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <span className="item-row__qty">
+                                                        {formatNumber(item.quantity, settings.numberFormat)}
+                                                    </span>
+                                                </div>
+                                                <div className="item-row__status">
+                                                    {isLowStock(item, stockRules) && (
+                                                        <Badge variant="red" size="sm">
+                                                            Low
+                                                        </Badge>
+                                                    )}
+                                                    {item.craftable && (
+                                                        <Badge variant="teal" size="sm">
+                                                            Craft
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
-                        );
-                    })}
-                </section>
-            ) : (
-                <section
-                    className="item-grid"
-                    ref={setContainer}
-                    style={{
-                        "--tile-min": `${settings.tileMin}px`,
-                        paddingTop: topSpacerPx,
-                        paddingBottom: bottomSpacerPx,
-                    }}
-                >
-                    {visible.map((item) => {
-                        const key = prefsKey(item.sourceGridKey, item.itemid);
-                        const favorited = isFavorite(key);
-                        const lowStock = isLowStock(item, stockRules);
-                        return (
-                            <Card key={`${item.sourceGridKey}:${item.itemid}`} className="item-card">
-                                <button
-                                    type="button"
-                                    className="item-card__star"
-                                    title="Favorite"
-                                    aria-pressed={favorited}
-                                    style={{ color: favorited ? "var(--amber)" : "var(--star-inactive)" }}
-                                    onClick={() => toggleFavorite(item.sourceGridKey, item.itemid)}
-                                >
-                                    <StarIcon size={16} />
-                                </button>
-                                <button
-                                    type="button"
-                                    className="item-card__head item-open"
-                                    title="Show stock, crafts and stock rule"
-                                    onClick={() => onSelectItem(item.itemid)}
-                                >
-                                    <ItemIcon itemid={item.itemid} name={item.itemname} size={44} />
-                                    <div className="item-card__title">
-                                        <FormattedText text={item.itemname} className="item-card__name" />
-                                        <span className="item-card__mod">
-                                            {item.mod}
-                                            {isAllGrids ? ` - ${item.gridLabel}` : ""}
-                                        </span>
-                                    </div>
-                                </button>
-                                <div className="item-card__stored">
-                                    <span className="item-card__stored-value">
-                                        {formatNumber(item.quantity, settings.numberFormat)}
-                                    </span>
-                                    <span className="item-card__stored-label">stored</span>
-                                </div>
-                                <div className="item-card__badges">
-                                    {lowStock && (
-                                        <Badge variant="red" size="sm">
-                                            Low stock
-                                        </Badge>
-                                    )}
-                                    {item.craftable ? (
-                                        <>
-                                            <Badge variant="teal" size="sm">
-                                                Craftable
-                                            </Badge>
-                                            <Button
-                                                variant="primary"
-                                                size="sm"
-                                                className="item-card__craft"
-                                                disabled={item.itemKey === null}
-                                                title={item.itemKey === null ? NOT_ORDERABLE : undefined}
-                                                onClick={() => onCraft(item)}
+                        ) : (
+                            <section
+                                className="item-grid"
+                                ref={setContainer}
+                                style={{
+                                    "--tile-min": `${settings.tileMin}px`,
+                                    paddingTop: topSpacerPx + 16,
+                                    paddingBottom: bottomSpacerPx + 16,
+                                }}
+                            >
+                                {visible.map((item, i) => {
+                                    const favorited = isFavorite(prefsKey(item.sourceGridKey, item.itemid));
+                                    const lowStock = isLowStock(item, stockRules);
+                                    return (
+                                        <div
+                                            key={`${item.sourceGridKey}:${item.itemid}`}
+                                            data-index={startRow * columns + i}
+                                            className={cx("item-card", detailItem === item && "item-card--selected")}
+                                            onClick={() => onSelectItem(item.itemid)}
+                                        >
+                                            <button
+                                                type="button"
+                                                className="item-card__star"
+                                                title={favorited ? "Unfavorite" : "Favorite"}
+                                                aria-pressed={favorited}
+                                                style={{ color: favorited ? "var(--amber)" : "var(--star-inactive)" }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleFavorite(item.sourceGridKey, item.itemid);
+                                                }}
                                             >
-                                                Craft
-                                            </Button>
-                                        </>
-                                    ) : (
-                                        <span className="item-card__not-craftable">Not craftable</span>
-                                    )}
-                                </div>
-                            </Card>
-                        );
-                    })}
-                </section>
-            )}
-            {detailItem && (
-                <ItemDetail
-                    item={detailItem}
+                                                <StarIcon size={14} />
+                                            </button>
+                                            <button type="button" className="item-card__head">
+                                                <ItemIcon itemid={item.itemid} name={item.itemname} size={40} />
+                                                <div className="item-card__title">
+                                                    <FormattedText text={item.itemname} className="item-card__name" />
+                                                    <span className="item-card__mod">
+                                                        {item.mod}
+                                                        {isAllGrids ? ` · ${item.gridLabel}` : ""}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                            <div className="item-card__stored">
+                                                <span className="item-card__stored-value">
+                                                    {formatNumber(item.quantity, settings.numberFormat)}
+                                                </span>
+                                                <span className="item-card__stored-label">stored</span>
+                                            </div>
+                                            <div className="item-card__badges">
+                                                {lowStock && (
+                                                    <Badge variant="red" size="sm">
+                                                        Low
+                                                    </Badge>
+                                                )}
+                                                {item.craftable && (
+                                                    <Badge variant="teal" size="sm">
+                                                        Craft
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </section>
+                        )}
+                    </div>
+                </div>
+                <Inspector
+                    label="Item"
+                    width={400}
+                    open={detailItem !== null}
                     onClose={() => onSelectItem(null)}
-                    onCraft={onCraft}
-                    onOpenHistory={(itemid) => {
-                        onSelectItem(null);
-                        onOpenHistory(itemid);
-                    }}
-                    onOpenCraft={(entry) => {
-                        onSelectItem(null);
-                        onOpenCraft(entry);
-                    }}
-                />
-            )}
-        </>
+                    placeholder="Select an item to see its stock, recent crafts and stock rule, and to craft it."
+                >
+                    {detailItem && (
+                        <ItemInspector
+                            item={detailItem}
+                            onCraft={craft}
+                            onOpenHistory={onOpenHistory}
+                            onOpenCraft={onOpenCraft}
+                        />
+                    )}
+                </Inspector>
+            </div>
+            <CraftingDock onOpen={onOpenCpu} />
+        </div>
+    );
+}
+
+/** The Browser's bottom strip: one cell per busy CPU, opening its Craft Detail. */
+function CraftingDock({ onOpen }: { onOpen: (cpu: CpuView) => void }) {
+    const { cpus } = useCpus();
+    const { settings } = usePrefs();
+    const busy = cpus.filter((c) => c.isBusy).sort((a, b) => cpuRank(a) - cpuRank(b));
+    if (busy.length === 0) return null;
+    return (
+        <nav className="dock" aria-label="Crafting CPUs">
+            <span className="dock__label">CRAFTING</span>
+            {busy.map((cpu) => {
+                const stalled = cpu.stalledSince > 0;
+                const color = cpuLedColor(cpu);
+                return (
+                    <button
+                        key={`${cpu.sourceGridKey}:${cpu.cpuKey}`}
+                        type="button"
+                        className="dock__cell"
+                        onClick={() => onOpen(cpu)}
+                    >
+                        <span className="dot" style={{ background: color }} />
+                        <span className="dock__cpu">{cpu.name}</span>
+                        <span className="dock__item">
+                            {cpu.finalOutput ? (
+                                <>
+                                    <FormattedText text={cpu.finalOutput.itemname} /> ×
+                                    {formatNumber(cpu.finalOutput.quantity, settings.numberFormat)}
+                                </>
+                            ) : (
+                                "Crafting"
+                            )}
+                        </span>
+                        <span className="dock__bar">
+                            <span style={{ width: `${cpu.progressPct ?? 0}%`, background: color }} />
+                        </span>
+                        <span className={stalled ? "dock__right red" : "dock__right"}>
+                            {stalled ? "stalled" : cpu.progressPct !== null ? `${cpu.progressPct}%` : ""}
+                        </span>
+                    </button>
+                );
+            })}
+        </nav>
     );
 }

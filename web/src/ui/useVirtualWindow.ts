@@ -33,7 +33,7 @@ export function useVirtualWindow(
     const [range, setRange] = useState<{ start: number; end: number }>({ start: 0, end: rowCount });
 
     useEffect(() => {
-        const scrollEl = container?.closest<HTMLElement>(".content") ?? null;
+        const scrollEl = container?.closest<HTMLElement>(".page__scroll, .content") ?? null;
         if (!container || !scrollEl) {
             setRange({ start: 0, end: rowCount });
             return;

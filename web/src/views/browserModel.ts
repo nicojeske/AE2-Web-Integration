@@ -2,13 +2,6 @@ import type { BrowserItem } from "../state/items";
 import { prefsKey } from "../state/prefs";
 import type { StockRule } from "../api/types";
 
-/** Labels for the "Stored/Craftable" toolbar pill; index is the cycled state (default 2). */
-export const STORED_CRAFTABLE = ["Stored only", "Craftable only", "Stored & craftable"] as const;
-/** Labels for the "Items/Fluids" toolbar pill; index is the cycled state (default 2). */
-export const ITEMS_TYPE = ["Items only", "Fluids only", "Items & fluids"] as const;
-/** Labels for the "Sort by" toolbar pill; index is the cycled state (default 0). */
-export const SORT_BY = ["A-Z", "# stored", "Mod"] as const;
-
 /**
  * The mod namespace an item belongs to, from the part of `itemid` before the first `:`. A native
  * fluid's itemid has no colon at all (see `isFluidId`) - group those under a synthetic "fluid" mod

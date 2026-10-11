@@ -1,24 +1,15 @@
-/* Item Browser (M1) */
+/* Item Browser */
 
-.browser__toolbar {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+.browser__filter {
+    width: 200px;
 }
-
-.browser__count {
-    margin-left: auto;
-    align-self: center;
-    font-size: 12px;
-    color: var(--text-dim);
-}
-
 .browser__warning {
     margin: 0;
+    padding: 8px 16px;
     font-size: 12px;
-    color: var(--text-dim);
+    color: var(--amber);
+    border-bottom: 1px solid var(--border-subtle);
 }
-
 .browser__error {
     display: flex;
     flex-direction: column;
@@ -26,309 +17,440 @@
     gap: 12px;
 }
 
-.item-grid {
-    display: grid;
-    /* `.content` (the flex column this lives in - app-shell.css) would otherwise shrink this below its
-       natural content height to avoid overflowing, rather than growing past the viewport and letting
-       `.content`'s own `overflow:auto` scroll it - the exact bug M12's virtualization work found on
-       `.item-table` below, fixed here defensively even though this one measured correctly in practice. */
-    flex-shrink: 0;
-    /* `--tile-min` is the Settings modal's "items per row" knob (Browser.tsx) - falls back to the
-       design's original 220px when unset (e.g. a screenshot/test harness that skips PrefsProvider). */
-    grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 220px), 1fr));
-    gap: 12px;
+/* A page whose body (list + inspector) sits above a bottom dock. */
+.page--with-dock {
+    flex-direction: column;
+}
+.page__body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
 }
 
+/* List view */
+.item-list {
+    --cols: 20px 24px minmax(0, 1fr) 180px 170px 110px;
+}
+.item-row {
+    height: 34px;
+    min-height: 34px;
+    gap: 10px;
+}
+.item-list .dtable__head {
+    gap: 10px;
+}
+.item-list--compact .item-row {
+    height: 28px;
+    min-height: 28px;
+}
+.item-row__star {
+    display: flex;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+.item-row__name {
+    padding: 0;
+    background: none;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+}
+.item-row__stored {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.item-row__logbar {
+    width: 56px;
+    height: 3px;
+    background: var(--border-subtle);
+}
+.item-row__logbar > div {
+    height: 100%;
+    background: var(--cyan);
+    opacity: 0.6;
+}
+.item-row__qty {
+    min-width: 82px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-primary);
+}
+.item-row__status {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+/* Grid view */
+.item-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 200px), 1fr));
+    gap: 12px;
+    padding-left: 16px;
+    padding-right: 16px;
+}
 .item-card {
-    padding: 14px;
+    position: relative;
+    height: 138px;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    position: relative;
+    padding: 12px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    cursor: pointer;
 }
-
+.item-card:hover {
+    border-color: var(--border);
+}
+.item-card--selected,
+.item-card--selected:hover {
+    border-color: var(--accent);
+    background: var(--accent-row-bg);
+}
 .item-card__star {
     position: absolute;
     top: 8px;
     right: 8px;
+    display: flex;
+    padding: 0;
     background: none;
     border: 0;
     cursor: pointer;
-    padding: 2px;
-    line-height: 0;
 }
-
 .item-card__head {
     display: flex;
+    align-items: center;
     gap: 10px;
-    align-items: flex-start;
-    padding-right: 20px;
+    padding: 0 18px 0 0;
+    background: none;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+    min-width: 0;
 }
-
 .item-card__title {
     display: flex;
     flex-direction: column;
+    gap: 2px;
     min-width: 0;
 }
-
 .item-card__name {
-    font-size: 13.5px;
-    font-weight: 500;
+    font-size: 13px;
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
-
 .item-card__mod {
     font-size: 11px;
     color: var(--text-dim);
 }
-
 .item-card__stored {
     display: flex;
     align-items: baseline;
     gap: 6px;
+    margin-top: auto;
 }
-
 .item-card__stored-value {
     font-family: var(--font-mono);
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 17px;
     color: var(--text-primary);
 }
-
 .item-card__stored-label {
     font-size: 11px;
-    color: var(--text-dim);
+    color: var(--text-muted);
 }
-
 .item-card__badges {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 2px;
-    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 19px;
 }
 
-.item-card__craft {
-    margin-left: auto;
-}
-
-.item-card__not-craftable {
-    font-size: 11px;
-    color: var(--text-dim);
-}
-
-/* Compact table mode (M12, Settings' `density: compact`) - a dense one-row-per-item alternative to the
-   card grid above, for GTNH-scale item counts. `.item-table-row`'s `height` is exact by construction -
-   `views/Browser.tsx`'s `TABLE_ROW_HEIGHT_PX` windowing constant matches it precisely rather than the
-   other way around. */
-.item-table {
+/* Item panel: the Browser's inspector and the slide-over item panel */
+.item-panel {
     display: flex;
     flex-direction: column;
-    /* `flex-shrink:0` is the actual fix, not decoration: `overflow:hidden` below (for the rounded
-       corners) makes this element's flexbox "automatic minimum size" zero instead of content-based
-       (per spec, for any element whose overflow isn't `visible`), so without this `.content` (the flex
-       column this lives in) would happily shrink it - and every `.item-table-row` inside along with it -
-       below its natural height instead of scrolling around it. Found via M12's virtualization: rows
-       measured 30px tall instead of the CSS's own specified 44px. */
-    flex-shrink: 0;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-card-sm);
-    overflow: hidden;
+    gap: 20px;
 }
-
-.item-table-row {
-    height: 44px;
-    box-sizing: border-box;
-    display: grid;
-    grid-template-columns: 24px 1fr 90px 72px;
+.item-panel__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+.item-panel__title {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+.item-panel__name {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.item-panel__mod {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.item-panel__id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    word-break: break-all;
+}
+.item-panel__star {
+    display: flex;
+    padding: 2px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+.item-panel__stored-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.item-panel__stored {
+    display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 10px;
-    border-bottom: 1px solid var(--border-subtle);
 }
-.item-table-row:last-child {
-    border-bottom: 0;
+.item-panel__stored-value {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    color: var(--text-primary);
 }
-.item-table-row:hover {
-    background: var(--bg-hover);
-}
-
-.item-table-star {
-    background: none;
-    border: 0;
-    cursor: pointer;
-    padding: 4px;
-    line-height: 0;
-    justify-self: start;
-}
-
-.item-table-identity {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.item-table-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    line-height: 1.15;
-}
-
-.item-table-name {
+.item-panel__label,
+.item-panel__hint,
+.item-panel__empty {
+    margin: 0;
     font-size: 12px;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    color: var(--text-muted);
 }
-
-.item-table-mod {
-    font-size: 10px;
-    color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.item-table-qty {
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    color: var(--text-primary);
-    text-align: right;
-    white-space: nowrap;
-}
-
-.item-table-actions {
+.item-panel__rule-line {
     display: flex;
-    justify-content: flex-end;
-}
-
-.item-table-notcraft {
-    font-size: 11px;
-    color: var(--text-dim);
-}
-
-/* An item's icon+name opens its detail panel (views/ItemDetail.tsx) - a button that looks like the row. */
-.item-open {
-    background: none;
-    border: 0;
-    padding: 0;
-    margin: 0;
-    font: inherit;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-}
-.item-open:hover .item-card__name,
-.item-open:hover .item-table-name {
-    text-decoration: underline;
-}
-.item-open:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-}
-
-/* Item detail drawer */
-.item-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-}
-
-.item-detail__stored {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.item-detail__stored-value {
-    font-family: var(--font-mono);
-    font-size: 24px;
-    color: var(--text-primary);
-}
-
-.item-detail__label,
-.item-detail__hint,
-.item-detail__empty,
-.item-detail__id,
-.item-detail__craft-meta {
-    font-size: 11.5px;
-    color: var(--text-dim);
-    margin: 0;
-}
-
-.item-detail__section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.item-detail__section-head {
-    display: flex;
-    align-items: center;
     justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.item-panel__section {
+    display: flex;
+    flex-direction: column;
     gap: 8px;
 }
-
-.item-detail__heading {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.item-detail__link {
-    background: none;
-    border: 0;
-    padding: 0;
-    font: inherit;
-    font-size: 12px;
-    color: var(--accent-selected-text);
-    cursor: pointer;
-}
-.item-detail__link:hover {
-    text-decoration: underline;
-}
-
-.item-detail__crafts {
+.item-panel__crafts {
     list-style: none;
     margin: 0;
     padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
 }
-
-.item-detail__craft {
+.item-panel__craft {
     width: 100%;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font: inherit;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 12.5px;
     color: var(--text-primary);
     text-align: left;
     cursor: pointer;
 }
-.item-detail__craft:hover {
-    border-color: var(--border-hover);
+.item-panel__craft:hover {
+    color: var(--cyan);
 }
-
-.item-detail__actions {
+.item-panel__craft-meta {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.item-panel__actions {
     display: flex;
     gap: 8px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+}
+.item-panel__craft-btn {
+    margin-left: auto;
+}
+.red,
+.item-panel__craft-meta.red {
+    color: var(--red);
+}
+
+/* Inline craft box */
+.craft-box {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+.craft-box__row {
+    display: flex;
+    gap: 8px;
+}
+.craft-box__qty {
+    flex: 1;
+    width: 0;
+    padding: 7px 10px;
+    font-size: 15px;
+    border-color: var(--accent);
+}
+.craft-box__preset {
+    padding: 7px 10px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.craft-box__preset:hover {
+    border-color: var(--border-hover);
+}
+.craft-box__preset--on {
+    background: var(--border-subtle);
+    color: var(--text-primary);
+}
+.craft-box__cpu {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.craft-box__cpu select {
+    max-width: 70%;
+    padding: 3px 6px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.craft-box__go {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px;
+}
+.craft-box__key {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+/* Crafting dock */
+.dock {
+    height: 44px;
+    flex: 0 0 44px;
+    display: flex;
+    gap: 1px;
+    background: var(--border-subtle);
+    border-top: 1px solid var(--border-subtle);
+    overflow-x: auto;
+}
+.dock__label {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    background: var(--bg-panel);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.8px;
+    color: var(--text-dim);
+}
+.dock__cell {
+    flex: 1;
+    min-width: 220px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    background: var(--bg-panel);
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+}
+.dock__cell:hover {
+    background: var(--bg-hover);
+}
+.dock__cpu {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.dock__item {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dock__bar {
+    width: 60px;
+    height: 3px;
+    flex-shrink: 0;
+    background: var(--border-subtle);
+}
+.dock__bar > span {
+    display: block;
+    height: 100%;
+}
+.dock__right {
+    min-width: 48px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+@media (max-width: 1023.98px) {
+    .item-list {
+        --cols: 20px 24px minmax(0, 1fr) 150px 90px;
+    }
+    .item-list__mod {
+        display: none;
+    }
+}
+@media (max-width: 767.98px) {
+    .dock {
+        display: none;
+    }
+    .browser__filter {
+        width: 100%;
+        order: 5;
+    }
+    .item-list {
+        --cols: 24px minmax(0, 1fr) 96px;
+    }
+    .item-row__star,
+    .item-list .dtable__head > span:first-child,
+    .item-row__status,
+    .item-list .dtable__head > span:last-child,
+    .item-row__logbar {
+        display: none;
+    }
+    .item-row {
+        height: 48px;
+        min-height: 48px;
+    }
 }
