@@ -432,6 +432,14 @@ function CraftingDock({ onOpen }: { onOpen: (cpu: CpuView) => void }) {
                     >
                         <span className="dot" style={{ background: color }} />
                         <span className="dock__cpu">{cpu.name}</span>
+                        {cpu.finalOutput && (
+                            <ItemIcon
+                                itemid={cpu.finalOutput.itemid}
+                                name={cpu.finalOutput.itemname}
+                                size={20}
+                                className="dock__icon"
+                            />
+                        )}
                         <span className="dock__item">
                             {cpu.finalOutput ? (
                                 <>
