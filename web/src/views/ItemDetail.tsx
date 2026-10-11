@@ -20,6 +20,9 @@ import { CARD_W } from "./statsModel";
 import { StockRuleEditor } from "./StockRuleEditor";
 
 const RANGES: SegmentedOption<StatsRange>[] = [
+    { value: "15m", label: "15m" },
+    { value: "1h", label: "1h" },
+    { value: "6h", label: "6h" },
     { value: "24h", label: "24h" },
     { value: "7d", label: "7d" },
     { value: "30d", label: "30d" },
