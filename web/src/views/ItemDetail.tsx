@@ -88,6 +88,9 @@ export function ItemDetail({ item, onClose, onCraft, onOpenHistory, onOpenCraft 
     }, [gridKey, item.itemid]);
 
     const values = history.state === "ok" ? (history.data.byItem.get(item.itemid) ?? []) : [];
+    // The last point is the window containing "now", and the server reports each window's newest value, so
+    // the live stored count belongs there - the chart follows the item list between history polls.
+    const liveValues = values.length > 0 ? [...values.slice(0, -1), item.quantity] : values;
 
     return (
         <Drawer
@@ -154,7 +157,7 @@ export function ItemDetail({ item, onClose, onCraft, onOpenHistory, onOpenCraft 
                     {history.state === "ok" &&
                         (values.some((v) => v !== null) ? (
                             <Chart
-                                values={values}
+                                values={liveValues}
                                 timestamps={history.data.timestamps}
                                 range={range}
                                 width={CARD_W}

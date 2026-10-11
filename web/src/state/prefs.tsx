@@ -112,7 +112,7 @@ export interface Settings {
      *  "items per row" knob, expressed as a size instead of a fixed column count so it still reflows. */
     tileMin: number;
     /** Arms `state/items.tsx`'s poll. */
-    autoRefreshItems: "off" | "15s" | "30s" | "60s";
+    autoRefreshItems: "off" | "5s" | "15s" | "30s" | "60s";
     /** Statistics' range/compare-range reset every visit otherwise, unlike every other browser
      *  preference - persisted here so a Settings default at least survives a reload. */
     statsRange: StatsRange;

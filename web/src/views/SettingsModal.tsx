@@ -29,6 +29,7 @@ const DENSITY_OPTIONS: SegmentedOption<Settings["density"]>[] = [
 
 const AUTO_REFRESH_OPTIONS: SegmentedOption<Settings["autoRefreshItems"]>[] = [
     { value: "off", label: "Off" },
+    { value: "5s", label: "5s" },
     { value: "15s", label: "15s" },
     { value: "30s", label: "30s" },
     { value: "60s", label: "60s" },

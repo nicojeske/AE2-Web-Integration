@@ -49,6 +49,7 @@ export interface ItemsContextValue {
 const ItemsContext = createContext<ItemsContextValue | null>(null);
 
 const AUTO_REFRESH_INTERVALS: Record<Exclude<Settings["autoRefreshItems"], "off">, number> = {
+    "5s": 5_000,
     "15s": 15_000,
     "30s": 30_000,
     "60s": 60_000,
@@ -113,13 +114,20 @@ export function ItemsProvider({ children }: { children?: ComponentChildren }) {
 
     // `items` isn't polled by anything else - armed by the Settings auto-refresh toggle. Auto-craft runs on
     // the server (`state/stockRules.tsx`), so it needs no poll here.
+    // A tick is skipped while the previous refresh is still running: an all-networks listing walks the grids
+    // one by one and can outlast a short interval.
     const refreshRef = useRef(refresh);
     refreshRef.current = refresh;
+    const inFlightRef = useRef(false);
     useEffect(() => {
         if (settings.autoRefreshItems === "off") return;
         const intervalMs = AUTO_REFRESH_INTERVALS[settings.autoRefreshItems];
         const timer = setInterval(() => {
-            if (!document.hidden) void refreshRef.current();
+            if (document.hidden || inFlightRef.current) return;
+            inFlightRef.current = true;
+            void refreshRef.current().finally(() => {
+                inFlightRef.current = false;
+            });
         }, intervalMs);
         return () => clearInterval(timer);
     }, [settings.autoRefreshItems]);
