@@ -14,6 +14,7 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Chart } from "../ui/Chart";
 import { Drawer } from "../ui/Drawer";
+import { ItemIcon } from "../ui/ItemIcon";
 import type { SegmentedOption } from "../ui/SegmentedControl";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { CARD_W } from "./statsModel";
@@ -28,6 +29,8 @@ const RANGES: SegmentedOption<StatsRange>[] = [
     { value: "30d", label: "30d" },
 ];
 const CHART_POINTS = 120;
+/** Matches the server's default 1-minute item sampling. */
+const HISTORY_POLL_MS = 60_000;
 const RECENT_CRAFTS = 5;
 
 export interface ItemDetailProps {
@@ -56,13 +59,20 @@ export function ItemDetail({ item, onClose, onCraft, onOpenHistory, onOpenCraft 
 
     useEffect(() => {
         let cancelled = false;
+        const load = () =>
+            getItemHistory(gridKey, range, CHART_POINTS, [item.itemid]).then(
+                (result) => !cancelled && setHistory({ state: "ok", data: toBundle(result) }),
+                (e) => !cancelled && setHistory({ state: "error", message: describeApiError(e, "No history") }),
+            );
         setHistory({ state: "loading" });
-        getItemHistory(gridKey, range, CHART_POINTS, [item.itemid]).then(
-            (result) => !cancelled && setHistory({ state: "ok", data: toBundle(result) }),
-            (e) => !cancelled && setHistory({ state: "error", message: describeApiError(e, "No history") }),
-        );
+        void load();
+        // Refreshes keep the current chart up until the new one arrives, rather than flashing "Loading".
+        const timer = setInterval(() => {
+            if (!document.hidden) void load();
+        }, HISTORY_POLL_MS);
         return () => {
             cancelled = true;
+            clearInterval(timer);
         };
     }, [gridKey, item.itemid, range]);
 
@@ -122,6 +132,7 @@ export function ItemDetail({ item, onClose, onCraft, onOpenHistory, onOpenCraft 
         >
             <div className="item-detail">
                 <div className="item-detail__stored">
+                    <ItemIcon itemid={item.itemid} name={item.plainName} size={40} />
                     <span className="item-detail__stored-value">
                         {formatNumber(item.quantity, settings.numberFormat)}
                     </span>
