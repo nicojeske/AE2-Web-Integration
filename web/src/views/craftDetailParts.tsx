@@ -4,7 +4,7 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 
-import { gtTierName } from "../api/format";
+import { formatDuration, gtTierName, skipSpecialFormat } from "../api/format";
 import type { GTMachine, ResourceRef, WorkingMachine } from "../api/types";
 import { buildHash } from "../shell/route";
 import type { MachineLabels } from "../state/prefs";
@@ -14,7 +14,6 @@ import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
 import { ItemIcon } from "../ui/ItemIcon";
 import { ProgressBar } from "../ui/ProgressBar";
-import { SegmentedControl } from "../ui/SegmentedControl";
 import { progressCycle, summarizeMachines } from "./craftMachinesModel";
 import type { MachineGroupSummary, MachineMatches } from "./craftMachinesModel";
 import { useNow } from "./gtCommon";
@@ -29,7 +28,9 @@ import {
     statusDuration,
 } from "./gtModel";
 import { RecipeStrip } from "./RecipeFlow";
-import type { ConsumedRow, CraftDetailColumn, CraftDetailColumnKey, WorkingMachineRow } from "./craftDetailModel";
+import type { ConsumedRow, CraftStepRow, StepStage, WorkingMachineRow } from "./craftDetailModel";
+import { isFluidId } from "./browserModel";
+import { formatResourceAmount } from "../state/craftProgress";
 import type { BadgeVariant } from "../ui/Badge";
 
 export interface CraftDetailHeaderProps {
@@ -83,123 +84,186 @@ export function StatCard({ label, children }: { label: string; children: Compone
     );
 }
 
-export interface CraftDetailColumnsProps {
-    columns: CraftDetailColumn[];
-    /** Columns showing only their count and a "Show" button instead of their rows. */
-    collapsed?: CraftDetailColumnKey[];
-    onToggleCollapsed?: (key: CraftDetailColumnKey) => void;
-    /** Makes each item card open that item's detail panel. */
+export type StepSortKey = "name" | "crafted" | "active" | "pending" | "stored" | "rate" | "time";
+
+const STAGES: { key: StepStage; title: string; color: string }[] = [
+    { key: "crafting", title: "Crafting", color: "var(--amber)" },
+    { key: "waiting", title: "Waiting", color: "var(--text-muted)" },
+    { key: "done", title: "Done", color: "var(--green)" },
+];
+
+function sortValue(row: CraftStepRow, key: StepSortKey): number | string {
+    switch (key) {
+        case "name":
+            return skipSpecialFormat(row.itemname).toLowerCase();
+        case "crafted":
+            return row.planned > 0 ? row.crafted / row.planned : 0;
+        case "rate":
+            return row.rate ?? -1;
+        case "time":
+            return row.timeSpent;
+        default:
+            return row[key];
+    }
+}
+
+function sortSteps(rows: CraftStepRow[], key: StepSortKey, desc: boolean): CraftStepRow[] {
+    const dir = desc ? -1 : 1;
+    return [...rows].sort((a, b) => {
+        const va = sortValue(a, key);
+        const vb = sortValue(b, key);
+        return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+    });
+}
+
+function formatRate(row: CraftStepRow): string {
+    if (row.rate === null) return "—";
+    const fixed = row.rate >= 10 ? row.rate.toFixed(0) : row.rate.toFixed(1);
+    return isFluidId(row.itemid) ? `${fixed} L/s` : `${fixed}/s`;
+}
+
+export interface StepTableProps {
+    steps: CraftStepRow[];
+    tracked: boolean;
+    groupByStage: boolean;
+    /** Stage groups folded to their header. */
+    hidden: StepStage[];
+    onToggleStage: (stage: StepStage) => void;
+    sort: { key: StepSortKey; desc: boolean };
+    onSort: (key: StepSortKey) => void;
     onOpenItem?: (item: ResourceRef) => void;
 }
 
-/**
- * The Crafting / Waiting / Done columns side by side; below 768px (`craft-detail.css`) one at a time, picked
- * with tabs - three columns of item cards don't fit a phone.
- */
-export function CraftDetailColumns({
-    columns,
-    collapsed = [],
-    onToggleCollapsed,
+/** Every item of the job in one sortable table, optionally grouped Crafting / Waiting / Done. */
+export function StepTable({
+    steps,
+    tracked,
+    groupByStage,
+    hidden,
+    onToggleStage,
+    sort,
+    onSort,
     onOpenItem,
-}: CraftDetailColumnsProps) {
-    const [chosen, setChosen] = useState<CraftDetailColumnKey | null>(null);
-    const active = chosen ?? columns.find((c) => c.rows.length > 0)?.key ?? columns[0]?.key;
+}: StepTableProps) {
+    const head = (label: string, key: StepSortKey, right?: boolean) => (
+        <button
+            type="button"
+            className={cx("dtable__sort", sort.key === key && "dtable__sort--active", right && "right")}
+            onClick={() => onSort(key)}
+        >
+            {label}
+            {sort.key === key ? (sort.desc ? " ↓" : " ↑") : ""}
+        </button>
+    );
+    const rows = (list: CraftStepRow[]) =>
+        sortSteps(list, sort.key, sort.desc).map((row) => (
+            <StepRow key={row.itemid} row={row} tracked={tracked} onOpenItem={onOpenItem} />
+        ));
+
     return (
-        <>
-            <SegmentedControl<CraftDetailColumnKey>
-                className="craft-detail__col-tabs"
-                options={columns.map((c) => ({ value: c.key, label: `${c.title} ${c.rows.length}` }))}
-                value={active ?? "crafting"}
-                onChange={setChosen}
-            />
-            <section className="craft-detail__columns">
-                {columns.map((col) => (
-                    <section
-                        className={cx("craft-detail__column", col.key !== active && "craft-detail__column--inactive")}
-                        key={col.key}
-                    >
-                        <div className={`craft-detail__col-head craft-detail__col-head--${col.color}`}>
-                            <span className="craft-detail__col-title">{col.title}</span>
-                            <span className="craft-detail__col-count">{col.rows.length}</span>
-                            {onToggleCollapsed && col.rows.length > 0 && (
-                                <button
-                                    type="button"
-                                    className="craft-detail__col-toggle"
-                                    onClick={() => onToggleCollapsed(col.key)}
-                                >
-                                    {collapsed.includes(col.key) ? "Show" : "Hide"}
-                                </button>
-                            )}
-                        </div>
-                        {!collapsed.includes(col.key) &&
-                            col.rows.map((row) => (
-                                <ItemCard key={row.itemid} row={row} col={col} onOpenItem={onOpenItem} />
-                            ))}
-                        {col.rows.length === 0 && <div className="craft-detail__col-empty">{col.emptyText}</div>}
-                    </section>
-                ))}
-            </section>
-        </>
+        <div className={cx("dtable steps", !tracked && "steps--untracked")}>
+            <div className="dtable__head">
+                <span />
+                {head("Item", "name")}
+                {head("Crafted", "crafted")}
+                {head("Active", "active", true)}
+                {head("Pending", "pending", true)}
+                {head("Stored", "stored", true)}
+                {head("Rate", "rate", true)}
+                {head("Time spent", "time")}
+                <span />
+            </div>
+            {groupByStage
+                ? STAGES.map((stage) => {
+                      const list = steps.filter((r) => r.stage === stage.key);
+                      if (list.length === 0) return null;
+                      const isHidden = hidden.includes(stage.key);
+                      return (
+                          <div key={stage.key} className="steps__group">
+                              <div className="steps__group-head">
+                                  <span className="steps__group-dot" style={{ background: stage.color }} />
+                                  <span className="steps__group-title" style={{ color: stage.color }}>
+                                      {stage.title}
+                                  </span>
+                                  <span className="mono-count">{list.length}</span>
+                                  <button
+                                      type="button"
+                                      className="btn btn--text steps__group-toggle"
+                                      onClick={() => onToggleStage(stage.key)}
+                                  >
+                                      {isHidden ? "Show" : "Hide"}
+                                  </button>
+                              </div>
+                              {!isHidden && rows(list)}
+                          </div>
+                      );
+                  })
+                : rows(steps)}
+        </div>
     );
 }
 
-function ItemCard({
+function StepRow({
     row,
-    col,
+    tracked,
     onOpenItem,
 }: {
-    row: CraftDetailColumn["rows"][number];
-    col: CraftDetailColumn;
+    row: CraftStepRow;
+    tracked: boolean;
     onOpenItem?: (item: ResourceRef) => void;
 }) {
-    const head = (
-        <>
-            <ItemIcon itemid={row.itemid} name={row.itemname} size={28} />
-            <FormattedText text={row.itemname} className="craft-detail__item-name" />
-            <span className={`craft-detail__item-badge craft-detail__item-badge--${col.color}`}>{row.badgeText}</span>
-        </>
-    );
+    const pct = row.planned > 0 ? Math.min(1, row.crafted / row.planned) : 0;
+    const activePct = row.planned > 0 ? Math.min(1 - pct, row.active / row.planned) : 0;
+    const color = row.stage === "done" ? "var(--green)" : row.stage === "waiting" ? "var(--text-dim)" : "var(--amber)";
     return (
-        <div className="craft-detail__item-card">
-            {onOpenItem ? (
-                <button
-                    type="button"
-                    className="craft-detail__item-head craft-detail__item-head--link"
-                    title="Stock, history and stock rule"
-                    onClick={() => onOpenItem(row)}
-                >
-                    {head}
-                </button>
-            ) : (
-                <div className="craft-detail__item-head">{head}</div>
-            )}
-            {row.progress !== null && (
-                <ProgressBar
-                    className="craft-detail__item-progress"
-                    percent={row.progress * 100}
-                    height={4}
-                    color={col.color === "amber" ? "var(--amber)" : undefined}
-                />
-            )}
-            <div className="craft-detail__item-stats">
-                {row.stats.map((st) => (
-                    <div className="craft-detail__item-stat" key={st.label}>
-                        <span>{st.label}</span>
-                        <span>{st.value}</span>
-                    </div>
-                ))}
+        <div
+            className={cx("dtable__row steps__row", onOpenItem && "dtable__row--clickable")}
+            onClick={onOpenItem ? () => onOpenItem(row) : undefined}
+            title={onOpenItem ? "Stock, history and stock rule" : undefined}
+        >
+            <ItemIcon itemid={row.itemid} name={row.itemname} size={22} />
+            <button type="button" className="cell-text steps__name" tabIndex={onOpenItem ? 0 : -1}>
+                <FormattedText text={row.itemname} />
+            </button>
+            <div className="steps__crafted">
+                {tracked ? (
+                    <>
+                        <div className="bar steps__bar">
+                            <div className="bar__fill" style={{ width: `${pct * 100}%`, background: color }} />
+                            <div
+                                className="bar__fill"
+                                style={{
+                                    left: `${pct * 100}%`,
+                                    width: `${activePct * 100}%`,
+                                    background: color,
+                                    opacity: 0.35,
+                                }}
+                            />
+                        </div>
+                        <span className="steps__crafted-label">
+                            {formatResourceAmount(row.itemid, row.crafted)} /{" "}
+                            {formatResourceAmount(row.itemid, row.planned)}
+                        </span>
+                    </>
+                ) : (
+                    <span className="steps__crafted-label">—</span>
+                )}
             </div>
-            {row.sharePct !== null && (
-                <div className="craft-detail__share">
-                    <div className="craft-detail__share-track">
-                        <div
-                            className="craft-detail__share-fill"
-                            style={{ width: `${Math.round(row.sharePct * 100)}%` }}
-                        />
-                    </div>
-                    <span>{Math.round(row.sharePct * 100)}% of craft time</span>
+            <span className={cx("cell-num", row.active > 0 && "amber")}>
+                {row.active > 0 ? formatResourceAmount(row.itemid, row.active) : "—"}
+            </span>
+            <span className="cell-num">{row.pending > 0 ? formatResourceAmount(row.itemid, row.pending) : "—"}</span>
+            <span className="cell-num dim">{row.stored > 0 ? formatResourceAmount(row.itemid, row.stored) : "—"}</span>
+            <span className="cell-num dim">{formatRate(row)}</span>
+            <div className="steps__time">
+                <div className="steps__share">
+                    <div style={{ width: `${Math.round((row.share ?? 0) * 100)}%` }} />
                 </div>
-            )}
+                <span>{tracked ? formatDuration(row.timeSpent) : "—"}</span>
+            </div>
+            <span className="steps__chevron" aria-hidden="true">
+                {onOpenItem ? "›" : ""}
+            </span>
         </div>
     );
 }
@@ -264,8 +328,6 @@ export interface WorkingMachinesGT {
 
 /** A provider card lists this many machines before folding the rest behind "+N more". */
 const MACHINES_SHOWN = 4;
-/** Groups up to this size show each machine's recipe strip too; bigger ones stay compact. */
-const RECIPE_STRIP_MAX = 2;
 
 /**
  * The pattern providers - usually named after the machine they feed - still working on this job, each
@@ -393,7 +455,7 @@ function MatchedMachineList({
                     machine={machine}
                     gt={gt}
                     now={now}
-                    withRecipe={machines.length <= RECIPE_STRIP_MAX}
+                    withRecipe
                     withCoords={machines.some(
                         (o) => o !== machine && machineLabel(o, gt.names) === machineLabel(machine, gt.names),
                     )}

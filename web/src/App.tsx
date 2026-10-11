@@ -265,6 +265,9 @@ function Shell() {
                             gridKey={craftDetail.gridKey}
                             cpuKey={craftDetail.cpuKey}
                             onClose={() => route.push({ detail: null })}
+                            onOpenCpu={(gridKey, cpuKey) =>
+                                route.push({ section: "jobs", detail: { type: "cpu", gridKey, cpuKey } })
+                            }
                         />
                     ) : historyDetail ? (
                         <TrackingDetail

@@ -1,112 +1,90 @@
-/* Active Jobs */
-
-/* One line above the cards: busy/idle/stalled counts and storage in use. */
-.jobs-summary {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 6px 18px;
-    font-size: 12.5px;
-    color: var(--text-muted);
-}
-.jobs-summary strong {
-    font-family: var(--font-mono);
-    font-weight: 600;
-    color: var(--text-primary);
-}
-.jobs-summary__stalled,
-.jobs-summary__stalled strong {
-    color: var(--red);
-}
-.jobs-summary__bytes {
-    margin-left: auto;
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    color: var(--text-dim);
-}
-
-.cpu-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 14px;
-}
-
-.cpu-card {
-    padding: 16px;
+/* Crafting CPUs list */
+.cpu-list__group {
     display: flex;
     flex-direction: column;
-    gap: 12px;
 }
-
-.cpu-card__head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-}
-
-.cpu-card__title {
+.cpu-row {
     display: flex;
     flex-direction: column;
-    min-width: 0;
+    gap: 7px;
+    width: 100%;
+    padding: 12px 16px;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--row-divider);
+    text-align: left;
+    color: inherit;
 }
-
-.cpu-card__name {
-    font-family: var(--font-display);
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.cpu-row--busy {
+    cursor: pointer;
 }
-
-/* Deviation from the design (which shows the raw CPU name only): in All-Grids mode two networks can
-   both have a "CPU #1", so the source grid is disambiguated the same way the Item Browser does. */
-.cpu-card__grid-label {
-    font-size: 11px;
-    color: var(--text-dim);
+.cpu-row--busy:hover {
+    background: rgba(255, 255, 255, 0.02);
 }
-
-.cpu-card__output {
-    font-size: 12.5px;
-    color: var(--text-secondary);
-    min-height: 16px;
-}
-
-.cpu-card__output-row {
+.cpu-row__line {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     min-width: 0;
 }
-.cpu-card__output-row .cpu-card__output {
+.cpu-row__name {
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+.cpu-row__grid {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+.cpu-row__output {
+    flex: 1;
     min-width: 0;
+    font-size: 12.5px;
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-
-.cpu-card--stalled {
-    border-color: rgba(242, 96, 107, 0.45);
+.cpu-row__output--idle {
+    color: var(--text-dim);
 }
-
-.cpu-card__timing {
+.cpu-row__pct {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+}
+.cpu-row__meta {
+    min-width: 170px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+.cpu-row__bar {
+    height: 3px;
+    margin-left: 17px;
+    background: var(--border-subtle);
+}
+.cpu-row__bar > div {
+    height: 100%;
+}
+.cpu-row__sub {
     display: flex;
     justify-content: space-between;
-    gap: 10px;
-    font-size: 11.5px;
+    margin-left: 17px;
+    font-family: var(--font-mono);
+    font-size: 11px;
     color: var(--text-muted);
 }
-
-.cpu-card__stalled {
-    color: var(--red);
-}
-
-.cpu-card__footer {
-    display: flex;
-    justify-content: space-between;
-    font-size: 11.5px;
+.cpu-row__by {
     color: var(--text-dim);
-    font-family: var(--font-mono);
+}
+@media (max-width: 767.98px) {
+    .cpu-row__meta {
+        display: none;
+    }
 }

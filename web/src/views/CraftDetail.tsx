@@ -6,22 +6,26 @@ import type { GridKey, ResourceRef } from "../api/types";
 import { craftedPerMinute, craftTotals } from "../state/craftProgress";
 import type { ProgressSample } from "../state/craftProgress";
 import { useCpus } from "../state/cpus";
+import type { CpuView } from "../state/cpus";
 import { useFastMachinesPoll, useGT } from "../state/gt";
 import { useNetwork } from "../state/network";
 import { useOrder } from "../state/order";
 import { usePrefs } from "../state/prefs";
 import { useToast } from "../state/toast";
 import { Button } from "../ui/Button";
-import { Chart } from "../ui/Chart";
+import { Badge } from "../ui/Badge";
+import { ChipMenu } from "../ui/ChipMenu";
+import { cpuLedColor, cpuRank } from "../ui/CpuLeds";
+import { cx } from "../ui/cx";
 import { FormattedText } from "../ui/FormattedText";
 import { Modal } from "../ui/Modal";
-import { ProgressBar } from "../ui/ProgressBar";
+import { SegBar } from "../ui/SegBar";
 import { ItemIcon } from "../ui/ItemIcon";
-import { ConsumedSection, CraftDetailColumns, CraftDetailHeader, StatCard, WorkingMachines } from "./craftDetailParts";
-import type { WorkingMachinesGT } from "./craftDetailParts";
+import { ConsumedSection, StepTable, WorkingMachines } from "./craftDetailParts";
+import type { StepSortKey, WorkingMachinesGT } from "./craftDetailParts";
 import { buildActiveCraftDetail, isJobFinished, snapshotOf } from "./craftDetailModel";
 import { matchGTMachines } from "./craftMachinesModel";
-import type { CraftDetailColumn, CraftDetailColumnKey, CraftDetailSnapshot } from "./craftDetailModel";
+import type { CraftDetailSnapshot, CraftStepRow, StepStage } from "./craftDetailModel";
 import { JobItemDetail } from "./JobItemDetail";
 
 /** Progress readings kept for the recent-rate ETA and the throughput chart (one per poll, ~2.5-5 s apart). */
@@ -31,21 +35,24 @@ export interface CraftDetailProps {
     gridKey: GridKey;
     cpuKey: string;
     onClose: () => void;
+    /** Another CPU's Craft Detail (the tab strip). */
+    onOpenCpu: (gridKey: GridKey, cpuKey: string) => void;
 }
 
-export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
+export function CraftDetail({ gridKey, cpuKey, onClose, onOpenCpu }: CraftDetailProps) {
     const { cpus, suppressCompletion, refresh } = useCpus();
     const { selected } = useNetwork();
     const toast = useToast();
     const { startOrder } = useOrder();
 
     const [now, setNow] = useState(Date.now());
-    const [bottleneckOpen, setBottleneckOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [cancelling, setCancelling] = useState(false);
     const [filter, setFilter] = useState("");
-    // Done grows all job long and is the least interesting column while it runs.
-    const [collapsed, setCollapsed] = useState<CraftDetailColumnKey[]>(["done"]);
+    const [grouped, setGrouped] = useState(true);
+    // Done grows all job long and is the least interesting group while it runs.
+    const [hidden, setHidden] = useState<StepStage[]>(["done"]);
+    const [sort, setSort] = useState<{ key: StepSortKey; desc: boolean }>({ key: "time", desc: true });
     const [openItem, setOpenItem] = useState<ResourceRef | null>(null);
 
     // Counts Elapsed/ETA up between polls (the poll cadence is 2.5s/5s; this ticks every 1s), mirroring
@@ -128,137 +135,60 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
         }
     };
 
+    const header = (
+        <CpuTabs
+            gridKey={gridKey}
+            cpuKey={cpuKey}
+            onBack={onClose}
+            onOpen={(cpu) => onOpenCpu(cpu.sourceGridKey, cpu.cpuKey)}
+        />
+    );
+
     if (!view) {
-        if (finished) {
-            // No snapshot was ever captured (e.g. the job finished between the card click and the
-            // first `/get`). Unlike the prototype, which strands the user with no buttons at all here,
-            // this keeps a way back to Jobs.
-            return (
-                <section className="craft-detail">
-                    <CraftDetailHeader
-                        outputName="Job finished"
-                        outputQty={null}
-                        subtitle="This CPU is idle again"
-                        statusLabel="Idle"
-                        statusVariant="grey"
-                        onClose={onClose}
-                    />
-                    <div className="craft-detail__actions">
-                        <Button variant="secondary" onClick={onClose}>
-                            Back to jobs
-                        </Button>
-                    </div>
-                </section>
-            );
-        }
-        return <div className="placeholder-panel">Loading craft detail…</div>;
+        return (
+            <div className="page craft">
+                <div className="page__main">
+                    {header}
+                    {finished ? (
+                        // No snapshot was ever captured (the job finished between the click and the first detail).
+                        <div className="placeholder-panel">
+                            <p>This job finished - {cpuName} is idle again.</p>
+                            <Button variant="secondary" onClick={onClose}>
+                                Back to Crafting
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="placeholder-panel">Loading craft detail…</div>
+                    )}
+                </div>
+            </div>
+        );
     }
 
+    const steps = filterSteps(view.steps, filter);
+    const showMachines = !view.finished && view.consumed !== null;
+
     return (
-        <section className="craft-detail">
-            <CraftDetailHeader
-                outputItemid={view.outputItemid}
-                outputName={view.outputName}
-                outputQty={view.outputQty}
-                subtitle={
-                    selected === "all" && live?.gridLabel
-                        ? `${view.subtitle} - network ${live.gridLabel}`
-                        : view.subtitle
-                }
-                statusLabel={view.statusLabel}
-                statusVariant={view.statusVariant}
-                onClose={onClose}
-            />
-
-            <section className="craft-detail__stats">
-                <StatCard label="Output">
-                    <FormattedText text={view.outputName} /> x{view.outputQty.toLocaleString("en-US")}
-                </StatCard>
-                {view.stats.map((st) => (
-                    <StatCard key={st.label} label={st.label}>
-                        {st.value}
-                    </StatCard>
-                ))}
-            </section>
-
-            {view.stall && (
-                <p className="craft-detail__notice craft-detail__notice--error">
-                    No progress for {view.stall.duration}.{view.stall.reason ? ` ${view.stall.reason}` : ""}
-                </p>
-            )}
-
-            {view.progress && (
-                <section className="craft-detail__progress">
-                    <ProgressBar percent={view.progress.fraction * 100} height={8} />
-                    <span className="craft-detail__progress-caption">{view.progress.caption}</span>
-                </section>
-            )}
-
-            {!view.finished && <ThroughputChart samples={samples} />}
-
-            {!view.finished && view.consumed !== null && <WorkingMachines rows={view.machines} gt={workingGT} />}
-
-            <section className="plan-toolbar">
-                <input
-                    type="search"
-                    className="plan-toolbar__search"
-                    placeholder="Filter items…"
-                    value={filter}
-                    onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
-                />
-            </section>
-
-            <CraftDetailColumns
-                columns={filterColumns(view.columns, filter)}
-                onOpenItem={setOpenItem}
-                collapsed={view.finished || filter.trim() !== "" ? [] : collapsed}
-                onToggleCollapsed={
-                    view.finished
-                        ? undefined
-                        : (key) => setCollapsed((c) => (c.includes(key) ? c.filter((k) => k !== key) : [...c, key]))
-                }
-            />
-
-            {view.consumed !== null && <ConsumedSection rows={view.consumed} onOpenItem={setOpenItem} />}
-            {openItem && <JobItemDetail gridKey={gridKey} item={openItem} onClose={() => setOpenItem(null)} />}
-
-            {view.bottleneck && view.bottleneck.length > 0 && (
-                <section className="craft-detail__bottleneck">
-                    <button
-                        type="button"
-                        className="craft-detail__bottleneck-head"
-                        onClick={() => setBottleneckOpen((v) => !v)}
-                    >
-                        <span className="craft-detail__bottleneck-title">Where the time went</span>
-                        <span className="craft-detail__bottleneck-hint">Top 5 by time spent</span>
-                        <span className="craft-detail__bottleneck-caret">{bottleneckOpen ? "–" : "+"}</span>
-                    </button>
-                    {bottleneckOpen && (
-                        <div className="craft-detail__bottleneck-body">
-                            {view.bottleneck.map((row) => (
-                                <div className="craft-detail__bottleneck-row" key={row.itemid}>
-                                    <ItemIcon itemid={row.itemid} name={row.itemname} size={20} />
-                                    <FormattedText text={row.itemname} className="craft-detail__bottleneck-name" />
-                                    <div className="craft-detail__bottleneck-track">
-                                        <div
-                                            className="craft-detail__bottleneck-fill"
-                                            style={{ width: `${Math.round(row.sharePct * 100)}%` }}
-                                        />
-                                    </div>
-                                    <span className="craft-detail__bottleneck-value">{row.label}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-            )}
-
-            <section className="craft-detail__actions">
-                {view.finished ? (
-                    <>
-                        <Button variant="secondary" onClick={onClose}>
-                            Back to jobs
-                        </Button>
+        <div className="page craft">
+            <div className="page__main">
+                {header}
+                <section className="craft__head">
+                    <ItemIcon itemid={view.outputItemid} name={view.outputName} size={40} />
+                    <div className="craft__title-block">
+                        <span className="craft__title">
+                            <FormattedText text={view.outputName} />{" "}
+                            <span className="craft__qty">×{view.outputQty.toLocaleString("en-US")}</span>
+                        </span>
+                        <span className="craft__subtitle">
+                            {selected === "all" && live?.gridLabel
+                                ? `${view.subtitle} · network ${live.gridLabel}`
+                                : view.subtitle}
+                        </span>
+                    </div>
+                    <Badge variant={view.statusVariant} size="md">
+                        {view.statusLabel}
+                    </Badge>
+                    {view.finished ? (
                         <Button
                             variant="primary"
                             onClick={() =>
@@ -272,13 +202,92 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                         >
                             Craft again
                         </Button>
-                    </>
-                ) : (
-                    <Button variant="danger" onClick={() => setConfirmOpen(true)}>
-                        Cancel job
-                    </Button>
+                    ) : (
+                        <Button variant="danger" onClick={() => setConfirmOpen(true)}>
+                            Cancel job
+                        </Button>
+                    )}
+                </section>
+
+                <section className="craft__summary">
+                    {view.progress && (
+                        <div className="craft__progress">
+                            <SegBar
+                                done={view.progress.fraction}
+                                active={view.progress.activeFraction}
+                                color={view.finished ? "var(--green)" : "var(--amber)"}
+                            />
+                            <span className="craft__caption">{view.progress.caption}</span>
+                        </div>
+                    )}
+                    {!view.finished && <Throughput samples={samples} />}
+                    {view.stats.map((st) => (
+                        <div className="craft__stat" key={st.label}>
+                            <span className="section-label">{st.label}</span>
+                            <span className="craft__stat-value">{st.value}</span>
+                        </div>
+                    ))}
+                </section>
+
+                {view.stall && (
+                    <p className="craft__notice">
+                        No progress for {view.stall.duration}.{view.stall.reason ? ` ${view.stall.reason}` : ""}
+                    </p>
                 )}
-            </section>
+
+                <div className="craft__body">
+                    <div className="page__scroll craft__main">
+                        <div className="craft__toolbar">
+                            <input
+                                type="search"
+                                className="field craft__filter"
+                                placeholder="Filter items…"
+                                value={filter}
+                                onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
+                            />
+                            <ChipMenu
+                                options={[
+                                    { value: true, label: "Group by stage" },
+                                    { value: false, label: "No grouping" },
+                                ]}
+                                value={grouped}
+                                onChange={setGrouped}
+                            />
+                            <span className="mono-count craft__count">
+                                {steps.length} step{steps.length === 1 ? "" : "s"}
+                            </span>
+                        </div>
+                        <StepTable
+                            steps={steps}
+                            tracked={view.tracked}
+                            groupByStage={grouped}
+                            hidden={view.finished || filter.trim() !== "" ? [] : hidden}
+                            onToggleStage={(stage) =>
+                                setHidden((h) => (h.includes(stage) ? h.filter((k) => k !== stage) : [...h, stage]))
+                            }
+                            sort={sort}
+                            onSort={(key) =>
+                                setSort((cur) =>
+                                    cur.key === key ? { key, desc: !cur.desc } : { key, desc: key !== "name" },
+                                )
+                            }
+                            onOpenItem={setOpenItem}
+                        />
+                        {view.consumed !== null && (
+                            <div className="craft__consumed">
+                                <ConsumedSection rows={view.consumed} onOpenItem={setOpenItem} />
+                            </div>
+                        )}
+                    </div>
+                    {showMachines && (
+                        <aside className="craft__machines">
+                            <WorkingMachines rows={view.machines} gt={workingGT} />
+                        </aside>
+                    )}
+                </div>
+            </div>
+
+            {openItem && <JobItemDetail gridKey={gridKey} item={openItem} onClose={() => setOpenItem(null)} />}
 
             {confirmOpen && (
                 <Modal
@@ -291,7 +300,7 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                                 Keep crafting
                             </Button>
                             <Button variant="danger" onClick={() => void onConfirmCancel()} disabled={cancelling}>
-                                {cancelling ? "Cancelling…" : "Cancel Job"}
+                                {cancelling ? "Cancelling…" : "Cancel job"}
                             </Button>
                         </>
                     }
@@ -302,44 +311,87 @@ export function CraftDetail({ gridKey, cpuKey, onClose }: CraftDetailProps) {
                     </p>
                 </Modal>
             )}
-        </section>
+        </div>
     );
 }
 
-/** Units crafted per minute since this page opened; hidden until there are two minutes to compare. */
-function ThroughputChart({ samples }: { samples: ProgressSample[] }) {
+/** The CPU tab strip across the top: every CPU of the selection, the open one highlighted. */
+function CpuTabs({
+    gridKey,
+    cpuKey,
+    onBack,
+    onOpen,
+}: {
+    gridKey: GridKey;
+    cpuKey: string;
+    onBack: () => void;
+    onOpen: (cpu: CpuView) => void;
+}) {
+    const { cpus } = useCpus();
+    const ordered = [...cpus].sort((a, b) => cpuRank(a) - cpuRank(b));
+    return (
+        <nav className="cpu-tabs" aria-label="CPUs">
+            <button type="button" className="cpu-tabs__back" onClick={onBack}>
+                ← CRAFTING
+            </button>
+            {ordered.map((cpu) => {
+                const current = cpu.sourceGridKey === gridKey && cpu.cpuKey === cpuKey;
+                const stalled = cpu.isBusy && cpu.stalledSince > 0;
+                return (
+                    <button
+                        key={`${cpu.sourceGridKey}:${cpu.cpuKey}`}
+                        type="button"
+                        className={cx("cpu-tabs__tab", current && "cpu-tabs__tab--current")}
+                        aria-current={current ? "page" : undefined}
+                        disabled={!cpu.isBusy && !current}
+                        title={cpu.isBusy ? undefined : `${cpu.name} is idle`}
+                        onClick={() => !current && onOpen(cpu)}
+                    >
+                        <span className="led led--sm" style={{ background: cpuLedColor(cpu) }} />
+                        <span className="cpu-tabs__name">{cpu.name}</span>
+                        <span className={cx("cpu-tabs__pct", stalled && "red")}>
+                            {!cpu.isBusy
+                                ? "idle"
+                                : stalled
+                                  ? "stalled"
+                                  : cpu.progressPct !== null
+                                    ? `${cpu.progressPct}%`
+                                    : ""}
+                        </span>
+                    </button>
+                );
+            })}
+        </nav>
+    );
+}
+
+/** Units crafted per minute since this page opened, as a sparkline; hidden until two minutes compare. */
+function Throughput({ samples }: { samples: ProgressSample[] }) {
     const perMinute = craftedPerMinute(samples);
     if (perMinute.length < 2) return null;
-    const lastMinuteAt = Date.now();
-    const timestamps = perMinute.map((_, i) => lastMinuteAt - (perMinute.length - 1 - i) * 60_000);
+    const max = Math.max(1, ...perMinute);
+    const points = perMinute
+        .map((v, i) => `${((i / (perMinute.length - 1)) * 200).toFixed(1)},${(29 - (v / max) * 27).toFixed(1)}`)
+        .join(" ");
     return (
-        <section className="craft-detail__throughput">
-            <span className="craft-detail__progress-caption">Crafted per minute, since this page opened</span>
-            <Chart
-                values={perMinute}
-                timestamps={timestamps}
-                range="custom"
-                spanMillis={perMinute.length * 60_000}
-                width={600}
-                height={64}
-                zeroBased
-                showAxes
-                yTickCount={2}
-                ariaLabel="Crafted per minute"
-            />
-        </section>
+        <div
+            className="craft__throughput"
+            title={`Last minute: ${perMinute[perMinute.length - 1]!.toFixed(0)} crafted`}
+        >
+            <span className="section-label">Crafted / min · since opened</span>
+            <svg width="200" height="30" viewBox="0 0 200 30" aria-label="Crafted per minute since this page opened">
+                <line x1="0" y1="29.5" x2="200" y2="29.5" stroke="var(--border)" />
+                <polyline points={points} fill="none" stroke="var(--amber)" stroke-width="1.5" />
+            </svg>
+        </div>
     );
 }
 
-/** Narrows every column to the rows whose plain name or itemid contains `filter`, case-insensitive. */
-function filterColumns(columns: CraftDetailColumn[], filter: string): CraftDetailColumn[] {
+/** The steps whose plain name or itemid contains `filter`, case-insensitive. */
+function filterSteps(steps: CraftStepRow[], filter: string): CraftStepRow[] {
     const needle = filter.trim().toLowerCase();
-    if (needle === "") return columns;
-    return columns.map((col) => ({
-        ...col,
-        rows: col.rows.filter(
-            (r) =>
-                skipSpecialFormat(r.itemname).toLowerCase().includes(needle) || r.itemid.toLowerCase().includes(needle),
-        ),
-    }));
+    if (needle === "") return steps;
+    return steps.filter(
+        (r) => skipSpecialFormat(r.itemname).toLowerCase().includes(needle) || r.itemid.toLowerCase().includes(needle),
+    );
 }

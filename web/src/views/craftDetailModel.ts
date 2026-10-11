@@ -6,10 +6,11 @@ import {
     craftTotals,
     estimateRemaining,
     formatResourceAmount,
+    progressUnits,
     recentRate,
     recentRemaining,
 } from "../state/craftProgress";
-import type { ProgressSample } from "../state/craftProgress";
+import type { CraftTotals, ProgressSample } from "../state/craftProgress";
 import type {
     CompactedItem,
     ConsumedItem,
@@ -19,36 +20,27 @@ import type {
     WorkingMachine,
 } from "../api/types";
 import type { CpuView } from "../state/cpus";
-import { isFluidId } from "./browserModel";
 
-export type CraftDetailColumnKey = "crafting" | "waiting" | "done";
+export type StepStage = "crafting" | "waiting" | "done";
 
-export interface CraftDetailItemRow {
+/** One item of the job: a row of Craft Detail's step table. Amounts are per resource (fluids in L). */
+export interface CraftStepRow {
     itemid: string;
+    /** Raw (possibly §-formatted) - render via `<FormattedText>`. */
     itemname: string;
-    /** `active`, `pending`, `stored`, and (tracked only) `crafted x/y`, `rate`, `time spent`. */
-    stats: { label: string; value: string }[];
-    badgeText: string;
-    /** `0..1`, or `null` when untracked or this item has no recorded time. */
-    sharePct: number | null;
-    /** `0..1` of this item's planned amount crafted so far; `null` when untracked or finished. */
-    progress: number | null;
-}
-
-export interface CraftDetailColumn {
-    key: CraftDetailColumnKey;
-    title: string;
-    color: "amber" | "grey" | "green";
-    rows: CraftDetailItemRow[];
-    emptyText: string;
-}
-
-export interface CraftDetailBottleneckRow {
-    itemid: string;
-    itemname: string;
-    /** `0..1`. */
-    sharePct: number;
-    label: string;
+    stage: StepStage;
+    crafted: number;
+    /** What the job set out to craft of it (`planned`, else crafted + active + pending). */
+    planned: number;
+    active: number;
+    pending: number;
+    stored: number;
+    /** Units per second while it was crafting; `null` untracked or before any time was spent on it. */
+    rate: number | null;
+    /** ms; zero untracked. */
+    timeSpent: number;
+    /** `0..1` of the job's summed crafting time; `null` untracked. */
+    share: number | null;
 }
 
 export interface CraftDetailStat {
@@ -86,10 +78,11 @@ export interface CraftDetailView {
     /** Elapsed/Took, Est. remaining, Crafts/sec - the Output card is rendered separately since its
      *  value needs `<FormattedText>`, not a plain string. */
     stats: CraftDetailStat[];
-    /** `null` when untracked - the progress block (bar + caption) is hidden entirely. */
-    progress: { fraction: number; caption: string } | null;
-    columns: CraftDetailColumn[];
-    bottleneck: CraftDetailBottleneckRow[] | null;
+    /** `null` when untracked - the progress strip and caption are hidden entirely. */
+    progress: { fraction: number; activeFraction: number; caption: string } | null;
+    steps: CraftStepRow[];
+    /** Whether the job had tracking - without it the step table has no crafted/rate/time figures. */
+    tracked: boolean;
     /** `null` when untracked; otherwise raw materials first, then intermediates. */
     consumed: ConsumedRow[] | null;
     machines: WorkingMachineRow[];
@@ -150,12 +143,6 @@ export function snapshotOf(cpu: CpuView, now: number): CraftDetailSnapshot | nul
     };
 }
 
-function itemRate(item: CompactedItem): string {
-    if (item.timeSpentCrafting <= 0) return "-";
-    const rate = (item.craftedTotal / (item.timeSpentCrafting / 1000)).toFixed(2);
-    return isFluidId(item.itemid) ? `${rate} L/s` : `${rate}/s`;
-}
-
 /** Raw materials first (what the job actually drew from storage), each group largest first. */
 export function buildConsumedRows(consumed: ConsumedItem[]): ConsumedRow[] {
     return [...consumed]
@@ -197,41 +184,6 @@ function buildStall(live: CpuView, now: number): CraftDetailView["stall"] {
     return { duration: formatDuration(Math.max(0, serverNow - detail.stalledSince)), reason: detail.stallReason };
 }
 
-function buildRow(
-    item: CompactedItem,
-    tracked: boolean,
-    badgeText: string,
-    totalTime: number,
-    used: Map<string, number>,
-): CraftDetailItemRow {
-    const requested = item.planned > 0 ? item.planned : item.craftedTotal + item.active + item.pending;
-    const stats: CraftDetailStat[] = [
-        { label: "active", value: formatNumber(item.active) },
-        { label: "pending", value: formatNumber(item.pending) },
-        { label: "stored", value: formatNumber(item.stored) },
-    ];
-    if (tracked) {
-        stats.push({
-            label: "crafted",
-            value: `${formatResourceAmount(item.itemid, item.craftedTotal)} / ${formatResourceAmount(item.itemid, requested)}`,
-        });
-        stats.push({ label: "rate", value: itemRate(item) });
-        stats.push({ label: "time spent", value: formatDuration(item.timeSpentCrafting) });
-        const usedAmount = used.get(item.itemid);
-        if (usedAmount) stats.push({ label: "used", value: formatResourceAmount(item.itemid, usedAmount) });
-    }
-    const share = tracked && totalTime > 0 ? item.timeSpentCrafting / totalTime : 0;
-    return {
-        itemid: item.itemid,
-        itemname: item.itemname,
-        stats,
-        badgeText,
-        sharePct: share > 0 ? share : null,
-        progress:
-            tracked && badgeText !== "complete" && requested > 0 ? Math.min(1, item.craftedTotal / requested) : null,
-    };
-}
-
 /** Builds the Craft Detail view model for active mode from a live `CpuView` or a frozen snapshot. */
 export function buildActiveCraftDetail(
     live: CpuView | null,
@@ -262,14 +214,16 @@ export function buildActiveCraftDetail(
             : null;
     const jobRate = tracked && elapsed > 0 ? totals.crafted / (elapsed / 1000) : 0;
 
-    const stats: CraftDetailStat[] = [{ label: "Elapsed", value: tracked ? formatDuration(elapsed) : "—" }];
+    const stats: CraftDetailStat[] = [];
+    if (tracked) stats.push({ label: "Progress", value: `${Math.floor(progressFraction * 100)}%` });
+    stats.push({ label: "Elapsed", value: tracked ? formatDuration(elapsed) : "—" });
     if (tracked) {
         stats.push({
             label: "Est. remaining",
             value: stalled ? "Stalled" : remaining !== null ? `~${formatDuration(remaining)}` : "Calculating",
         });
-        stats.push({ label: "Crafts / sec", value: jobRate.toFixed(2) });
-        if (recent !== null) stats.push({ label: "Last 5 min / sec", value: recent.toFixed(2) });
+        stats.push({ label: "Crafts/s", value: jobRate.toFixed(2) });
+        if (recent !== null) stats.push({ label: "Last 5 min/s", value: recent.toFixed(2) });
     }
 
     return {
@@ -280,16 +234,9 @@ export function buildActiveCraftDetail(
         statusLabel: detail.stalledSince > 0 ? "Stalled" : tracked ? "Crafting" : "Crafting - no tracking",
         statusVariant: detail.stalledSince > 0 ? "red" : "amber",
         stats,
-        progress: tracked
-            ? {
-                  fraction: progressFraction,
-                  caption: `${formatNumber(Math.round(totals.crafted))} of ${formatNumber(Math.round(totals.requested))} sub-crafts complete${
-                      detail.plannedTotal > 0 ? "" : " - approximated from crafted totals"
-                  }`,
-              }
-            : null,
-        columns: buildColumns(items, tracked, totals.totalTime, false, usedByItem(detail.consumed)),
-        bottleneck: tracked ? buildBottleneck(items, totals.totalTime) : null,
+        progress: tracked ? liveProgress(items, totals, detail.plannedTotal > 0) : null,
+        steps: buildSteps(items, tracked, totals.totalTime, false),
+        tracked,
         consumed: tracked ? buildConsumedRows(detail.consumed) : null,
         machines: buildMachineRows(live, now),
         stall: buildStall(live, now),
@@ -303,7 +250,7 @@ function buildFromSnapshot(snapshot: CraftDetailSnapshot): CraftDetailView {
     const jobRate = tracked && elapsedMs > 0 ? totals.crafted / (elapsedMs / 1000) : 0;
 
     const stats: CraftDetailStat[] = [{ label: "Took", value: tracked ? formatDuration(elapsedMs) : "—" }];
-    if (tracked) stats.push({ label: "Crafts / sec", value: jobRate.toFixed(2) });
+    if (tracked) stats.push({ label: "Crafts/s", value: jobRate.toFixed(2) });
 
     return {
         outputItemid: snapshot.output.itemid,
@@ -316,11 +263,12 @@ function buildFromSnapshot(snapshot: CraftDetailSnapshot): CraftDetailView {
         progress: tracked
             ? {
                   fraction: 1,
+                  activeFraction: 0,
                   caption: `Completed - ${formatNumber(Math.round(totals.crafted))} sub-crafts recorded over ${formatDuration(elapsedMs)}`,
               }
             : null,
-        columns: buildColumns(items, tracked, totals.totalTime, true, usedByItem(snapshot.consumed)),
-        bottleneck: tracked ? buildBottleneck(items, totals.totalTime) : null,
+        steps: buildSteps(items, tracked, totals.totalTime, true),
+        tracked,
         consumed: tracked ? buildConsumedRows(snapshot.consumed) : null,
         machines: [],
         stall: null,
@@ -328,60 +276,56 @@ function buildFromSnapshot(snapshot: CraftDetailSnapshot): CraftDetailView {
     };
 }
 
-/** Amount used per itemid; a fluid and an item never share an itemid, so no key collision. */
-function usedByItem(consumed: ConsumedItem[]): Map<string, number> {
-    const used = new Map<string, number>();
-    for (const c of consumed) used.set(c.itemid, (used.get(c.itemid) ?? 0) + c.amount);
-    return used;
-}
-
-function buildColumns(
+function liveProgress(
     items: CompactedItem[],
-    tracked: boolean,
-    totalTime: number,
-    finished: boolean,
-    used: Map<string, number>,
-): CraftDetailColumn[] {
-    const crafting = finished ? [] : items.filter((i) => i.active > 0);
-    const waiting = finished ? [] : items.filter((i) => i.active === 0 && i.pending > 0);
-    const done = finished ? items : items.filter((i) => i.active === 0 && i.pending === 0 && i.craftedTotal > 0);
-    return [
-        {
-            key: "crafting",
-            title: "Crafting",
-            color: "amber",
-            rows: crafting.map((i) => buildRow(i, tracked, "active", totalTime, used)),
-            emptyText: "Nothing being crafted right now",
-        },
-        {
-            key: "waiting",
-            title: "Waiting",
-            color: "grey",
-            rows: waiting.map((i) => buildRow(i, tracked, "scheduled", totalTime, used)),
-            emptyText: "Nothing scheduled",
-        },
-        {
-            key: "done",
-            title: "Done",
-            color: "green",
-            rows: done.map((i) => buildRow(i, tracked, "complete", totalTime, used)),
-            emptyText: tracked ? "Nothing finished yet" : "Completion needs job tracking",
-        },
+    totals: CraftTotals,
+    planned: boolean,
+): NonNullable<CraftDetailView["progress"]> {
+    let active = 0;
+    let pending = 0;
+    for (const item of items) {
+        active += progressUnits(item.itemid, item.active);
+        pending += progressUnits(item.itemid, item.pending);
+    }
+    const requested = totals.requested;
+    const parts = [
+        `${formatNumber(Math.round(totals.crafted))} of ${formatNumber(Math.round(requested))} sub-crafts complete`,
+        `${formatNumber(Math.round(active))} in machines`,
+        `${formatNumber(Math.round(pending))} waiting`,
     ];
+    if (!planned) parts.push("approximated from crafted totals");
+    return {
+        fraction: requested > 0 ? Math.min(1, totals.crafted / requested) : 0,
+        activeFraction: requested > 0 ? Math.min(1, active / requested) : 0,
+        caption: parts.join(" · "),
+    };
 }
 
-function buildBottleneck(items: CompactedItem[], totalTime: number): CraftDetailBottleneckRow[] {
-    return items
-        .filter((i) => i.timeSpentCrafting > 0)
-        .sort((a, b) => b.timeSpentCrafting - a.timeSpentCrafting)
-        .slice(0, 5)
-        .map((i) => {
-            const share = totalTime > 0 ? i.timeSpentCrafting / totalTime : 0;
-            return {
-                itemid: i.itemid,
-                itemname: i.itemname,
-                sharePct: share,
-                label: `${formatDuration(i.timeSpentCrafting)} - ${Math.round(share * 100)}%`,
-            };
+function stageOf(item: CompactedItem, finished: boolean): StepStage | null {
+    if (finished) return "done";
+    if (item.active > 0) return "crafting";
+    if (item.pending > 0) return "waiting";
+    return item.craftedTotal > 0 ? "done" : null;
+}
+
+function buildSteps(items: CompactedItem[], tracked: boolean, totalTime: number, finished: boolean): CraftStepRow[] {
+    const rows: CraftStepRow[] = [];
+    for (const item of items) {
+        const stage = stageOf(item, finished);
+        if (!stage) continue;
+        rows.push({
+            itemid: item.itemid,
+            itemname: item.itemname,
+            stage,
+            crafted: item.craftedTotal,
+            planned: item.planned > 0 ? item.planned : item.craftedTotal + item.active + item.pending,
+            active: item.active,
+            pending: item.pending,
+            stored: item.stored,
+            rate: tracked && item.timeSpentCrafting > 0 ? item.craftedTotal / (item.timeSpentCrafting / 1000) : null,
+            timeSpent: tracked ? item.timeSpentCrafting : 0,
+            share: tracked && totalTime > 0 ? item.timeSpentCrafting / totalTime : null,
         });
+    }
+    return rows;
 }

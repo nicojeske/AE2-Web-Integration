@@ -33,7 +33,7 @@ export interface CpuView extends CpuSummary {
      * trusting `Date.now() - timeStarted` directly (client/server clock skew).
      */
     fetchedAt: number | null;
-    /** 0-99 from the tracked job's planned/crafted totals, or null when untracked. */
+    /** Whole percent 0-99 from the tracked job's planned/crafted totals, or null when untracked. */
     progressPct: number | null;
 }
 
@@ -78,7 +78,7 @@ function computeTargets(selection: GridSelection, allGrids: GridSummary[]): Grid
 /** Clamped to [0, 99] so it never reads 100% before the CPU actually reports idle. */
 function listProgress(cpu: CpuSummary): number | null {
     if (!cpu.hasTrackingInfo || cpu.plannedTotal <= 0) return null;
-    return Math.min(99, Math.max(0, (cpu.craftedTotal / cpu.plannedTotal) * 100));
+    return Math.min(99, Math.max(0, Math.floor((cpu.craftedTotal / cpu.plannedTotal) * 100)));
 }
 
 interface LastBusyEntry {
