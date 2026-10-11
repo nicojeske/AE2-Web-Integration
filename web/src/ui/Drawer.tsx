@@ -13,11 +13,23 @@ export interface DrawerProps {
     /** Suspends the focus trap/Escape handling - set false while a dialog nested on top (e.g. a
      * confirm Modal) should own focus instead. Defaults to true. */
     trapFocus?: boolean;
-    /** `"left"` for the <768px off-canvas nav (M11's Sidebar); everything else stays `"right"`. */
-    side?: "left" | "right";
+    /** `"bottom"` is the phone's "More" sheet; everything else is a right-hand slide-over. */
+    side?: "left" | "right" | "bottom";
+    width?: number;
+    className?: string;
 }
 
-export function Drawer({ title, subtitle, onClose, children, footer, trapFocus = true, side = "right" }: DrawerProps) {
+export function Drawer({
+    title,
+    subtitle,
+    onClose,
+    children,
+    footer,
+    trapFocus = true,
+    side = "right",
+    width,
+    className,
+}: DrawerProps) {
     const ref = useDialogA11y<HTMLDivElement>(onClose, trapFocus);
     const onBackdropClick: JSX.MouseEventHandler<HTMLDivElement> = (e) => {
         if (e.target === e.currentTarget) onClose();
@@ -25,13 +37,14 @@ export function Drawer({ title, subtitle, onClose, children, footer, trapFocus =
 
     return createPortal(
         <div
-            className={cx("drawer-backdrop", side === "left" && "drawer-backdrop--left")}
+            className={cx("drawer-backdrop", side !== "right" && `drawer-backdrop--${side}`)}
             style={{ background: "var(--backdrop-drawer)" }}
             onClick={onBackdropClick}
         >
             <div
                 ref={ref}
-                className={cx("drawer", side === "left" && "drawer--left")}
+                className={cx("drawer", side !== "right" && `drawer--${side}`, className)}
+                style={width !== undefined && side === "right" ? { width: `${width}px` } : undefined}
                 role="dialog"
                 aria-modal="true"
                 aria-label={title}

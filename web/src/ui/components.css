@@ -76,13 +76,12 @@
     cursor: not-allowed;
 }
 .btn--md {
-    padding: 9px 14px;
-    font-size: 13px;
+    padding: 8px 14px;
+    font-size: 12.5px;
 }
 .btn--sm {
-    padding: 7px 12px;
+    padding: 5px 10px;
     font-size: 12px;
-    border-radius: var(--radius-btn-sm);
 }
 .btn--primary {
     background: var(--accent);
@@ -96,38 +95,35 @@
     background: var(--disabled-bg);
     color: var(--text-dim);
 }
-.btn--secondary {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-}
-.btn--secondary:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
+.btn--secondary,
 .btn--ghost {
     background: none;
     border: 1px solid var(--border);
     color: var(--text-secondary);
 }
+.btn--secondary:hover:not(:disabled),
 .btn--ghost:hover:not(:disabled) {
     border-color: var(--border-hover);
+    color: var(--text-primary);
+}
+.btn--secondary:disabled,
+.btn--ghost:disabled {
+    color: var(--text-dim);
 }
 .btn--danger {
-    background: rgba(242, 96, 107, 0.12);
-    border: 1px solid rgba(242, 96, 107, 0.3);
+    background: none;
+    border: 1px solid rgba(242, 96, 107, 0.35);
     color: var(--red);
-    font-weight: 500;
 }
 .btn--danger:hover:not(:disabled) {
-    background: rgba(242, 96, 107, 0.2);
+    background: rgba(242, 96, 107, 0.1);
 }
 .btn--pill {
-    background: var(--bg-card);
+    background: none;
     border: 1px solid var(--border);
     color: var(--text-secondary);
-    border-radius: var(--radius-pill);
-    padding: 7px 14px;
+    border-radius: var(--radius-md);
+    padding: 4px 9px;
     font-size: 12px;
 }
 .btn--pill:hover:not(:disabled) {
@@ -135,47 +131,56 @@
     color: var(--text-primary);
 }
 .btn--icon {
-    background: var(--bg-card);
+    background: none;
     border: 1px solid var(--border);
     color: var(--text-secondary);
-    width: 32px;
-    height: 32px;
-    flex: 0 0 32px;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
     padding: 0;
     font-size: 15px;
 }
 .btn--icon:hover:not(:disabled) {
     border-color: var(--border-hover);
+    color: var(--text-primary);
 }
 .btn--text {
     background: none;
     border: 0;
-    color: var(--text-dim);
-    padding: 4px 6px;
+    color: var(--cyan);
+    padding: 2px 4px;
     font-size: 12px;
 }
 .btn--text:hover:not(:disabled) {
-    color: var(--red);
+    color: #8fe6ec;
+}
+.btn--text:disabled {
+    color: var(--text-dim);
 }
 
-/* Badge / status pill */
+/* Badge - the console's mono status chip */
 .badge {
     display: inline-flex;
     align-items: center;
     border-radius: var(--radius-sm);
-    font-size: 11px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
     font-weight: 500;
     line-height: 1.4;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
     white-space: nowrap;
+    width: fit-content;
 }
 .badge--md {
-    padding: 4px 10px;
+    padding: 3px 8px;
+    font-size: 11px;
 }
 .badge--sm {
-    padding: 3px 8px;
+    padding: 2px 6px;
 }
 .badge--green {
-    background: rgba(74, 222, 128, 0.14);
+    background: rgba(74, 222, 128, 0.12);
     color: var(--green);
 }
 .badge--amber {
@@ -187,78 +192,84 @@
     color: var(--red);
 }
 .badge--grey {
-    background: rgba(154, 161, 184, 0.14);
+    background: rgba(134, 140, 163, 0.14);
     color: var(--text-muted);
 }
 .badge--teal {
-    background: rgba(63, 215, 196, 0.12);
-    color: var(--teal);
+    background: rgba(79, 214, 224, 0.12);
+    color: var(--cyan);
 }
 .badge--purple {
-    background: rgba(139, 123, 245, 0.14);
-    color: var(--accent);
+    background: var(--accent-soft-bg);
+    color: var(--accent-soft-text);
 }
 
-/* Card */
+/* Card - a flat bordered box */
 .card {
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-card);
 }
 .card--clickable {
     cursor: pointer;
 }
 .card--clickable:hover {
-    border-color: var(--border-hover);
+    border-color: var(--border);
 }
 
 /* Progress bar */
 .progress-track {
-    background: var(--bg-sunken);
-    border-radius: var(--radius-xs);
+    background: var(--border-subtle);
     overflow: hidden;
 }
 .progress-fill {
     height: 100%;
-    border-radius: var(--radius-xs);
     transition: width 0.4s ease;
 }
 
 /* Segmented control */
 .segmented {
     display: inline-flex;
-    padding: 3px;
-    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    gap: 2px;
+    overflow: hidden;
+    flex-shrink: 0;
 }
 .segmented__option {
     border: 0;
     background: none;
     color: var(--text-muted);
-    font-size: 12.5px;
+    font-size: 12px;
     font-family: var(--font-body);
-    padding: 6px 12px;
-    border-radius: calc(var(--radius-md) - 2px);
+    padding: 4px 9px;
     cursor: pointer;
+    white-space: nowrap;
+}
+.segmented__option:hover {
+    color: var(--text-primary);
 }
 .segmented__option--active {
-    background: var(--accent);
-    color: var(--bg-app);
-    font-weight: 500;
+    background: var(--border-subtle);
+    color: var(--text-primary);
+}
+.segmented--mono .segmented__option {
+    font-family: var(--font-mono);
+    font-size: 11px;
 }
 
 /* Checkbox */
 .checkbox-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
 }
 .checkbox-box {
-    width: 16px;
-    height: 16px;
-    flex: 0 0 16px;
+    width: 13px;
+    height: 13px;
+    flex: 0 0 13px;
     border-radius: var(--radius-xs);
     border: 1px solid var(--checkbox-border);
     background: transparent;
@@ -277,7 +288,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
     font-family: var(--font-display);
     font-weight: 700;
@@ -285,10 +296,31 @@
     text-transform: uppercase;
 }
 .item-icon--image {
-    /* Source art is 32x32; keep pixel edges crisp at the 38-44px display sizes instead of blurring. */
+    /* Source art is 32x32; keep pixel edges crisp at larger display sizes instead of blurring. */
     object-fit: contain;
     image-rendering: pixelated;
     background: var(--bg-sunken);
+}
+
+/* Text inputs - the console's sunken field */
+.field {
+    padding: 6px 10px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 12.5px;
+    color: var(--text-primary);
+    min-width: 0;
+}
+.field::placeholder {
+    color: var(--text-dim);
+}
+.field:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.field--mono {
+    font-family: var(--font-mono);
 }
 
 /* Toast */
@@ -302,10 +334,11 @@
     z-index: 1000;
 }
 .toast {
-    background: var(--bg-card);
-    border: 1px solid var(--border-hover);
-    border-radius: var(--radius-card-sm);
-    padding: 12px 16px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
     font-size: 13px;
     color: var(--text-primary);
     box-shadow: var(--shadow-float);
@@ -321,9 +354,10 @@
     z-index: 900;
 }
 .modal {
-    background: var(--bg-card);
+    background: var(--bg-panel);
     border: 1px solid var(--border);
     border-radius: var(--radius-modal);
+    box-shadow: var(--shadow-modal);
     display: flex;
     flex-direction: column;
     max-height: 90vh;
@@ -332,7 +366,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 16px 20px;
+    padding: 14px 18px;
     border-bottom: 1px solid var(--border-subtle);
 }
 .modal__title {
@@ -355,18 +389,18 @@
     color: var(--text-primary);
 }
 .modal__body {
-    padding: 18px 20px;
+    padding: 16px 18px;
     overflow-y: auto;
 }
 .modal__footer {
     display: flex;
     justify-content: flex-end;
-    gap: 10px;
-    padding: 14px 20px;
+    gap: 8px;
+    padding: 12px 18px;
     border-top: 1px solid var(--border-subtle);
 }
 
-/* Drawer */
+/* Drawer / slide-over */
 .drawer-backdrop {
     position: fixed;
     inset: 0;
@@ -377,36 +411,48 @@
 .drawer-backdrop--left {
     justify-content: flex-start;
 }
+.drawer-backdrop--bottom {
+    align-items: flex-end;
+    justify-content: stretch;
+}
 .drawer {
-    width: 420px;
+    width: 440px;
     max-width: 100vw;
     height: 100%;
     background: var(--bg-panel);
-    border-left: 1px solid var(--border-subtle);
+    border-left: 1px solid var(--border);
+    box-shadow: -18px 0 40px rgba(0, 0, 0, 0.45);
     display: flex;
     flex-direction: column;
 }
 .drawer--left {
     width: 260px;
     border-left: 0;
-    border-right: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border);
+}
+.drawer--bottom {
+    width: 100%;
+    height: auto;
+    max-height: 80vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
 }
 .drawer__header {
-    padding: 18px 20px;
+    padding: 16px 18px;
     border-bottom: 1px solid var(--border-subtle);
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
 }
 .drawer__title {
     font-family: var(--font-display);
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 600;
     margin: 0;
 }
 .drawer__subtitle {
     font-size: 12px;
-    color: var(--text-dim);
+    color: var(--text-muted);
     margin-top: 2px;
 }
 .drawer__close {
@@ -423,18 +469,404 @@
 .drawer__body {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 20px;
+    padding: 18px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 20px;
 }
 .drawer__footer {
-    padding: 16px 20px;
+    display: flex;
+    gap: 8px;
+    padding: 12px 18px;
     border-top: 1px solid var(--border-subtle);
 }
 
-/* Visually hidden but still announced by screen readers - used by Chart's live-region readout, since
-   a chart plot has no per-point elements for focus/aria to land on individually. */
+/* ---- Console patterns shared by every page ---- */
+
+/* A page's own header row (title, filters, count, toggles) right under the topbar. */
+.page {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+}
+.page__main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+.page__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+.page-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.page-header__title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 6px 0 0;
+}
+.page-header__sub {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.page-header__end {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.page-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.mono-count {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+/* Mono uppercase label above a block. */
+.section-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.section-head > .section-label {
+    flex: 1;
+}
+
+/* Filter chip: `Label ▾` (a dropdown) or an active `Label ×`. */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 9px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.chip:hover {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+}
+.chip--active {
+    color: var(--accent-soft-text);
+    background: var(--accent-soft-bg);
+    border-color: var(--accent-soft-border);
+}
+.chip--active:hover {
+    color: var(--accent-soft-text);
+    border-color: var(--accent);
+}
+.chip__caret {
+    color: var(--text-dim);
+}
+.chip-menu {
+    position: relative;
+    display: inline-flex;
+}
+.chip-menu__list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 800;
+    min-width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-float);
+}
+.chip-menu__list--end {
+    left: auto;
+    right: 0;
+}
+.chip-menu__option {
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.chip-menu__option:hover {
+    background: var(--border-subtle);
+    color: var(--text-primary);
+}
+.chip-menu__option--active {
+    color: var(--accent-soft-text);
+}
+
+/* Dense table: header and rows share `--cols`, set by the view. */
+.dtable {
+    --cols: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.dtable__head,
+.dtable__row {
+    display: grid;
+    grid-template-columns: var(--cols);
+    gap: 12px;
+    align-items: center;
+    padding: 0 16px;
+}
+.dtable__head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: 28px;
+    background: var(--bg-app);
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.dtable__sort {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-align: inherit;
+}
+.dtable__sort:hover,
+.dtable__sort--active {
+    color: var(--text-secondary);
+}
+.dtable__row {
+    min-height: 40px;
+    border-bottom: 1px solid var(--row-divider);
+}
+.dtable__row--clickable {
+    cursor: pointer;
+}
+.dtable__row--clickable:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+.dtable__row--selected,
+.dtable__row--selected:hover {
+    background: var(--accent-row-bg);
+}
+.dtable__group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px 4px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+.cell-num {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: right;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.cell-text {
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.cell-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.cell-stack {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.right {
+    text-align: right;
+}
+
+/* Thin bar: track plus fill, optional marker. */
+.bar {
+    position: relative;
+    height: 6px;
+    background: var(--border-subtle);
+}
+.bar__fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+}
+.bar__marker {
+    position: absolute;
+    top: -3px;
+    width: 1px;
+    height: calc(100% + 6px);
+}
+
+/* Square LED (CPU state, status rows). */
+.led {
+    display: inline-block;
+    width: 7px;
+    height: 14px;
+    flex-shrink: 0;
+    background: var(--led-off);
+}
+.led--sm {
+    width: 6px;
+    height: 12px;
+}
+.dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+}
+.leds {
+    display: flex;
+    gap: 3px;
+}
+
+/* N-segment progress strip (job progress). */
+.segbar {
+    display: grid;
+    gap: 2px;
+    height: 10px;
+}
+
+/* Grid of key/value cells with hairline separators. */
+.kv-grid {
+    display: grid;
+    gap: 1px;
+    background: var(--border-subtle);
+    border: 1px solid var(--border-subtle);
+}
+.kv-grid__cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 9px 12px;
+    background: var(--bg-app);
+    min-width: 0;
+}
+.kv-grid__key {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.kv-grid__value {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kv-grid__value--mono {
+    font-family: var(--font-mono);
+    font-size: 13px;
+}
+
+/* Inline item chip: icon, name, amount (consumed inputs, recipe parts). */
+.item-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 9px 4px 5px;
+    background: var(--bg-app);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 12.5px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.item-chip:hover {
+    border-color: var(--border-hover);
+}
+.item-chip__qty {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.item-chip--dim {
+    opacity: 0.65;
+}
+
+/* Right-hand inspector: inline aside on wide screens, a slide-over below (Inspector.tsx). */
+.inspector {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 18px;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border-subtle);
+    overflow-y: auto;
+    min-height: 0;
+}
+.inspector__empty {
+    margin: auto;
+    max-width: 240px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+}
+.inspector-overlay .drawer__body {
+    gap: 18px;
+}
+
+/* Thin scrollbars everywhere in the console. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+/* Visually hidden but still announced by screen readers. */
 .sr-only {
     position: absolute;
     width: 1px;
