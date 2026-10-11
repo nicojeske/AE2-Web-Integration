@@ -63,8 +63,9 @@ export interface CpuSummary {
     timeStarted: number;
     /** Server-measured; zero when untracked. */
     timeElapsed: number;
-    /** Units the tracked job set out to craft, all resources summed; zero when untracked. */
+    /** Units the tracked job set out to craft, all resources summed (fluids per bucket, so possibly fractional); zero when untracked. */
     plannedTotal: number;
+    /** Summed like `plannedTotal`. */
     craftedTotal: number;
     /** Server-clock epoch millis of the last progress before the job stalled; zero while not stalled. */
     stalledSince: number;
@@ -102,6 +103,7 @@ export interface CpuDetail {
     hasTrackingInfo: boolean;
     timeStarted: number;
     timeElapsed: number;
+    /** Same units as `CpuSummary.plannedTotal`: items one each, fluids one per bucket. */
     plannedTotal: number;
     craftedTotal: number;
     /** Server-clock epoch millis of the last progress before the job stalled; zero while not stalled. */

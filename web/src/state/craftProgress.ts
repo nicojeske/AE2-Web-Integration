@@ -1,7 +1,22 @@
 // Shared crafting-progress arithmetic for the Craft Detail page (views/craftDetailModel.ts). A tracked
 // job carries each item's `planned` units, fixed when it started; an item without one (a byproduct, a
-// pre-snapshot job) falls back to `craftedTotal + active + pending`.
+// pre-snapshot job) falls back to `craftedTotal + active + pending`. Fluids count one per bucket, not per L.
+import { formatLiters, formatNumber } from "../api/format";
 import type { CompactedItem } from "../api/types";
+import { isFluidId } from "../views/browserModel";
+
+/**
+ * A resource's weight in a job's progress: items one each, fluids (amounts in L) one per bucket, so a fluid step
+ * doesn't outweigh every item of the job a thousandfold. Mirrors `AE2JobTracker.progressUnits` on the server.
+ */
+export function progressUnits(itemid: string, amount: number): number {
+    return isFluidId(itemid) ? amount / 1000 : amount;
+}
+
+/** A per-resource amount: an item count, or a fluid in L/kL/ML. */
+export function formatResourceAmount(itemid: string, amount: number): string {
+    return isFluidId(itemid) ? formatLiters(amount) : formatNumber(amount);
+}
 
 export interface CraftTotals {
     crafted: number;
@@ -16,8 +31,11 @@ export function craftTotals(items: CompactedItem[] | null): CraftTotals {
     let totalTime = 0;
     if (items) {
         for (const item of items) {
-            crafted += item.craftedTotal;
-            requested += item.planned > 0 ? item.planned : item.craftedTotal + item.active + item.pending;
+            crafted += progressUnits(item.itemid, item.craftedTotal);
+            requested += progressUnits(
+                item.itemid,
+                item.planned > 0 ? item.planned : item.craftedTotal + item.active + item.pending,
+            );
             totalTime += item.timeSpentCrafting;
         }
     }

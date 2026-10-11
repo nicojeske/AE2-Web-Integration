@@ -2,7 +2,9 @@
 // `craftDetailModel.ts` (M3/M4) so the arithmetic stays reviewable/testable in isolation.
 import { formatDuration, formatNumber, formatTimestamp, skipSpecialFormat } from "../api/format";
 import type { DimensionalCoords, TrackingDetail } from "../api/types";
+import { formatResourceAmount, progressUnits } from "../state/craftProgress";
 import type { TimelineRow } from "../ui/Timeline";
+import { isFluidId } from "./browserModel";
 import { buildConsumedRows } from "./craftDetailModel";
 import type { ConsumedRow } from "./craftDetailModel";
 
@@ -51,7 +53,7 @@ function sortedLocationLines(location: DimensionalCoords[]): string[] {
 
 export function buildTrackingDetail(detail: TrackingDetail): TrackingDetailView {
     const totalTimeSpent = detail.items.reduce((sum, it) => sum + it.timeSpentOn, 0);
-    const totalCrafted = detail.items.reduce((sum, it) => sum + it.craftedTotal, 0);
+    const totalCrafted = detail.items.reduce((sum, it) => sum + progressUnits(it.itemid, it.craftedTotal), 0);
     const elapsed = detail.timeDone - detail.timeStarted;
     const used = new Map(detail.consumed.map((c) => [c.itemid, c.amount]));
 
@@ -69,10 +71,15 @@ export function buildTrackingDetail(detail: TrackingDetail): TrackingDetailView 
             itemname: it.itemname,
             sharePct,
             stats: [
-                { label: "Crafted", value: formatNumber(it.craftedTotal) },
+                { label: "Crafted", value: formatResourceAmount(it.itemid, it.craftedTotal) },
                 { label: "Time spent", value: formatDuration(it.timeSpentOn) },
-                { label: "Rate", value: rate === null ? "—" : `${rate.toFixed(2)}/s` },
-                ...(used.has(it.itemid) ? [{ label: "Used", value: formatNumber(used.get(it.itemid)!) }] : []),
+                {
+                    label: "Rate",
+                    value: rate === null ? "—" : `${rate.toFixed(2)}${isFluidId(it.itemid) ? " L" : ""}/s`,
+                },
+                ...(used.has(it.itemid)
+                    ? [{ label: "Used", value: formatResourceAmount(it.itemid, used.get(it.itemid)!) }]
+                    : []),
             ],
         };
     });
@@ -105,7 +112,7 @@ export function buildTrackingDetail(detail: TrackingDetail): TrackingDetailView 
             { label: "Started", value: formatTimestamp(detail.timeStarted) },
             { label: "Took", value: formatDuration(elapsed) },
             { label: "Items", value: formatNumber(detail.items.length) },
-            { label: "Crafted", value: formatNumber(totalCrafted) },
+            { label: "Crafted", value: formatNumber(Math.round(totalCrafted)) },
         ],
         items,
         consumed: buildConsumedRows(detail.consumed),

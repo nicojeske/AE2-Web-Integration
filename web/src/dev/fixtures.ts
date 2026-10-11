@@ -303,6 +303,13 @@ export const mockGrids: MockGrid[] = [
                         stored: 860,
                         machine: "Charger",
                     },
+                    // A fluid step: 32 000 L counts as 32 sub-crafts, not 32 000.
+                    {
+                        itemid: "ae2fc:fluid_drop:water",
+                        itemname: "Water",
+                        requested: 32_000,
+                        stored: 0,
+                    },
                     {
                         itemid: "appliedenergistics2:crystal_certus",
                         itemname: "Certus Quartz Crystal",
@@ -768,6 +775,11 @@ function craftProgress(cpu: MockBusyCpu): number {
     return Math.min(cpu.stallAt ?? 1, (Date.now() - cpu.startedAt) / cpu.craftDurationMs);
 }
 
+/** `AE2JobTracker.progressUnits`: fluids count per bucket. Not imported from state/ - the Vite config loads this file. */
+function progressUnits(itemid: string, amount: number): number {
+    return !itemid.includes(":") || itemid.startsWith("ae2fc:fluid_drop") ? amount / 1000 : amount;
+}
+
 /** The job-level fields `GetCPUList`/`GetCPU` copy from the tracker; all zero/null when untracked. */
 export function mockJobProgress(cpu: MockBusyCpu) {
     if (!cpu.hasTrackingInfo) {
@@ -779,8 +791,8 @@ export function mockJobProgress(cpu: MockBusyCpu) {
             : 0;
     return {
         timeElapsed: Date.now() - cpu.startedAt,
-        plannedTotal: cpu.recipe.reduce((a, r) => a + r.requested, 0),
-        craftedTotal: toCompactedItems(cpu).reduce((a, i) => a + i.craftedTotal, 0),
+        plannedTotal: cpu.recipe.reduce((a, r) => a + progressUnits(r.itemid, r.requested), 0),
+        craftedTotal: toCompactedItems(cpu).reduce((a, i) => a + progressUnits(i.itemid, i.craftedTotal), 0),
         stalledSince,
         requestedBy: cpu.requestedBy ?? null,
     };

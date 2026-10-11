@@ -39,6 +39,23 @@ import pl.kuba6000.ae2webintegration.core.utils.GSONUtils;
 
 public class AE2JobTracker {
 
+    /**
+     * A resource's weight in a job's progress: items count one each, fluids (amounts in mB) one per bucket, so
+     * a fluid step doesn't outweigh every item of the job a thousandfold. Mirrors {@code progressUnits} in
+     * {@code web/src/state/craftProgress.ts}.
+     */
+    public static double progressUnits(IAEKey key, long amount) {
+        return isFluidId(key.web$getItemID()) ? amount / 1000D : amount;
+    }
+
+    /**
+     * A native fluid's itemid is its registry name, which has no colon; an AE2FluidCraft fluid drop is an item
+     * holding one mB per drop. Mirrors {@code isFluidId} in {@code web/src/views/browserModel.ts}.
+     */
+    static boolean isFluidId(String itemid) {
+        return itemid.indexOf(':') < 0 || itemid.startsWith("ae2fc:fluid_drop");
+    }
+
     public static class AEInterface {
 
         public String name;
@@ -84,9 +101,10 @@ public class AE2JobTracker {
          * crafted + still expected + still to push. Fixed from then on, so it is the progress denominator.
          */
         public HashMap<IAEKey, Long> planned = new HashMap<>();
-        public long plannedTotal;
-        /** Sum of {@link #craftedTotal}. */
-        public long craftedSum;
+        /** Sum of {@link #planned} in {@link #progressUnits progress units}. */
+        public double plannedTotal;
+        /** Sum of {@link #craftedTotal} in {@link #progressUnits progress units}. */
+        public double craftedSum;
         /** Who submitted the job: a player, or the web user; null for a machine or when unknown. */
         public @Nullable String requestedBy;
         /** Last time anything was delivered back to the CPU, Unix epoch milliseconds. */
@@ -107,7 +125,7 @@ public class AE2JobTracker {
         void addCrafted(IAEKey key, long amount) {
             if (amount <= 0L) return;
             craftedTotal.merge(key, amount, Long::sum);
-            craftedSum += amount;
+            craftedSum += progressUnits(key, amount);
             lastProgressAt = System.currentTimeMillis();
             stalledSince = 0L;
             stallReason = null;
@@ -130,8 +148,9 @@ public class AE2JobTracker {
                     snapshot.put(key.web$copyIdentity(), craftedTotal.getOrDefault(key, 0L) + remaining);
             }
             planned = snapshot;
-            long total = 0L;
-            for (long amount : snapshot.values()) total += amount;
+            double total = 0D;
+            for (Map.Entry<IAEKey, Long> entry : snapshot.entrySet())
+                total += progressUnits(entry.getKey(), entry.getValue());
             plannedTotal = total;
         }
 

@@ -80,7 +80,7 @@ class JobProgressTrackingTest extends GridTestScope {
         assertEquals(8L, info.planned.get(plate));
         assertEquals(2L, info.planned.get(gear));
         assertNull(info.planned.get(ingot));
-        assertEquals(10L, info.plannedTotal);
+        assertEquals(10D, info.plannedTotal);
 
         // Four plates come back; the CPU's remaining work shrinks accordingly.
         cpu.pending.put(plate, 0L);
@@ -88,8 +88,8 @@ class JobProgressTrackingTest extends GridTestScope {
         update(cpu, plate);
         cpu.waiting.put(plate, 4L);
         update(cpu, plate);
-        assertEquals(4L, info.craftedSum);
-        assertEquals(10L, info.plannedTotal);
+        assertEquals(4D, info.craftedSum);
+        assertEquals(10D, info.plannedTotal);
 
         // A merge adds work on top of what is left; the crafted part stays counted.
         cpu.active.put(plate, 4L);
@@ -97,7 +97,31 @@ class JobProgressTrackingTest extends GridTestScope {
         AE2JobTracker.addJob(cpu, grid, true);
         assertEquals(8L, info.planned.get(plate));
         assertEquals(5L, info.planned.get(gear));
-        assertEquals(13L, info.plannedTotal);
+        assertEquals(13D, info.plannedTotal);
+    }
+
+    @Test
+    void fluidsCountOnePerBucketTowardsProgress() {
+        Resource plate = new Resource(1);
+        Fluid molten = new Fluid("molten.iron");
+        Fluid drop = new Fluid("ae2fc:fluid_drop:0");
+        PlanCpu cpu = new PlanCpu();
+        cpu.pending.put(plate, 64L);
+        cpu.pending.put(molten, 144_000L);
+        cpu.pending.put(drop, 500L);
+
+        AE2JobTracker.addJob(cpu, grid, false);
+        JobTrackingInfo info = AE2JobTracker.findActiveJob(cpu);
+        assertNotNull(info);
+        assertEquals(144_000L, info.planned.get(molten));
+        assertEquals(64D + 144D + 0.5D, info.plannedTotal);
+
+        cpu.pending.put(molten, 0L);
+        cpu.waiting.put(molten, 144_000L);
+        update(cpu, molten);
+        cpu.waiting.put(molten, 143_000L);
+        update(cpu, molten);
+        assertEquals(1D, info.craftedSum);
     }
 
     @Test
@@ -208,7 +232,7 @@ class JobProgressTrackingTest extends GridTestScope {
             .getAsJsonArray("data");
     }
 
-    private static void update(PlanCpu cpu, Resource resource) {
+    private static void update(PlanCpu cpu, IAEKey resource) {
         AE2JobTracker.updateCraftingStatus(cpu, resource);
     }
 
@@ -279,6 +303,35 @@ class JobProgressTrackingTest extends GridTestScope {
         @Override
         public @NotNull String web$getDisplayName() {
             return "Resource " + id;
+        }
+
+        @Override
+        public boolean web$isCraftable(IAEGrid grid) {
+            return true;
+        }
+    }
+
+    @Desugar
+    private record Fluid(String itemid) implements IAEKey {
+
+        @Override
+        public @NotNull StableKey web$getKey() {
+            throw new AssertionError("Tracking must not encode stable resource IDs");
+        }
+
+        @Override
+        public @NotNull IAEKey web$copyIdentity() {
+            return this;
+        }
+
+        @Override
+        public @NotNull String web$getItemID() {
+            return itemid;
+        }
+
+        @Override
+        public @NotNull String web$getDisplayName() {
+            return itemid;
         }
 
         @Override

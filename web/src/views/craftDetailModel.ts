@@ -2,7 +2,7 @@
 // orderModel.ts). No Preact here so the arithmetic is reviewable/testable in isolation - mirrors
 // claude-design's `craftDetailVals()` (AE2 Web Terminal.dc.html:895-1048) against the real DTOs.
 import { formatBytes, formatDuration, formatNumber } from "../api/format";
-import { craftTotals, estimateRemaining } from "../state/craftProgress";
+import { craftTotals, estimateRemaining, formatResourceAmount } from "../state/craftProgress";
 import type {
     CompactedItem,
     ConsumedItem,
@@ -12,6 +12,7 @@ import type {
     WorkingMachine,
 } from "../api/types";
 import type { CpuView } from "../state/cpus";
+import { isFluidId } from "./browserModel";
 
 export type CraftDetailColumnKey = "crafting" | "waiting" | "done";
 
@@ -142,7 +143,8 @@ export function snapshotOf(cpu: CpuView, now: number): CraftDetailSnapshot | nul
 
 function itemRate(item: CompactedItem): string {
     if (item.timeSpentCrafting <= 0) return "-";
-    return `${(item.craftedTotal / (item.timeSpentCrafting / 1000)).toFixed(2)}/s`;
+    const rate = (item.craftedTotal / (item.timeSpentCrafting / 1000)).toFixed(2);
+    return isFluidId(item.itemid) ? `${rate} L/s` : `${rate}/s`;
 }
 
 /** Raw materials first (what the job actually drew from storage), each group largest first. */
@@ -152,7 +154,7 @@ export function buildConsumedRows(consumed: ConsumedItem[]): ConsumedRow[] {
         .map((c) => ({
             itemid: c.itemid,
             itemname: c.itemname,
-            amount: formatNumber(c.amount),
+            amount: formatResourceAmount(c.itemid, c.amount),
             intermediate: c.alsoCrafted,
         }));
 }
@@ -200,11 +202,14 @@ function buildRow(
         { label: "stored", value: formatNumber(item.stored) },
     ];
     if (tracked) {
-        stats.push({ label: "crafted", value: `${formatNumber(item.craftedTotal)} / ${formatNumber(requested)}` });
+        stats.push({
+            label: "crafted",
+            value: `${formatResourceAmount(item.itemid, item.craftedTotal)} / ${formatResourceAmount(item.itemid, requested)}`,
+        });
         stats.push({ label: "rate", value: itemRate(item) });
         stats.push({ label: "time spent", value: formatDuration(item.timeSpentCrafting) });
         const usedAmount = used.get(item.itemid);
-        if (usedAmount) stats.push({ label: "used", value: formatNumber(usedAmount) });
+        if (usedAmount) stats.push({ label: "used", value: formatResourceAmount(item.itemid, usedAmount) });
     }
     const share = tracked && totalTime > 0 ? item.timeSpentCrafting / totalTime : 0;
     return {
@@ -258,7 +263,7 @@ export function buildActiveCraftDetail(
         progress: tracked
             ? {
                   fraction: progressFraction,
-                  caption: `${formatNumber(totals.crafted)} of ${formatNumber(totals.requested)} sub-crafts complete${
+                  caption: `${formatNumber(Math.round(totals.crafted))} of ${formatNumber(Math.round(totals.requested))} sub-crafts complete${
                       detail.plannedTotal > 0 ? "" : " - approximated from crafted totals"
                   }`,
               }
@@ -291,7 +296,7 @@ function buildFromSnapshot(snapshot: CraftDetailSnapshot): CraftDetailView {
         progress: tracked
             ? {
                   fraction: 1,
-                  caption: `Completed - ${formatNumber(totals.crafted)} sub-crafts recorded over ${formatDuration(elapsedMs)}`,
+                  caption: `Completed - ${formatNumber(Math.round(totals.crafted))} sub-crafts recorded over ${formatDuration(elapsedMs)}`,
               }
             : null,
         columns: buildColumns(items, tracked, totals.totalTime, true, usedByItem(snapshot.consumed)),

@@ -114,17 +114,18 @@ public final class GetCPU extends ISyncedRequest {
          */
         public long timeElapsed = 0L;
         /**
-         * Resource units the tracked job set out to craft, summed over every resource; zero when untracked.
+         * Resource units the tracked job set out to craft, summed over every resource (items one each, fluids
+         * one per bucket, so it can be fractional); zero when untracked.
          *
          * @example 1280
          */
-        public long plannedTotal = 0L;
+        public double plannedTotal = 0D;
         /**
-         * Resource units delivered so far, summed over every resource; zero when untracked.
+         * Resource units delivered so far, summed like {@code plannedTotal}; zero when untracked.
          *
-         * @example 640
+         * @example 640.5
          */
-        public long craftedTotal = 0L;
+        public double craftedTotal = 0D;
         /**
          * When the tracked job last made progress before stalling, in Unix epoch milliseconds; zero while it
          * isn't stalled or is untracked.
