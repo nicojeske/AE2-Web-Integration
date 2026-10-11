@@ -91,7 +91,7 @@ export function Statistics() {
 
                 {history && (
                     <p className="stats__meta">
-                        {describeResolution(history.resolution, history.stepMillis)}
+                        {describeResolution(history.bucketMillis, history.stepMillis)}
                         {range === "all" && ` · ${retentionNote(history.from, history.to)}`}
                     </p>
                 )}

@@ -288,6 +288,8 @@ export interface ItemHistoryResult {
     from: number;
     to: number;
     stepMillis: number;
+    /** Width of one stored sample in the tier read: the server's sample interval, or an hour. */
+    bucketMillis: number;
     resolution: "fine" | "hourly";
     series: ItemHistorySeries[];
     /** Display name last seen in storage per requested item, so one that emptied out still has a name. */

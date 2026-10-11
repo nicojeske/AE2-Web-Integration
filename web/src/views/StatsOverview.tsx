@@ -101,7 +101,7 @@ export function StatsOverview({
                     </span>
                     {history && (
                         <span className="stats-tile__sub">
-                            {describeResolution(history.resolution, history.stepMillis)}
+                            {describeResolution(history.bucketMillis, history.stepMillis)}
                         </span>
                     )}
                 </Card>

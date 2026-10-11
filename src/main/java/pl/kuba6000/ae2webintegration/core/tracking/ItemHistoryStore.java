@@ -98,6 +98,7 @@ public final class ItemHistoryStore {
         result.from = fromBucket * tierBucketMillis;
         result.to = toBucket * tierBucketMillis;
         result.stepMillis = stepBuckets * tierBucketMillis;
+        result.bucketMillis = tierBucketMillis;
 
         HistoryTable table = useFine ? HistoryTable.ITEM_FINE : HistoryTable.ITEM_HOURLY;
         for (String itemid : itemids) {

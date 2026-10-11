@@ -113,7 +113,7 @@ public final class ConfigSettings {
 
         @Path("sample_interval_minutes")
         @Comment("How often, in minutes, to sample the stored count of every item (1-60). Needs [history].")
-        public int sampleIntervalMinutes = 5;
+        public int sampleIntervalMinutes = 1;
 
         @Path("fine_retention_days")
         @Comment("Days of full-resolution statistics history to keep per item (1-90).")

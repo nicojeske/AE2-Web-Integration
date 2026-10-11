@@ -235,11 +235,11 @@ export function sharedDomain(series: NormalizedSeries[]): { min: number; max: nu
     return { min, max };
 }
 
-/** `"5-min samples"` / `"1 point ~ 45 min (5-min samples)"` / `"hourly samples"`. */
-export function describeResolution(resolution: "fine" | "hourly", stepMillis: number): string {
-    const tierMs = resolution === "fine" ? 5 * 60_000 : 60 * 60_000;
-    const tierLabel = resolution === "fine" ? "5-min samples" : "hourly samples";
-    if (stepMillis <= tierMs) return tierLabel;
+/** `"1-min samples"` / `"1 point ~ 45 min (1-min samples)"` / `"hourly samples"`. */
+export function describeResolution(bucketMillis: number, stepMillis: number): string {
+    const tierLabel =
+        bucketMillis >= 60 * 60_000 ? "hourly samples" : `${Math.round(bucketMillis / 60_000)}-min samples`;
+    if (stepMillis <= bucketMillis) return tierLabel;
     return `1 point ~ ${formatSpan(stepMillis)} (${tierLabel})`;
 }
 
@@ -506,7 +506,7 @@ export function timeTickIndices(pointCount: number, tickCount: number): number[]
 }
 
 /** Points in the optional moving-average overlay - short enough to preserve real shape, long enough
- *  to visibly damp per-sample noise at the default 5-minute fine sampling interval. */
+ *  to visibly damp per-sample noise at fine sampling intervals. */
 export const SMOOTHING_WINDOW = 5;
 
 /** Gap-aware centred moving average - a window with no real samples in it stays a gap rather than

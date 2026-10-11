@@ -39,7 +39,7 @@ class ItemHistoryReadTest {
     @AfterEach
     void resetConfigToDefaults() {
         HistoryDbTestSupport.stop();
-        Config.INSTANCE.statistics.sampleIntervalMinutes = 5;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 1;
         Config.INSTANCE.statistics.fineRetentionDays = 30;
         Config.INSTANCE.statistics.hourlyRetentionDays = 365;
     }
@@ -87,6 +87,8 @@ class ItemHistoryReadTest {
         // 12 raw buckets, 4 requested points -> stepBuckets = ceil(12/4) = 3.
         JSON_ItemHistory result = ItemHistoryStore.readSeries(db, gridKey, Arrays.asList(ITEM), from, to, 4);
         assertEquals("fine", result.resolution);
+        assertEquals(BUCKET_MILLIS, result.bucketMillis);
+        assertEquals(3 * BUCKET_MILLIS, result.stepMillis);
         long[] points = result.series.get(0).points;
         // Each 3-bucket window [0,1,2],[3,4,5],[6,7,8],[9,10,11] reports its newest (last) value, not an
         // average or the earliest - values were written increasing with bucket order, so this also proves

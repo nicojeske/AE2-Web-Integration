@@ -18,6 +18,7 @@ export interface HistoryBundle {
     from: number;
     to: number;
     stepMillis: number;
+    bucketMillis: number;
     resolution: "fine" | "hourly";
     /** Derived from the response array, never from the requested `points` - see M7 caveats. */
     count: number;
@@ -39,6 +40,7 @@ export function toBundle(result: ItemHistoryResult): HistoryBundle {
         from: result.from,
         to: result.to,
         stepMillis: result.stepMillis,
+        bucketMillis: result.bucketMillis,
         resolution: result.resolution,
         count,
         timestamps,
@@ -90,7 +92,7 @@ const StatsContext = createContext<StatsContextValue | null>(null);
 /**
  * Both endpoints are `IAsyncRequest`s (HTTP worker thread, never the server tick), so this poll costs
  * nothing against `CoreEngine`'s drain budget - the gate is `active`/`document.hidden`, not
- * server-thread cost. Samples land every 5 minutes by default; 60s bounds staleness at ~1 min.
+ * server-thread cost. Samples land every minute by default; 60s bounds staleness at ~1 min.
  */
 const POLL_MS = 60_000;
 

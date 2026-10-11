@@ -75,7 +75,7 @@ const serverStart = Date.now();
  */
 export const MOCK_GHOST_ITEM_ID = "modpack:reactant_dust";
 const MOCK_GHOST_ITEM_NAME = "Reactant Dust";
-export const MOCK_SAMPLE_INTERVAL_MS = 5 * 60_000;
+export const MOCK_SAMPLE_INTERVAL_MS = 60_000;
 export const MOCK_FINE_RETENTION_MS = 30 * 86_400_000;
 export const MOCK_HOURLY_RETENTION_DAYS = 365;
 const MOCK_HOURLY_BUCKET_MS = 60 * 60_000;
@@ -1084,7 +1084,7 @@ function mockBucketValue(grid: MockGrid, itemid: string, bucketStartMs: number, 
         // "topped-up buffer that dips under load" shape, not a drain. The triangle wave has (almost)
         // no net trend, so seriesStats' rSquared stays low - exercises the rate badge's grey
         // "noise, not a real trend" state and confirms "empty in ~X" correctly stays hidden.
-        const waveBuckets = 24; // ~2h period at the default 5-min sample interval
+        const waveBuckets = 120; // ~2h period at the default 1-min sample interval
         const phase = fineBucket % waveBuckets;
         const triangle = phase < waveBuckets / 2 ? phase / (waveBuckets / 2) : 2 - phase / (waveBuckets / 2);
         target = live * (1 - 0.05 * triangle);
@@ -1181,6 +1181,7 @@ export function mockItemHistory(
         from: fromBucket * tierBucketMs,
         to: toBucket * tierBucketMs,
         stepMillis,
+        bucketMillis: tierBucketMs,
         resolution,
         series,
         names: historyNames(grid, itemids),

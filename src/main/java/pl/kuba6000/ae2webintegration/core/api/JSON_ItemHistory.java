@@ -22,6 +22,8 @@ public class JSON_ItemHistory {
     public long from;
     public long to;
     public long stepMillis;
+    /** Width of one stored sample in the tier read: the configured sample interval, or an hour. */
+    public long bucketMillis;
     public String resolution;
     public ArrayList<JSON_ItemSeries> series = new ArrayList<>();
     /** Last display name seen in storage per requested item, for items that have one recorded. */

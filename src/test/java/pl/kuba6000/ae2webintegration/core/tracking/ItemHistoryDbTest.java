@@ -42,7 +42,7 @@ class ItemHistoryDbTest {
     @AfterEach
     void tearDown() {
         HistoryDbTestSupport.stop();
-        Config.INSTANCE.statistics.sampleIntervalMinutes = 5;
+        Config.INSTANCE.statistics.sampleIntervalMinutes = 1;
         Config.INSTANCE.statistics.fineRetentionDays = 30;
         Config.INSTANCE.statistics.hourlyRetentionDays = 365;
     }

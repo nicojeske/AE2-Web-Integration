@@ -129,7 +129,7 @@ class CoreEngineHistorySamplingTest extends GridTestScope {
         String gridKey = keyOf(grid);
         AE2Controller.AE2Interface = TestGridFixtures.ae(grid);
 
-        long intervalNanos = TimeUnit.MINUTES.toNanos(5); // default statistics_sample_interval_minutes
+        long intervalNanos = TimeUnit.MINUTES.toNanos(1); // default statistics_sample_interval_minutes
         CoreEngine.runHistorySampling(0L, BASE + 4_000_000L);
         assertEquals(10L, sampledValue(gridKey, BASE + 4_000_000L));
 

@@ -152,7 +152,7 @@ export function formatTimestamp(ms: number): string {
 
 /**
  * Short axis label for a Statistics chart, scaled to what's distinguishable at the range's own
- * resolution - a clock time at 15m/1h/6h/24h (5-min buckets), a day at 7d/30d/90d, month+year at 1y/all
+ * resolution - a clock time at 15m/1h/6h/24h (fine buckets), a day at 7d/30d/90d, month+year at 1y/all
  * (hourly buckets, so individual days aren't meaningful). `"custom"` has no resolution of its own, so
  * `spanMillis` (the request's own span, e.g. `history.to - history.from`) decides instead.
  */
