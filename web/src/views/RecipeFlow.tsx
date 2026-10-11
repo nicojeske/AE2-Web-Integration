@@ -140,3 +140,45 @@ export function RecipeDetail({
         </div>
     );
 }
+
+/** Tiles per side in a table row before the rest fold into "+N". */
+const ROW_TILES = 3;
+
+function TileSide({ stacks, numberFormat }: { stacks: GTStack[]; numberFormat: "full" | "compact" }) {
+    const shown = stacks.length > ROW_TILES ? stacks.slice(0, ROW_TILES - 1) : stacks;
+    const hidden = stacks.slice(shown.length);
+    return (
+        <>
+            {shown.map((s) => (
+                <span key={s.id} title={describe(s, numberFormat)} className="recipe-tiles__tile">
+                    <ItemIcon itemid={s.id} name={s.name} size={20} />
+                </span>
+            ))}
+            {hidden.length > 0 && (
+                <span className="recipe-tiles__more" title={hidden.map((s) => describe(s, numberFormat)).join("\n")}>
+                    +{hidden.length}
+                </span>
+            )}
+        </>
+    );
+}
+
+/** Table-row version: small input tiles → output tiles, names and amounts in their tooltips. */
+export function RecipeTiles({
+    inputs,
+    outputs,
+    numberFormat,
+}: {
+    inputs: GTStack[];
+    outputs: GTStack[];
+    numberFormat: "full" | "compact";
+}) {
+    if (outputs.length === 0 && inputs.length === 0) return <span className="recipe-tiles recipe-tiles--none">—</span>;
+    return (
+        <span className="recipe-tiles" aria-label="Current recipe">
+            <TileSide stacks={inputs} numberFormat={numberFormat} />
+            {inputs.length > 0 && <span className="recipe-tiles__arrow">→</span>}
+            <TileSide stacks={outputs} numberFormat={numberFormat} />
+        </span>
+    );
+}

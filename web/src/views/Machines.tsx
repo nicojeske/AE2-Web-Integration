@@ -1,6 +1,6 @@
 // GregTech Machines section (docs/gt-hub/phase-2-frontend.md §4.1): every multiblock the server's last
-// scan saw, grouped by status (problems first) with unloaded machines last, plus a detail drawer with
-// that machine's production. The data comes from `state/gt.tsx`'s app-wide poll, which also feeds the
+// scan saw in one table, grouped by status (problems first, unloaded last) or by processing line, plus an
+// inspector with the selected machine's settings, recipe and production. The data comes from `state/gt.tsx`'s app-wide poll, which also feeds the
 // sidebar badge.
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
@@ -15,17 +15,18 @@ import type { MachineFilters } from "../state/prefs";
 import { useToast } from "../state/toast";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
 import { Chart } from "../ui/Chart";
 import { Checkbox } from "../ui/Checkbox";
 import { cx } from "../ui/cx";
-import { Drawer } from "../ui/Drawer";
+import { ChipMenu } from "../ui/ChipMenu";
+import { Inspector } from "../ui/Inspector";
 import { ItemIcon } from "../ui/ItemIcon";
 import { ProgressBar } from "../ui/ProgressBar";
+import { SectionLabel } from "../ui/SectionLabel";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import type { SegmentedOption } from "../ui/SegmentedControl";
 import { GTPollState, useNow } from "./gtCommon";
-import { RecipeDetail, RecipeStrip } from "./RecipeFlow";
+import { RecipeDetail, RecipeTiles } from "./RecipeFlow";
 import {
     coordsText,
     dimensionKey,
@@ -49,7 +50,7 @@ import type { MachineGroup, MachineNaming } from "./gtModel";
 import { pointTimestamps } from "./statsModel";
 
 export interface MachinesProps {
-    /** The machine whose drawer is open (`#/machines/<id>`), or `null`. */
+    /** The machine in the inspector (`#/machines/<id>`), or `null`. */
     openId: string | null;
     onOpen: (id: string | null) => void;
 }
@@ -57,25 +58,43 @@ export interface MachinesProps {
 export function Machines({ openId, onOpen }: MachinesProps) {
     const { machines } = useGT();
     return (
-        <>
+        <div className="page">
             <LineNameList />
-            <GTPollState poll={machines} what="machines">
-                {(data) => <MachinesBody data={data} onOpen={onOpen} />}
-            </GTPollState>
-            {openId !== null && (
-                <MachineDrawer
-                    id={openId}
-                    listed={machines.data?.machines.find((m) => m.id === openId) ?? null}
-                    scannedAt={machines.data?.scannedAt ?? null}
-                    suggested={machines.data?.suggestedPassive?.includes(openId) ?? false}
-                    onClose={() => onOpen(null)}
-                />
-            )}
-        </>
+            <div className="page__main machines">
+                <GTPollState poll={machines} what="machines">
+                    {(data) => <MachinesBody data={data} openId={openId} onOpen={onOpen} />}
+                </GTPollState>
+            </div>
+            <Inspector
+                label="Machine"
+                width={400}
+                open={openId !== null}
+                onClose={() => onOpen(null)}
+                placeholder="Select a machine to see its recipe, production and settings."
+            >
+                {openId !== null && (
+                    <MachineInspector
+                        key={openId}
+                        id={openId}
+                        listed={machines.data?.machines.find((m) => m.id === openId) ?? null}
+                        scannedAt={machines.data?.scannedAt ?? null}
+                        suggested={machines.data?.suggestedPassive?.includes(openId) ?? false}
+                    />
+                )}
+            </Inspector>
+        </div>
     );
 }
 
-function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string) => void }) {
+function MachinesBody({
+    data,
+    openId,
+    onOpen,
+}: {
+    data: GTMachines;
+    openId: string | null;
+    onOpen: (id: string) => void;
+}) {
     const {
         machineFilters: filters,
         setMachineFilters,
@@ -89,6 +108,7 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set(["passive"]));
     /** Machine ids picked in select mode; `null` while not selecting. */
     const [selection, setSelection] = useState<ReadonlySet<string> | null>(null);
+    const [reviewOpen, setReviewOpen] = useState(false);
     const now = useNow(1000);
 
     const naming = useMemo(() => ({ names: machineNames, lines: machineLines }), [machineNames, machineLines]);
@@ -128,8 +148,9 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
         filters.passiveProblems !== DEFAULT_MACHINE_FILTERS.passiveProblems;
 
     return (
-        <section className={cx("machines", selection && "machines--selecting")}>
-            <div className="machines__summary">
+        <>
+            <header className="page-header">
+                <h2 className="page-header__title">Machines</h2>
                 {GT_STATUS_ORDER.filter((s) => data.summary[s] > 0 || filters.statuses.includes(s)).map((status) => (
                     <button
                         key={status}
@@ -147,17 +168,17 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
                         {GT_STATUS_LABELS[status].toLowerCase()}
                     </button>
                 ))}
-                {data.unloaded > 0 && <span className="machines__unloaded-count">{data.unloaded} not loaded</span>}
-                <span className="machines__scan" title="Server-side cost of the last scan">
+                {data.unloaded > 0 && <span className="page-header__sub">{data.unloaded} not loaded</span>}
+                <span className="page-header__end mono-count" title="Server-side cost of the last scan">
                     Scanned {formatRelativeAge(data.scannedAt, now)} · {formatMicros(data.scanMicros)}
                 </span>
-            </div>
+            </header>
 
-            <div className="machines__toolbar">
+            <div className="page-toolbar">
                 <input
                     type="text"
-                    className="gt-input machines__search"
-                    placeholder="Search name, line, recipe item, owner or x y z..."
+                    className="field machines__search"
+                    placeholder="Search name, line, recipe item, owner or x y z…"
                     value={search}
                     onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
                 />
@@ -167,40 +188,28 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
                     onChange={(groupBy) => setMachineFilters((f) => ({ ...f, groupBy }))}
                 />
                 {dimensions.length > 1 && (
-                    <select
-                        className="gt-input"
-                        aria-label="Dimension"
-                        value={filters.dimension ?? ""}
-                        onChange={(e) => {
-                            const value = (e.target as HTMLSelectElement).value;
-                            setMachineFilters((f) => ({ ...f, dimension: value === "" ? null : value }));
-                        }}
-                    >
-                        <option value="">All dimensions</option>
-                        {dimensions.map((d) => (
-                            <option key={d} value={d}>
-                                {d}
-                            </option>
-                        ))}
-                    </select>
+                    <ChipMenu<string | null>
+                        options={[
+                            { value: null, label: "All dimensions" },
+                            ...dimensions.map((d) => ({ value: d, label: d })),
+                        ]}
+                        value={filters.dimension}
+                        onChange={(dimension) => setMachineFilters((f) => ({ ...f, dimension }))}
+                    />
                 )}
                 <Checkbox
                     checked={filters.showUnloaded}
                     onChange={(showUnloaded) => setMachineFilters((f) => ({ ...f, showUnloaded }))}
                 >
-                    <span className="machines__toggle-label">Show unloaded</span>
+                    Show unloaded
                 </Checkbox>
                 {filters.groupBy === "status" && (
                     <Checkbox
                         checked={filters.passiveProblems}
                         onChange={(passiveProblems) => setMachineFilters((f) => ({ ...f, passiveProblems }))}
+                        title="Off keeps machines marked passive in the Passive group even when they need attention"
                     >
-                        <span
-                            className="machines__toggle-label"
-                            title="Off keeps machines marked passive in the Passive group even when they need attention"
-                        >
-                            Show passive problems
-                        </span>
+                        Show passive problems
                     </Checkbox>
                 )}
                 {filtersActive && (
@@ -214,75 +223,95 @@ function MachinesBody({ data, onOpen }: { data: GTMachines; onOpen: (id: string)
                         Clear filters
                     </Button>
                 )}
-                <Button
-                    variant={selection ? "primary" : "secondary"}
-                    size="sm"
-                    className="machines__select-toggle"
-                    title="Pick several machines to put them on a processing line or mark them passive"
-                    onClick={() => setSelection((sel) => (sel ? null : new Set()))}
-                >
-                    {selection ? "Done" : "Select"}
-                </Button>
+                <div className="page-header__end">
+                    {suggestions.length > 0 && filters.groupBy === "status" && (
+                        <span className="machines__suggest">
+                            {suggestions.length} look passive ·{" "}
+                            <Button variant="text" aria-expanded={reviewOpen} onClick={() => setReviewOpen((o) => !o)}>
+                                {reviewOpen ? "Hide" : "Review"}
+                            </Button>
+                        </span>
+                    )}
+                    <Button
+                        variant={selection ? "primary" : "secondary"}
+                        size="sm"
+                        title="Pick several machines to put them on a processing line or mark them passive"
+                        onClick={() => setSelection((sel) => (sel ? null : new Set()))}
+                    >
+                        {selection ? "Done" : "Select"}
+                    </Button>
+                </div>
             </div>
 
-            {suggestions.length > 0 && filters.groupBy === "status" && (
+            {reviewOpen && suggestions.length > 0 && filters.groupBy === "status" && (
                 <PassiveSuggestions machines={suggestions} onOpen={onOpen} />
             )}
 
-            {groups.length === 0 && <div className="placeholder-panel">No machines match these filters.</div>}
-
-            {groups.map((group) => {
-                const isCollapsed = collapsed.has(group.key);
-                return (
-                    <div key={group.key} className="machines__group">
-                        <GroupHeader
-                            group={group}
-                            collapsed={isCollapsed}
-                            onToggle={() =>
-                                setCollapsed((c) => {
-                                    const next = new Set(c);
-                                    if (!next.delete(group.key)) next.add(group.key);
-                                    return next;
-                                })
-                            }
-                            selection={selection}
-                            onSelectAll={(ids, on) =>
-                                setSelection((sel) => {
-                                    const next = new Set(sel);
-                                    for (const id of ids) {
-                                        if (on) next.add(id);
-                                        else next.delete(id);
-                                    }
-                                    return next;
-                                })
-                            }
-                        />
-                        {!isCollapsed && (
-                            <div
-                                className="machines__grid"
-                                style={{ "--tile-min": `${settings.tileMin + 80}px` } as Record<string, string>}
-                            >
-                                {group.machines.map((m) => (
-                                    <MachineCard
-                                        key={m.id}
-                                        machine={m}
-                                        naming={naming}
-                                        showLine={filters.groupBy === "status"}
-                                        scannedAt={data.scannedAt}
-                                        now={now}
-                                        numberFormat={settings.numberFormat}
-                                        selected={selection ? selection.has(m.id) : null}
-                                        onOpen={() => (selection ? toggleSelected(m.id) : onOpen(m.id))}
+            <div className={cx("page__scroll", selection && "machines__scroll--selecting")}>
+                {groups.length === 0 ? (
+                    <div className="placeholder-panel">No machines match these filters.</div>
+                ) : (
+                    <div className={cx("dtable mtable", selection && "mtable--select")}>
+                        <div className="dtable__head">
+                            {selection && <span />}
+                            <span />
+                            <span>Machine</span>
+                            <span>Tier</span>
+                            <span>Status</span>
+                            <span className="right">EU/t</span>
+                            <span className="right">Eff.</span>
+                            <span>Recipe</span>
+                        </div>
+                        {groups.map((group) => {
+                            const isCollapsed = collapsed.has(group.key);
+                            return (
+                                <div key={group.key} className="machines__group">
+                                    <GroupHeader
+                                        group={group}
+                                        collapsed={isCollapsed}
+                                        onToggle={() =>
+                                            setCollapsed((c) => {
+                                                const next = new Set(c);
+                                                if (!next.delete(group.key)) next.add(group.key);
+                                                return next;
+                                            })
+                                        }
+                                        selection={selection}
+                                        onSelectAll={(ids, on) =>
+                                            setSelection((sel) => {
+                                                const next = new Set(sel);
+                                                for (const id of ids) {
+                                                    if (on) next.add(id);
+                                                    else next.delete(id);
+                                                }
+                                                return next;
+                                            })
+                                        }
                                     />
-                                ))}
-                            </div>
-                        )}
+                                    {!isCollapsed &&
+                                        group.machines.map((m) => (
+                                            <MachineRow
+                                                key={m.id}
+                                                machine={m}
+                                                naming={naming}
+                                                showLine={filters.groupBy === "status"}
+                                                scannedAt={data.scannedAt}
+                                                now={now}
+                                                numberFormat={settings.numberFormat}
+                                                open={m.id === openId}
+                                                selected={selection ? selection.has(m.id) : null}
+                                                onOpen={() => (selection ? toggleSelected(m.id) : onOpen(m.id))}
+                                            />
+                                        ))}
+                                </div>
+                            );
+                        })}
                     </div>
-                );
-            })}
+                )}
+            </div>
 
             {selection && <SelectionBar selection={selection} onClear={() => setSelection(new Set())} />}
-        </section>
+        </>
     );
 }
 
@@ -329,7 +358,7 @@ function GroupHeader({
         <div className="machines__group-head">
             {renaming && group.line !== undefined ? (
                 <CommitInput
-                    className="gt-input machines__rename"
+                    className="field machines__rename"
                     initial={group.line}
                     ariaLabel="Line name"
                     autoFocus
@@ -381,12 +410,10 @@ function SelectionBar({ selection, onClear }: { selection: ReadonlySet<string>; 
     const none = ids.length === 0;
     return (
         <div className="machines__selection-bar" role="toolbar" aria-label="Selected machines">
-            <span className="machines__selection-count">
-                {none ? "Click machines to select them" : `${ids.length} selected`}
-            </span>
+            <span className="machines__selection-count">{none ? "Nothing selected" : `${ids.length} selected`}</span>
             <input
                 type="text"
-                className="gt-input machines__line-input"
+                className="field machines__line-input"
                 list={LINE_LIST_ID}
                 placeholder="Line name"
                 aria-label="Processing line"
@@ -425,6 +452,7 @@ function SelectionBar({ selection, onClear }: { selection: ReadonlySet<string>; 
             >
                 Mark passive
             </Button>
+            <span className="machines__selection-hint">Click machines to add or remove them</span>
         </div>
     );
 }
@@ -498,10 +526,9 @@ function CommitInput({
     );
 }
 
-/** The server's "these look passive" candidates, each to mark passive or dismiss; collapsed to one line by default. */
+/** The server's "these look passive" candidates, each to mark passive or dismiss (the toolbar's Review). */
 function PassiveSuggestions({ machines, onOpen }: { machines: GTMachine[]; onOpen: (id: string) => void }) {
     const { setPassive, machineNames } = usePrefs();
-    const [open, setOpen] = useState(false);
     const n = machines.length;
     return (
         <div className="passive-suggestions">
@@ -511,9 +538,6 @@ function PassiveSuggestions({ machines, onOpen }: { machines: GTMachine[]; onOpe
                     {n === 1 ? "it" : "them"} passive to tuck {n === 1 ? "it" : "them"} into the collapsed Passive
                     group?
                 </span>
-                <Button variant="text" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-                    {open ? "Hide" : "Review"}
-                </Button>
                 <Button
                     size="sm"
                     onClick={() =>
@@ -526,26 +550,24 @@ function PassiveSuggestions({ machines, onOpen }: { machines: GTMachine[]; onOpe
                     Mark all passive
                 </Button>
             </div>
-            {open && (
-                <ul className="passive-suggestions__list">
-                    {machines.map((m) => (
-                        <li key={m.id} className="passive-suggestions__row">
-                            <button type="button" className="passive-suggestions__name" onClick={() => onOpen(m.id)}>
-                                {machineLabel(m, machineNames)}
-                            </button>
-                            <span className="passive-suggestions__where">
-                                {m.x}, {m.y}, {m.z} · {dimensionKey(m)}
-                            </span>
-                            <Button size="sm" onClick={() => setPassive([m.id], true)}>
-                                Mark passive
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setPassive([m.id], false)}>
-                                Not passive
-                            </Button>
-                        </li>
-                    ))}
-                </ul>
-            )}
+            <ul className="passive-suggestions__list">
+                {machines.map((m) => (
+                    <li key={m.id} className="passive-suggestions__row">
+                        <button type="button" className="passive-suggestions__name" onClick={() => onOpen(m.id)}>
+                            {machineLabel(m, machineNames)}
+                        </button>
+                        <span className="passive-suggestions__where">
+                            {m.x}, {m.y}, {m.z} · {dimensionKey(m)}
+                        </span>
+                        <Button size="sm" onClick={() => setPassive([m.id], true)}>
+                            Mark passive
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setPassive([m.id], false)}>
+                            Not passive
+                        </Button>
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 }
@@ -566,44 +588,66 @@ function useCopyCoords(): (m: GTMachine) => void {
     };
 }
 
-function MachineCard({
+const STATUS_COLORS: Record<string, string> = {
+    green: "var(--green)",
+    amber: "var(--amber)",
+    red: "var(--red)",
+    grey: "var(--text-dim)",
+    teal: "var(--cyan)",
+    purple: "var(--accent)",
+};
+
+function MachineRow({
     machine: m,
     naming,
     showLine,
     scannedAt,
     now,
     numberFormat,
+    open,
     selected,
     onOpen,
 }: {
     machine: GTMachine;
     naming: MachineNaming;
-    /** Shows the machine's processing line in the footer (when not already grouped by it). */
+    /** Shows the machine's processing line as a tag (when not already grouped by it). */
     showLine: boolean;
     scannedAt: number;
     now: number;
     numberFormat: "full" | "compact";
-    /** Select mode: whether this card is picked; `null` outside select mode. */
+    /** This machine is in the inspector. */
+    open: boolean;
+    /** Select mode: whether this row is picked; `null` outside select mode. */
     selected: boolean | null;
     onOpen: () => void;
 }) {
     const nickname = naming.names[m.id];
     const line = showLine ? naming.lines[m.id] : undefined;
-    const copyCoords = useCopyCoords();
     const label = GT_STATUS_LABELS[m.status];
+    const color = STATUS_COLORS[GT_STATUS_VARIANTS[m.status]] ?? "var(--text-dim)";
     const progress = liveProgressTicks(m, scannedAt, now);
-    const showProgress = m.loaded && m.status === "RUNNING" && m.maxProgressTicks > 0;
+    const running = m.loaded && m.status === "RUNNING" && m.maxProgressTicks > 0;
     const detail = m.statusDetail && m.statusDetail.toLowerCase() !== label.toLowerCase() ? m.statusDetail : null;
     const foreignOwner = m.ownerName !== null && m.ownerName !== getContext().username ? m.ownerName : null;
     const duration = m.loaded ? statusDuration(m, now) : null;
+    const issues = m.maintenanceIssues.length > 0 ? `Needs: ${m.maintenanceIssues.join(", ")}` : null;
+    const sub = [
+        issues ?? detail,
+        `${m.x} ${m.y} ${m.z}`,
+        foreignOwner,
+        m.loaded ? null : `last seen ${formatRelativeAge(m.lastSeenMillis, now)}`,
+    ]
+        .filter(Boolean)
+        .join(" · ");
+    const state = running ? remainingLabel(m, progress) : duration ? `${label} · ${duration}` : label;
+    const barPct = m.maxProgressTicks > 0 ? Math.min(100, (progress / m.maxProgressTicks) * 100) : running ? 0 : 100;
 
     return (
-        <Card
-            clickable
+        <div
             className={cx(
-                "machine-card",
-                !m.loaded && "machine-card--unloaded",
-                selected === true && "machine-card--selected",
+                "dtable__row dtable__row--clickable mrow",
+                !m.loaded && "mrow--unloaded",
+                (open || selected === true) && "dtable__row--selected",
             )}
             role={selected === null ? "button" : "checkbox"}
             aria-checked={selected ?? undefined}
@@ -616,80 +660,32 @@ function MachineCard({
                 }
             }}
         >
-            <div className="machine-card__head">
-                {selected !== null && (
-                    <input type="checkbox" className="machine-card__check" checked={selected} tabIndex={-1} readOnly />
-                )}
-                <span className="machine-card__name" title={nickname ? m.name : undefined}>
-                    {nickname ?? m.name}
-                </span>
-                {m.voltageTier >= 0 && <span className="machine-card__tier">{gtTierName(m.voltageTier)}</span>}
-                <Badge variant={GT_STATUS_VARIANTS[m.status]} size="sm" className="machine-card__badge">
-                    {label}
-                </Badge>
-                {duration && (
-                    <span className="machine-card__since" title={`${label} for ${duration}`}>
-                        {duration}
+            {selected !== null && (
+                <span className={cx("mrow__check", selected && "mrow__check--on")}>{selected ? "✓" : ""}</span>
+            )}
+            <span className="led" style={{ background: color }} />
+            <div className="cell-stack">
+                <div className="mrow__name-line">
+                    <span className="cell-text" title={nickname ? `GregTech name: ${m.name}` : undefined}>
+                        {nickname ?? m.name}
                     </span>
-                )}
+                    {line && <span className="mrow__line">{line}</span>}
+                </div>
+                <span className={cx("mrow__sub", issues && "amber")}>{sub}</span>
             </div>
-
-            {detail && <div className="machine-card__detail">{detail}</div>}
-
-            {showProgress && (
-                <div className="machine-card__progress">
-                    <ProgressBar percent={(progress / m.maxProgressTicks) * 100} color="var(--green)" />
-                    <span className="machine-card__progress-label">{remainingLabel(m, progress)}</span>
+            <span className="mrow__tier">{m.voltageTier >= 0 ? gtTierName(m.voltageTier) : "—"}</span>
+            <div className="mrow__status">
+                <span style={{ color: m.status === "RUNNING" ? "var(--text-secondary)" : color }}>{state}</span>
+                <div className="mrow__bar">
+                    <div style={{ width: `${barPct}%`, background: color }} />
                 </div>
-            )}
-
-            {(m.euPerTick !== 0 || m.status === "RUNNING") && (
-                <div className="machine-card__stats">
-                    {m.euPerTick !== 0 && (
-                        <span className={cx(m.euPerTick < 0 && "machine-card__generating")}>
-                            {m.euPerTick < 0 ? `+${formatEUt(-m.euPerTick)}` : formatEUt(m.euPerTick)}
-                        </span>
-                    )}
-                    <span title="Efficiency">{Math.round(m.efficiency / 100)}% eff.</span>
-                </div>
-            )}
-
-            {m.maintenanceIssues.length > 0 && (
-                <div className="machine-card__issues">
-                    {m.maintenanceIssues.map((issue) => (
-                        <span key={issue} className="machine-card__issue">
-                            {issue}
-                        </span>
-                    ))}
-                </div>
-            )}
-
-            <RecipeStrip
-                inputs={m.inputs}
-                outputs={m.outputs}
-                progress={m.maxProgressTicks > 0 ? progress / m.maxProgressTicks : 0}
-                numberFormat={numberFormat}
-            />
-
-            <div className="machine-card__foot">
-                <button
-                    type="button"
-                    className="machine-card__coords"
-                    title="Copy coordinates"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        copyCoords(m);
-                    }}
-                    onKeyDown={(e) => e.stopPropagation()}
-                >
-                    {m.x}, {m.y}, {m.z}
-                </button>
-                <span>{dimensionKey(m)}</span>
-                {line && <span className="machine-card__line">{line}</span>}
-                {foreignOwner && <span>{foreignOwner}</span>}
-                {!m.loaded && <span>last seen {formatRelativeAge(m.lastSeenMillis, now)}</span>}
             </div>
-        </Card>
+            <span className={cx("cell-num", m.euPerTick < 0 && "green")}>
+                {m.euPerTick === 0 ? "—" : m.euPerTick < 0 ? `+${formatEUt(-m.euPerTick)}` : formatEUt(m.euPerTick)}
+            </span>
+            <span className="cell-num dim">{Math.round(m.efficiency / 100)}%</span>
+            <RecipeTiles inputs={m.inputs} outputs={m.outputs} numberFormat={numberFormat} />
+        </div>
     );
 }
 
@@ -697,20 +693,18 @@ const DRAWER_RANGES = gtRangeOptions(["1h", "24h", "7d", "30d"]);
 const DRAWER_CHART_W = 380;
 const DRAWER_CHART_POINTS = 48;
 
-function MachineDrawer({
+function MachineInspector({
     id,
     listed,
     scannedAt,
     suggested,
-    onClose,
 }: {
     id: string;
-    /** This machine's entry in the app-wide `/gt/machines` poll - fresher than the drawer's own fetch. */
+    /** This machine's entry in the app-wide `/gt/machines` poll - fresher than the inspector's own fetch. */
     listed: GTMachine | null;
     scannedAt: number | null;
     /** Whether the server suggests this machine as passive. */
     suggested: boolean;
-    onClose: () => void;
 }) {
     const { nonce } = useGT();
     const { settings, passiveMachines, setPassive, machineNames, setMachineName, machineLines, setMachineLine } =
@@ -734,21 +728,20 @@ function MachineDrawer({
     if (!m) {
         const missing = detail.error === "NOT_FOUND";
         return (
-            <Drawer title="Machine" onClose={onClose}>
-                <div className="placeholder-panel">
-                    {detail.notAvailable
-                        ? "GregTech data isn't available on this server."
-                        : missing
-                          ? "This machine no longer exists, or isn't visible to you."
-                          : detail.error
-                            ? `Couldn't load this machine (${detail.error}).`
-                            : "Loading…"}
-                </div>
-            </Drawer>
+            <p className="item-panel__empty">
+                {detail.notAvailable
+                    ? "GregTech data isn't available on this server."
+                    : missing
+                      ? "This machine no longer exists, or isn't visible to you."
+                      : detail.error
+                        ? `Couldn't load this machine (${detail.error}).`
+                        : "Loading…"}
+            </p>
         );
     }
 
     const progress = scannedAt !== null ? liveProgressTicks(m, scannedAt, now) : m.progressTicks;
+    const running = m.status === "RUNNING" && m.maxProgressTicks > 0;
     const production = detail.data?.production ?? null;
     const consumption = detail.data?.consumption ?? null;
     const values = history.data?.points ?? [];
@@ -760,66 +753,68 @@ function MachineDrawer({
         : GT_STATUS_LABELS[m.status];
     const fields: [string, string][] = [
         ["Status", duration ? `${statusText} (for ${duration})` : statusText],
-        ...(m.status === "RUNNING" && m.maxProgressTicks > 0
-            ? ([
-                  [
-                      "Progress",
-                      `${Math.round((progress / m.maxProgressTicks) * 100)}% · ${remainingLabel(m, progress)}`,
-                  ],
-              ] as [string, string][])
-            : []),
         ["Energy", m.euPerTick < 0 ? `+${formatEUt(-m.euPerTick)} (generating)` : formatEUt(m.euPerTick)],
         ["Voltage tier", gtTierName(m.voltageTier)],
         ["Efficiency", `${(m.efficiency / 100).toFixed(m.efficiency % 100 === 0 ? 0 : 1)}%`],
-        ...(machineNames[m.id] ? ([["Name", m.name]] as [string, string][]) : []),
         ["Owner", m.ownerName ?? "Admin only"],
         ["Type", m.type],
+        ...(machineNames[m.id] ? ([["GregTech name", m.name]] as [string, string][]) : []),
         ["Last seen", m.loaded ? "Loaded now" : formatRelativeAge(m.lastSeenMillis, now)],
     ];
 
     return (
-        <Drawer
-            title={machineLabel(m, machineNames)}
-            subtitle={`${m.x}, ${m.y}, ${m.z} · ${dimensionKey(m)}`}
-            onClose={onClose}
-        >
-            <div className="machine-drawer__status">
-                <Badge variant={GT_STATUS_VARIANTS[m.status]}>{GT_STATUS_LABELS[m.status]}</Badge>
-                {!m.loaded && <Badge variant="grey">Not loaded</Badge>}
-                {isPassive && <Badge variant="grey">Passive</Badge>}
-                <Button variant="text" onClick={() => copyCoords(m)}>
-                    Copy coordinates
-                </Button>
-                <Button variant="text" onClick={() => setPassive([m.id], isPassive ? null : true)}>
-                    {isPassive ? "Unmark passive" : "Mark as passive"}
-                </Button>
+        <div className="machine-panel">
+            <div className="machine-panel__head">
+                <div className="machine-panel__title-row">
+                    <span className="machine-panel__title">{machineLabel(m, machineNames)}</span>
+                    <Badge variant={GT_STATUS_VARIANTS[m.status]} size="sm">
+                        {GT_STATUS_LABELS[m.status]}
+                    </Badge>
+                    {!m.loaded && (
+                        <Badge variant="grey" size="sm">
+                            Not loaded
+                        </Badge>
+                    )}
+                    {isPassive && (
+                        <Badge variant="grey" size="sm">
+                            Passive
+                        </Badge>
+                    )}
+                </div>
+                <span className="machine-panel__where">
+                    {m.x} {m.y} {m.z} · {dimensionKey(m)} ·{" "}
+                    <Button variant="text" onClick={() => copyCoords(m)}>
+                        copy
+                    </Button>
+                    ·{" "}
+                    <Button variant="text" onClick={() => setPassive([m.id], isPassive ? null : true)}>
+                        {isPassive ? "unmark passive" : "mark passive"}
+                    </Button>
+                </span>
             </div>
             {suggested && !(m.id in passiveMachines) && (
-                <div className="machine-drawer__hint">
+                <p className="item-panel__hint">
                     This machine has produced the same outputs steadily lately - it looks passive.
-                </div>
-            )}
-            {m.status === "RUNNING" && m.maxProgressTicks > 0 && (
-                <ProgressBar percent={(progress / m.maxProgressTicks) * 100} color="var(--green)" />
+                </p>
             )}
 
-            <div className="machine-drawer__naming">
-                <label className="machine-drawer__label">
+            <div className="machine-panel__naming">
+                <label className="machine-panel__label">
                     <span>Nickname</span>
                     <CommitInput
                         key={`name:${m.id}`}
-                        className="gt-input"
+                        className="field"
                         initial={machineNames[m.id] ?? ""}
                         placeholder={m.name}
                         ariaLabel="Nickname"
                         onCommit={(name) => setMachineName(m.id, name)}
                     />
                 </label>
-                <label className="machine-drawer__label">
+                <label className="machine-panel__label">
                     <span>Processing line</span>
                     <CommitInput
                         key={`line:${m.id}`}
-                        className="gt-input"
+                        className="field"
                         initial={machineLines[m.id] ?? ""}
                         placeholder="None"
                         ariaLabel="Processing line"
@@ -829,75 +824,97 @@ function MachineDrawer({
                 </label>
             </div>
 
-            <dl className="machine-drawer__fields">
+            {running && (
+                <div className="machine-panel__progress">
+                    <ProgressBar percent={(progress / m.maxProgressTicks) * 100} color="var(--green)" />
+                    <div className="machine-panel__progress-label">
+                        <span>{Math.round((progress / m.maxProgressTicks) * 100)}%</span>
+                        <span>{remainingLabel(m, progress)}</span>
+                    </div>
+                </div>
+            )}
+
+            <div className="kv-grid machine-panel__fields">
                 {fields.map(([k, v]) => (
-                    <div key={k} className="machine-drawer__field">
-                        <dt>{k}</dt>
-                        <dd>{v}</dd>
+                    <div key={k} className="kv-grid__cell">
+                        <span className="kv-grid__key">{k}</span>
+                        <span className="kv-grid__value" title={v}>
+                            {v}
+                        </span>
                     </div>
                 ))}
-            </dl>
+            </div>
 
             {m.maintenanceIssues.length > 0 && (
-                <div className="machine-card__issues">
+                <div className="machine-panel__issues">
                     {m.maintenanceIssues.map((issue) => (
-                        <span key={issue} className="machine-card__issue">
+                        <Badge key={issue} variant="amber" size="sm">
                             {issue}
-                        </span>
+                        </Badge>
                     ))}
                 </div>
             )}
 
             {m.outputs.length > 0 && (
-                <>
-                    <h3 className="machine-drawer__heading">Current recipe</h3>
+                <section className="item-panel__section">
+                    <SectionLabel>Current recipe</SectionLabel>
                     <RecipeDetail
                         inputs={m.inputs}
                         outputs={m.outputs}
                         progress={m.maxProgressTicks > 0 ? progress / m.maxProgressTicks : 0}
                         numberFormat={fmt}
                     />
-                </>
+                </section>
             )}
 
-            <div className="machine-drawer__production-head">
-                <h3 className="machine-drawer__heading">Production</h3>
-                <SegmentedControl<GTRange> options={DRAWER_RANGES} value={range} onChange={setRange} />
-            </div>
-            {history.data && (
-                <Chart
-                    variant="bars"
-                    values={values}
-                    timestamps={timestamps}
-                    range={range}
-                    width={DRAWER_CHART_W}
-                    height={110}
-                    numberFormat={fmt}
-                    showAxes
-                    ariaLabel={`${machineLabel(m, machineNames)}, total output per window`}
-                />
-            )}
-            {production === null ? (
-                <div className="machine-drawer__empty">
-                    {detail.error ? `Couldn't load (${detail.error}).` : "Loading…"}
-                </div>
-            ) : production.rows.length === 0 ? (
-                <div className="machine-drawer__empty">Nothing produced in this range.</div>
-            ) : (
-                <FlowTable rows={production.rows} heading="Output" numberFormat={fmt} />
-            )}
+            <section className="item-panel__section">
+                <SectionLabel
+                    end={
+                        <SegmentedControl<GTRange>
+                            className="segmented--mono"
+                            options={DRAWER_RANGES}
+                            value={range}
+                            onChange={setRange}
+                        />
+                    }
+                >
+                    Production
+                </SectionLabel>
+                {history.data && (
+                    <Chart
+                        variant="bars"
+                        values={values}
+                        timestamps={timestamps}
+                        range={range}
+                        width={DRAWER_CHART_W}
+                        height={90}
+                        numberFormat={fmt}
+                        showAxes
+                        ariaLabel={`${machineLabel(m, machineNames)}, total output per window`}
+                    />
+                )}
+                {production === null ? (
+                    <p className="item-panel__empty">
+                        {detail.error ? `Couldn't load (${detail.error}).` : "Loading…"}
+                    </p>
+                ) : production.rows.length === 0 ? (
+                    <p className="item-panel__empty">Nothing produced in this range.</p>
+                ) : (
+                    <FlowTable rows={production.rows} heading="Output" numberFormat={fmt} />
+                )}
+            </section>
 
             {consumption !== null && (
-                <>
-                    <h3 className="machine-drawer__heading">Consumed</h3>
+                <section className="item-panel__section">
+                    <SectionLabel>Consumed</SectionLabel>
                     {consumption.rows.length === 0 ? (
-                        <div className="machine-drawer__empty">No recipe inputs recorded in this range.</div>
+                        <p className="item-panel__empty">No recipe inputs recorded in this range.</p>
                     ) : (
                         <FlowTable rows={consumption.rows} heading="Input" numberFormat={fmt} />
                     )}
-                </>
+                </section>
             )}
-        </Drawer>
+        </div>
     );
 }
 

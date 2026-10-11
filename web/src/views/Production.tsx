@@ -95,46 +95,67 @@ export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
     );
 
     return (
-        <section className="production">
-            <div className="production__controls">
-                <SegmentedControl<GTRange> options={RANGES} value={range} onChange={setRange} />
-                {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
-                <SegmentedControl<GroupBy>
-                    options={hasLines ? GROUP_OPTIONS : GROUP_OPTIONS.filter((o) => o.value !== "line")}
-                    value={groupBy}
-                    onChange={setGroupBy}
-                />
-                <SegmentedControl<GTFlow> options={FLOW_OPTIONS} value={flow} onChange={setFlow} />
-                <SegmentedControl<Kind> options={KIND_OPTIONS} value={kind} onChange={setKind} />
-                <input
-                    type="text"
-                    className="gt-input production__search"
-                    placeholder={
-                        groupBy === "item"
-                            ? SEARCH_PLACEHOLDERS[kind]
-                            : groupBy === "line"
-                              ? "Search lines..."
-                              : "Search machines..."
-                    }
-                    value={search}
-                    onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-                />
-            </div>
-            <GTPollState poll={production} what="production">
-                {(data) => (
-                    <ProductionTable
-                        data={data}
-                        lines={groupBy === "line"}
-                        range={range}
-                        minutes={minutes}
-                        kind={kind}
-                        search={search}
-                        onOpenMachine={onOpenMachine}
-                        onOpenStats={onOpenStats}
+        <div className="page">
+            <div className="page__main">
+                <header className="page-header">
+                    <h2 className="page-header__title">Production</h2>
+                    <SegmentedControl<GTRange>
+                        className="segmented--mono"
+                        options={RANGES}
+                        value={range}
+                        onChange={setRange}
                     />
-                )}
-            </GTPollState>
-        </section>
+                    {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
+                    <SegmentedControl<GroupBy>
+                        className="segmented--mono"
+                        options={hasLines ? GROUP_OPTIONS : GROUP_OPTIONS.filter((o) => o.value !== "line")}
+                        value={groupBy}
+                        onChange={setGroupBy}
+                    />
+                    <SegmentedControl<GTFlow>
+                        className="segmented--mono"
+                        options={FLOW_OPTIONS}
+                        value={flow}
+                        onChange={setFlow}
+                    />
+                    <SegmentedControl<Kind>
+                        className="segmented--mono"
+                        options={KIND_OPTIONS}
+                        value={kind}
+                        onChange={setKind}
+                    />
+                    <input
+                        type="text"
+                        className="field production__search"
+                        placeholder={
+                            groupBy === "item"
+                                ? SEARCH_PLACEHOLDERS[kind]
+                                : groupBy === "line"
+                                  ? "Search lines..."
+                                  : "Search machines..."
+                        }
+                        value={search}
+                        onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+                    />
+                </header>
+                <div className="page__scroll">
+                    <GTPollState poll={production} what="production">
+                        {(data) => (
+                            <ProductionTable
+                                data={data}
+                                lines={groupBy === "line"}
+                                range={range}
+                                minutes={minutes}
+                                kind={kind}
+                                search={search}
+                                onOpenMachine={onOpenMachine}
+                                onOpenStats={onOpenStats}
+                            />
+                        )}
+                    </GTPollState>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -196,43 +217,41 @@ function ProductionTable({
             ) : rows.length === 0 ? (
                 <div className="placeholder-panel">No rows match "{search}".</div>
             ) : (
-                <table className="gt-table production__table">
-                    <thead>
-                        <tr>
-                            <th>
-                                {groupBy === "machine"
-                                    ? "Machine"
-                                    : groupBy === "line"
-                                      ? "Line"
-                                      : data.flow === "consumed"
-                                        ? "Input"
-                                        : "Output"}
-                            </th>
-                            <th className="production__share-col" aria-label="Share" />
-                            <th className="gt-table__num">Total</th>
-                            <th className="gt-table__num">Per hour</th>
-                            <th aria-label="Actions" />
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((row) => (
-                            <ProductionRow
-                                key={row.key}
-                                row={row}
-                                groupBy={groupBy}
-                                flow={data.flow}
-                                share={row.total / maxTotal(row.fluid)}
-                                expanded={expanded === row.key}
-                                onToggle={() => setExpanded((e) => (e === row.key ? null : row.key))}
-                                range={range}
-                                minutes={minutes}
-                                numberFormat={fmt}
-                                onOpenMachine={onOpenMachine}
-                                onOpenStats={onOpenStats}
-                            />
-                        ))}
-                    </tbody>
-                </table>
+                <div className="dtable prod-table">
+                    <div className="dtable__head">
+                        <span />
+                        <span />
+                        <span>
+                            {groupBy === "machine"
+                                ? "Machine"
+                                : groupBy === "line"
+                                  ? "Line"
+                                  : data.flow === "consumed"
+                                    ? "Input"
+                                    : "Output"}
+                        </span>
+                        <span className="prod-table__share-head">Share</span>
+                        <span className="right">Total ↓</span>
+                        <span className="right">Per hour</span>
+                        <span />
+                    </div>
+                    {rows.map((row) => (
+                        <ProductionRow
+                            key={row.key}
+                            row={row}
+                            groupBy={groupBy}
+                            flow={data.flow}
+                            share={row.total / maxTotal(row.fluid)}
+                            expanded={expanded === row.key}
+                            onToggle={() => setExpanded((e) => (e === row.key ? null : row.key))}
+                            range={range}
+                            minutes={minutes}
+                            numberFormat={fmt}
+                            onOpenMachine={onOpenMachine}
+                            onOpenStats={onOpenStats}
+                        />
+                    ))}
+                </div>
             )}
             <p className="production__footer">
                 {countingSince && `Counting since ${formatTimestamp(data.trackingSince)}. `}
@@ -283,45 +302,54 @@ function ProductionRow({
 
     return (
         <>
-            <tr className={cx("production__row", expanded && "production__row--expanded")} onClick={onToggle}>
-                <td>
-                    <span className="gt-table__item">
-                        <span className={cx("production__caret", expanded && "production__caret--open")}>▸</span>
-                        {isItem ? (
-                            <ItemIcon itemid={row.key} name={row.name} size={22} />
-                        ) : (
-                            <FactoryIcon size={18} className="production__machine-icon" />
-                        )}
-                        {row.name}
-                    </span>
-                </td>
-                <td className="production__share-col">
-                    <div className="production__share">
-                        <div className="production__share-fill" style={{ width: `${Math.max(1, share * 100)}%` }} />
-                    </div>
-                </td>
-                <td className="gt-table__num">{amount(row)}</td>
-                <td className="gt-table__num">{formatGTPerHour(row.perHour, row.fluid, numberFormat)}</td>
+            <div
+                className={cx("dtable__row dtable__row--clickable prod-row", expanded && "prod-row--open")}
+                role="button"
+                tabIndex={0}
+                aria-expanded={expanded}
+                onClick={onToggle}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onToggle();
+                    }
+                }}
+            >
+                <span className="prod-row__caret">{expanded ? "▾" : "▸"}</span>
+                {isItem ? (
+                    <ItemIcon itemid={row.key} name={row.name} size={22} />
+                ) : (
+                    <FactoryIcon size={18} className="prod-row__machine-icon" />
+                )}
+                <span className="cell-text">{row.name}</span>
+                <div className="prod-row__share">
+                    <div
+                        style={{
+                            width: `${Math.max(1, share * 100)}%`,
+                            background: row.fluid ? "var(--cyan)" : "var(--accent)",
+                        }}
+                    />
+                </div>
+                <span className="cell-num prod-row__total">{amount(row)}</span>
+                <span className="cell-num dim">{formatGTPerHour(row.perHour, row.fluid, numberFormat)}</span>
                 {/* Below 768px this column is hidden and the same actions sit in the expanded detail. */}
-                <td className="production__actions" onClick={(e) => e.stopPropagation()}>
+                <span className="prod-row__actions" onClick={(e) => e.stopPropagation()}>
                     {actions}
-                </td>
-            </tr>
+                </span>
+            </div>
             {expanded && (
-                <tr className="production__detail-row">
-                    <td colSpan={5}>
-                        <ProductionDetail
-                            row={row}
-                            groupBy={groupBy}
-                            flow={flow}
-                            range={range}
-                            minutes={minutes}
-                            numberFormat={numberFormat}
-                            onOpenMachine={onOpenMachine}
-                        />
-                        {actions && <div className="production__detail-actions">{actions}</div>}
-                    </td>
-                </tr>
+                <div className="prod-detail">
+                    <ProductionDetail
+                        row={row}
+                        groupBy={groupBy}
+                        flow={flow}
+                        range={range}
+                        minutes={minutes}
+                        numberFormat={numberFormat}
+                        onOpenMachine={onOpenMachine}
+                    />
+                    {actions && <div className="production__detail-actions">{actions}</div>}
+                </div>
             )}
         </>
     );
@@ -351,7 +379,7 @@ function ProductionDetail({
     return (
         <div className="production__detail">
             <div className="production__breakdown">
-                <span className="production__detail-label">
+                <span className="section-label">
                     {isItem ? "By machine" : flow === "consumed" ? "By input" : "By output"}
                 </span>
                 {row.breakdown.map((b) => (
@@ -366,10 +394,8 @@ function ProductionDetail({
                                 {b.name}
                             </span>
                         )}
-                        <span className="gt-table__num">
-                            {formatGTAmount(b.total, b.fluid || row.fluid, numberFormat)}
-                        </span>
-                        <span className="gt-table__num production__breakdown-rate">
+                        <span className="cell-num">{formatGTAmount(b.total, b.fluid || row.fluid, numberFormat)}</span>
+                        <span className="cell-num dim">
                             {formatGTPerHour(b.perHour, b.fluid || row.fluid, numberFormat)}/h
                         </span>
                     </div>
@@ -428,10 +454,10 @@ function ProductionChart({
 
     return (
         <div className="production__chart">
-            <span className="production__detail-label">
+            <span className="section-label">
                 {verb} per {data ? describeStep(data.stepMillis) : "window"}
             </span>
-            {history.error && <span className="production__detail-label">Couldn't load ({history.error}).</span>}
+            {history.error && <span className="item-panel__empty">Couldn't load ({history.error}).</span>}
             {data && (
                 <Chart
                     variant="bars"

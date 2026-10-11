@@ -1,7 +1,7 @@
 // GregTech Power section (docs/gt-hub/phase-2-frontend.md §4.2): the main LSC (pinned in synced prefs,
-// else the largest) as a hero panel with its history always shown, then one card per other Lapotronic
-// Supercapacitor and per team wireless EU network, with fill, net rate and a time-to-empty/full
-// countdown, each expandable into its stored-EU history. Rates read as amps at a tier plus raw EU/t.
+// else the largest) as a hero panel with its history always shown, then a table of every other Lapotronic
+// Supercapacitor and team wireless EU network, with fill, net rate and a time-to-empty/full countdown,
+// each expandable into its stored-EU history. Rates read as amps at a tier plus raw EU/t.
 import { useState } from "preact/hooks";
 
 import { getGTPower, getGTPowerHistory } from "../api/client";
@@ -11,10 +11,8 @@ import { GT_FAST_POLL_MS, useGT, useGTPoll } from "../state/gt";
 import { usePrefs } from "../state/prefs";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
 import { Chart } from "../ui/Chart";
 import { cx } from "../ui/cx";
-import { ProgressBar } from "../ui/ProgressBar";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { CustomRangeInput } from "./CustomRangeInput";
 import { GTPollState, useNow } from "./gtCommon";
@@ -43,42 +41,75 @@ export function Power() {
                 }
                 const main = pickMain(sources, mainPowerSource);
                 const others = main ? sources.filter((s) => s.id !== main.id) : sources;
+                const lscCount = sources.filter((s) => s.kind === "LSC").length;
+                const wirelessCount = sources.length - lscCount;
+                const toggle = (id: string) =>
+                    setExpanded((e) => {
+                        const next = new Set(e);
+                        if (!next.delete(id)) next.add(id);
+                        return next;
+                    });
                 return (
-                    <section className="power">
-                        {main ? (
-                            <MainPowerPanel
-                                source={main}
-                                now={now}
-                                pinned={main.id === mainPowerSource}
-                                onUnpin={() => setMainPowerSource(null)}
-                            />
-                        ) : (
-                            sources.length > 1 && <PowerTotals sources={sources} now={now} />
-                        )}
-                        {main && others.length > 0 && <span className="power__section-label">Other sources</span>}
-                        {others.length > 0 && (
-                            <div className="power__grid">
-                                {others.map((source) => (
-                                    <PowerCard
-                                        key={source.id}
-                                        source={source}
+                    <div className="page">
+                        <div className="page__main">
+                            <header className="page-header">
+                                <h2 className="page-header__title">Power</h2>
+                                <span className="page-header__sub">
+                                    {[
+                                        lscCount > 0 && `${lscCount} LSC`,
+                                        wirelessCount > 0 &&
+                                            `${wirelessCount} wireless network${wirelessCount === 1 ? "" : "s"}`,
+                                    ]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                </span>
+                            </header>
+                            <div className="page__scroll">
+                                {main ? (
+                                    <MainPowerPanel
+                                        source={main}
                                         now={now}
-                                        expanded={expanded.has(source.id)}
-                                        onToggle={() =>
-                                            setExpanded((e) => {
-                                                const next = new Set(e);
-                                                if (!next.delete(source.id)) next.add(source.id);
-                                                return next;
-                                            })
-                                        }
-                                        onMakeMain={
-                                            source.kind === "LSC" ? () => setMainPowerSource(source.id) : undefined
-                                        }
+                                        pinned={main.id === mainPowerSource}
+                                        onUnpin={() => setMainPowerSource(null)}
                                     />
-                                ))}
+                                ) : (
+                                    sources.length > 1 && <PowerTotals sources={sources} now={now} />
+                                )}
+                                {others.length > 0 && (
+                                    <>
+                                        {main && (
+                                            <div className="power__section-label section-label">Other sources</div>
+                                        )}
+                                        <div className="dtable power-table">
+                                            <div className="dtable__head">
+                                                <span>Source</span>
+                                                <span>Kind</span>
+                                                <span>Fill</span>
+                                                <span className="right">Stored</span>
+                                                <span className="right">Net</span>
+                                                <span className="right">Outlook</span>
+                                                <span />
+                                            </div>
+                                            {others.map((source) => (
+                                                <PowerRow
+                                                    key={source.id}
+                                                    source={source}
+                                                    now={now}
+                                                    expanded={expanded.has(source.id)}
+                                                    onToggle={() => toggle(source.id)}
+                                                    onMakeMain={
+                                                        source.kind === "LSC"
+                                                            ? () => setMainPowerSource(source.id)
+                                                            : undefined
+                                                    }
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
-                        )}
-                    </section>
+                        </div>
+                    </div>
                 );
             }}
         </GTPollState>
@@ -185,14 +216,18 @@ function MainPowerPanel({
     onUnpin: () => void;
 }) {
     const eta = etaText(s, now);
+    const [range, setRange] = useState<GTRange>("24h");
+    const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
     return (
-        <Card className={cx("power-main", !s.loaded && "power-card--unloaded")}>
-            <div className="power-card__head">
-                <div className="power-card__identity">
-                    <span className="power-main__name">{s.name}</span>
-                    <span className="power-card__meta">{sourceMeta(s)}</span>
-                </div>
-                {!s.loaded && <Badge variant="grey">Not loaded</Badge>}
+        <section className={cx("power-main", !s.loaded && "power--unloaded")}>
+            <div className="power-main__head">
+                <span className="power-main__name">{s.name}</span>
+                <span className="power-main__meta">{sourceMeta(s)}</span>
+                {!s.loaded && (
+                    <Badge variant="grey" size="sm">
+                        Not loaded
+                    </Badge>
+                )}
                 <Badge variant="teal" size="sm">
                     {pinned ? "Main" : "Main (auto)"}
                 </Badge>
@@ -201,20 +236,28 @@ function MainPowerPanel({
                         Unpin
                     </Button>
                 )}
+                <div className="page-header__end">
+                    <RangeControls
+                        range={range}
+                        onRange={setRange}
+                        customMinutes={customMinutes}
+                        onCustomMinutes={setCustomMinutes}
+                    />
+                </div>
             </div>
 
             <div className="power-main__summary">
                 <div className="power-main__stat">
-                    <span className="power__kpi-label">Stored</span>
+                    <span className="section-label">Stored</span>
                     <span className="power-main__stored" title={`${BigInt(s.stored).toLocaleString("en-US")} EU`}>
                         {formatEU(s.stored)}
-                        {s.capacity !== null && <span className="power-card__capacity"> / {formatEU(s.capacity)}</span>}
+                        {s.capacity !== null && <span className="power-main__capacity"> / {formatEU(s.capacity)}</span>}
                     </span>
                 </div>
                 <div className="power-main__stat">
-                    <span className="power__kpi-label">Net</span>
+                    <span className="section-label">Net</span>
                     {s.netPerTick === null ? (
-                        <span className="power-card__pending">Rate available after the next scans</span>
+                        <span className="power-main__pending">Rate available after the next scans</span>
                     ) : (
                         <span className={cx("power-main__net", netClass(s.netPerTick))}>
                             {signedRate(s.netPerTick)}
@@ -222,25 +265,52 @@ function MainPowerPanel({
                     )}
                     <IoRates source={s} />
                 </div>
-                {eta.text && (
-                    <div className="power-main__stat">
-                        <span className="power__kpi-label">Outlook</span>
-                        <span className={cx("power-main__eta", eta.draining && "power__net--negative")}>
-                            {eta.text}
+                <div className="power-main__stat">
+                    <span className="section-label">Outlook</span>
+                    <span className={cx("power-main__eta", eta.draining && "power__net--negative")}>
+                        {eta.text ?? "—"}
+                    </span>
+                </div>
+                {s.fill !== null && (
+                    <div className="power-main__gauge">
+                        <span className="power-main__fill" style={{ color: fillColor(s.fill) }}>
+                            {(s.fill * 100).toFixed(1)}%
                         </span>
+                        <div className="power-main__track">
+                            <div style={{ width: `${s.fill * 100}%`, background: fillColor(s.fill) }} />
+                            <span className="power-main__tick" style={{ left: "10%", background: "var(--red)" }} />
+                            <span className="power-main__tick" style={{ left: "30%", background: "var(--amber)" }} />
+                        </div>
                     </div>
                 )}
             </div>
 
-            {s.fill !== null && (
-                <div className="power-card__gauge">
-                    <ProgressBar percent={s.fill * 100} height={14} color={fillColor(s.fill)} />
-                    <span className="power-card__fill">{(s.fill * 100).toFixed(1)}%</span>
-                </div>
-            )}
+            <PowerHistory source={s} range={range} customMinutes={customMinutes} wide />
+        </section>
+    );
+}
 
-            <PowerHistory source={s} wide />
-        </Card>
+function RangeControls({
+    range,
+    onRange,
+    customMinutes,
+    onCustomMinutes,
+}: {
+    range: GTRange;
+    onRange: (range: GTRange) => void;
+    customMinutes: number;
+    onCustomMinutes: (minutes: number) => void;
+}) {
+    return (
+        <span className="power__range">
+            {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={onCustomMinutes} />}
+            <SegmentedControl<GTRange>
+                className="segmented--mono"
+                options={HISTORY_RANGES}
+                value={range}
+                onChange={onRange}
+            />
+        </span>
     );
 }
 
@@ -249,10 +319,10 @@ function netClass(net: number | null): string | false {
 }
 
 function fillColor(fill: number): string {
-    return fill < 0.1 ? "var(--red)" : fill < 0.3 ? "var(--amber)" : "var(--teal)";
+    return fill < 0.1 ? "var(--red)" : fill < 0.3 ? "var(--amber)" : "var(--cyan)";
 }
 
-function PowerCard({
+function PowerRow({
     source: s,
     now,
     expanded,
@@ -267,77 +337,99 @@ function PowerCard({
     onMakeMain?: () => void;
 }) {
     const eta = etaText(s, now);
+    const [range, setRange] = useState<GTRange>("24h");
+    const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
 
     return (
-        <Card className={cx("power-card", !s.loaded && "power-card--unloaded")}>
-            <div className="power-card__head">
-                <div className="power-card__identity">
-                    <span className="power-card__name">{s.name}</span>
-                    <span className="power-card__meta">{sourceMeta(s)}</span>
+        <>
+            <div className={cx("dtable__row power-row", !s.loaded && "power--unloaded", expanded && "power-row--open")}>
+                <div className="cell-stack">
+                    <span className="cell-text">{s.name}</span>
+                    <span className="cell-sub">
+                        {sourceMeta(s)}
+                        {!s.loaded ? " · not loaded" : ""}
+                    </span>
                 </div>
-                {!s.loaded && <Badge variant="grey">Not loaded</Badge>}
                 <Badge variant={s.kind === "LSC" ? "teal" : "purple"} size="sm">
                     {s.kind === "LSC" ? "LSC" : "Wireless"}
                 </Badge>
-            </div>
-
-            {s.fill !== null && (
-                <div className="power-card__gauge">
-                    <ProgressBar percent={s.fill * 100} height={10} color={fillColor(s.fill)} />
-                    <span className="power-card__fill">{(s.fill * 100).toFixed(1)}%</span>
+                <div className="power-row__fill">
+                    {s.fill !== null ? (
+                        <>
+                            <div className="bar">
+                                <div
+                                    className="bar__fill"
+                                    style={{ width: `${s.fill * 100}%`, background: fillColor(s.fill) }}
+                                />
+                            </div>
+                            <span>{(s.fill * 100).toFixed(1)}%</span>
+                        </>
+                    ) : (
+                        <span className="dim">—</span>
+                    )}
                 </div>
-            )}
-
-            <div className="power-card__stored" title={`${BigInt(s.stored).toLocaleString("en-US")} EU`}>
-                {formatEU(s.stored)}
-                {s.capacity !== null && <span className="power-card__capacity"> / {formatEU(s.capacity)}</span>}
-            </div>
-
-            <div className="power-card__rates">
-                {s.netPerTick === null ? (
-                    <span className="power-card__pending">Rate available after the next scans</span>
-                ) : (
-                    <>
-                        <span className={cx("power-card__net", netClass(s.netPerTick))}>
-                            {signedRate(s.netPerTick)}
-                        </span>
-                        <IoRates source={s} />
-                    </>
-                )}
-            </div>
-
-            <div className="power-card__foot">
-                {eta.text && (
-                    <span className={cx("power-card__eta", eta.draining && "power__net--negative")}>{eta.text}</span>
-                )}
-                <div className="power-card__actions">
+                <span className="cell-num power-row__stored" title={`${BigInt(s.stored).toLocaleString("en-US")} EU`}>
+                    {formatEU(s.stored)}
+                    {s.capacity !== null && ` / ${formatEU(s.capacity)}`}
+                </span>
+                <span className={cx("cell-num", netClass(s.netPerTick))}>
+                    {s.netPerTick === null ? "pending" : signedRate(s.netPerTick)}
+                </span>
+                <span className={cx("cell-num", eta.draining && "power__net--negative")}>{eta.text ?? "—"}</span>
+                <span className="power-row__actions">
                     {onMakeMain && (
-                        <Button variant="text" onClick={onMakeMain}>
-                            Set as main
+                        <Button variant="text" onClick={onMakeMain} title="Show this LSC at the top">
+                            Main
                         </Button>
                     )}
                     <Button variant="text" onClick={onToggle} aria-expanded={expanded}>
-                        {expanded ? "Hide history" : "History"}
+                        {expanded ? "Hide" : "History"}
                     </Button>
-                </div>
+                </span>
             </div>
-
-            {expanded && <PowerHistory source={s} />}
-        </Card>
+            {expanded && (
+                <div className="power-row__history">
+                    <RangeControls
+                        range={range}
+                        onRange={setRange}
+                        customMinutes={customMinutes}
+                        onCustomMinutes={setCustomMinutes}
+                    />
+                    <PowerHistory source={s} range={range} customMinutes={customMinutes} />
+                </div>
+            )}
+        </>
     );
 }
 
 const HISTORY_RANGES = gtRangeOptions(["15m", "1h", "6h", "24h", "7d", "30d", "custom"]);
+const RANGE_LABEL: Partial<Record<GTRange, string>> = {
+    "15m": "last 15 min",
+    "1h": "last hour",
+    "6h": "last 6h",
+    "24h": "last 24h",
+    "7d": "last 7 days",
+    "30d": "last 30 days",
+    custom: "custom range",
+};
 const HISTORY_W = 420;
 /** The main panel's chart geometry - wider and taller, since it spans the whole content column. */
 const HISTORY_W_WIDE = 960;
 const HISTORY_POINTS = 120;
 
-function PowerHistory({ source, wide = false }: { source: GTPowerSource; wide?: boolean }) {
+function PowerHistory({
+    source,
+    range,
+    customMinutes,
+    wide = false,
+}: {
+    source: GTPowerSource;
+    range: GTRange;
+    customMinutes: number;
+    wide?: boolean;
+}) {
     const { nonce } = useGT();
     const { settings } = usePrefs();
-    const [range, setRange] = useState<GTRange>("24h");
-    const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
     const minutes = range === "custom" ? customMinutes : undefined;
     const history = useGTPoll(
         () => getGTPowerHistory(source.id, range, HISTORY_POINTS, minutes),
@@ -360,14 +452,10 @@ function PowerHistory({ source, wide = false }: { source: GTPowerSource; wide?: 
 
     return (
         <div className={cx("power-history", wide && "power-history--wide")}>
-            <div className="power-history__controls">
-                <SegmentedControl<GTRange> options={HISTORY_RANGES} value={range} onChange={setRange} />
-                {range === "custom" && <CustomRangeInput minutes={customMinutes} onChange={setCustomMinutes} />}
-            </div>
             {history.error && <div className="power-history__note">Couldn't load history ({history.error}).</div>}
             {data && (
                 <>
-                    <span className="power-history__label">Stored</span>
+                    <span className="section-label">Stored · {RANGE_LABEL[range] ?? range}</span>
                     <Chart
                         values={stored}
                         timestamps={timestamps}
@@ -389,19 +477,23 @@ function PowerHistory({ source, wide = false }: { source: GTPowerSource; wide?: 
                     )}
                     {net.some((v) => v !== null) && (
                         <>
-                            <span className="power-history__label">Net EU/t (in − out)</span>
-                            <Chart
-                                values={net}
-                                timestamps={timestamps}
-                                range={range}
-                                spanMillis={spanMillis}
-                                width={wide ? HISTORY_W_WIDE : HISTORY_W}
-                                height={wide ? 100 : 70}
-                                showAxes
-                                yTickCount={2}
-                                formatValue={(v) => (v < 0 ? `−${formatEUt(-v)}` : formatEUt(v)).replace(" EU/t", "")}
-                                ariaLabel={`${source.name}, net EU per tick`}
-                            />
+                            <span className="section-label">Net EU/t (in − out)</span>
+                            <div className="power-history__net">
+                                <Chart
+                                    values={net}
+                                    timestamps={timestamps}
+                                    range={range}
+                                    spanMillis={spanMillis}
+                                    width={wide ? HISTORY_W_WIDE : HISTORY_W}
+                                    height={wide ? 100 : 70}
+                                    showAxes
+                                    yTickCount={2}
+                                    formatValue={(v) =>
+                                        (v < 0 ? `−${formatEUt(-v)}` : formatEUt(v)).replace(" EU/t", "")
+                                    }
+                                    ariaLabel={`${source.name}, net EU per tick`}
+                                />
+                            </div>
                         </>
                     )}
                 </>
