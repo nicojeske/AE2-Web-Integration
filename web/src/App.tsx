@@ -314,7 +314,13 @@ function Shell() {
                                     onItemChange={(item) => route.push({ section: "history", detail: null, item })}
                                 />
                             )}
-                            {section === "favorites" && <Favorites />}
+                            {section === "favorites" && (
+                                <Favorites
+                                    onOpenItem={(item) =>
+                                        route.push({ section: "browser", detail: null, grid: selected, item })
+                                    }
+                                />
+                            )}
                             {section === "stats" && <Statistics />}
                             {section === "machines" && (
                                 <Machines

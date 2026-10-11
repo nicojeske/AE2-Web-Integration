@@ -1,49 +1,53 @@
-/* Favorites pane (M6). `.card` (components.css) supplies the row's background/border/radius; these rules
-   cover the row's internal layout and the bits specific to this screen. */
-
-.favorites-list {
-    padding: 20px 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    overflow: auto;
+/* Favorites table */
+.fav-table {
+    --cols: 20px 26px minmax(0, 1fr) 300px 140px 140px 80px;
 }
-
-.favorite-row {
+.fav-table .dtable__head,
+.fav-row {
+    gap: 14px;
+}
+.fav-row {
+    height: 50px;
+}
+.fav-row__identity {
+    padding: 0;
+    background: none;
+    border: 0;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+}
+.fav-row__identity:hover .cell-text {
+    color: var(--cyan);
+}
+.fav-row__level {
     display: flex;
     align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    padding: 14px 16px;
+    gap: 10px;
 }
-
-.favorite-row__identity {
-    display: flex;
-    flex-direction: column;
+.fav-row__level .bar {
     flex: 1;
-    min-width: 160px;
 }
-
-.favorite-row__name {
-    font-size: 13.5px;
-    font-weight: 500;
+.fav-row__stored {
+    min-width: 84px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12px;
     color: var(--text-primary);
 }
-
-.favorite-row__meta {
-    font-size: 11px;
+.rule-input {
+    width: 100%;
+    padding: 5px 9px;
+    font-size: 12px;
+}
+.fav-footnote {
+    margin: 0;
+    padding: 14px 16px;
+    font-size: 11.5px;
     color: var(--text-dim);
 }
 
-.favorite-row__star {
-    background: none;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    display: flex;
-}
-
-/* Stock-rule fields (views/StockRuleEditor.tsx) - Favorites rows and the Browser's item panel. */
+/* Stock rule editor (StockRuleEditor.tsx - the item panels) */
 .stock-rule {
     display: flex;
     flex-direction: column;
@@ -109,9 +113,23 @@
     color: var(--red);
 }
 
-.favorites-list__footnote {
-    font-size: 11.5px;
-    color: var(--text-dim);
-    text-align: center;
-    padding: 8px 0;
+@media (max-width: 1279.98px) {
+    .fav-table {
+        --cols: 20px 26px minmax(0, 1fr) 200px 110px 110px 70px;
+    }
+}
+@media (max-width: 767.98px) {
+    .fav-table {
+        --cols: 26px minmax(0, 1fr) 90px 64px;
+    }
+    .fav-row {
+        height: auto;
+        min-height: 56px;
+    }
+    .fav-table .dtable__head,
+    .fav-row > .item-row__star,
+    .fav-row > .rule-input,
+    .fav-row__level .bar {
+        display: none;
+    }
 }

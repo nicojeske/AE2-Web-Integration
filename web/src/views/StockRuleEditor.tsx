@@ -25,7 +25,8 @@ function parseRuleInput(raw: string, min: number, fallback: number): number {
     return Number.isFinite(n) ? Math.max(min, n) : fallback;
 }
 
-function inputOf(rule: StockRule): StockRuleInput {
+/** The input shape of an existing rule, for an edit of one field. */
+export function inputOf(rule: StockRule): StockRuleInput {
     return {
         alertBelow: rule.alertBelow,
         keepStock: rule.keepStock,
@@ -117,6 +118,52 @@ function StockRuleStatus({ rule, numberFormat }: { rule: StockRule; numberFormat
     }
     if (rule.lastAttempt > 0) parts.push(`last auto-craft ${formatDuration(now - rule.lastAttempt)} ago`);
     return <p className="stock-rule__status">{parts.join(" · ")}</p>;
+}
+
+/**
+ * A bare rule-number input (the Favorites table's Keep at least / Alert below cells): commits a sanitized
+ * whole number on blur or Enter; an item without a rule shows `placeholder` and gets one on its first commit.
+ */
+export function RuleNumberInput({
+    value,
+    min,
+    placeholder,
+    label,
+    onCommit,
+}: {
+    value: number | null;
+    min: number;
+    placeholder: string;
+    label: string;
+    onCommit: (value: number) => void;
+}) {
+    const [draft, setDraft] = useState<string | null>(null);
+    const commit = () => {
+        if (draft === null) return;
+        setDraft(null);
+        if (draft.trim() === "") return;
+        const n = parseRuleInput(draft, min, value ?? min);
+        if (n !== value) onCommit(n);
+    };
+    return (
+        <input
+            type="number"
+            min={min}
+            aria-label={label}
+            className="field field--mono rule-input"
+            placeholder={placeholder}
+            value={draft ?? (value === null ? "" : String(value))}
+            onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") {
+                    setDraft(null);
+                    (e.target as HTMLInputElement).blur();
+                }
+            }}
+        />
+    );
 }
 
 interface NumberFieldProps {
