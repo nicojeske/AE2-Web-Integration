@@ -23,7 +23,9 @@ import { ItemDetail } from "./ItemDetail";
 const NOT_ORDERABLE = "AE2 can't identify this item uniquely, so it can't be ordered from here";
 
 export interface BrowserProps {
-    search: string;
+    /** The itemid in the inspector (the URL's `?item=`), or `null`. */
+    selectedItem: string | null;
+    onSelectItem: (itemid: string | null) => void;
     /** Crafting History filtered to one item (the item panel's "View all in History"). */
     onOpenHistory: (itemid: string) => void;
     onOpenCraft: (entry: { gridKey: GridKey; id: number }) => void;
@@ -41,7 +43,8 @@ const GRID_ROW_HEIGHT_PX = 150;
 const TABLE_ROW_HEIGHT_PX = 44;
 const OVERSCAN_ROWS = 4;
 
-export function Browser({ search, onOpenHistory, onOpenCraft }: BrowserProps) {
+export function Browser({ selectedItem, onSelectItem, onOpenHistory, onOpenCraft }: BrowserProps) {
+    const [search, setSearch] = useState("");
     const { items, loading, error, failedGrids, refresh } = useItems();
     const { selected, selectedGrid } = useNetwork();
     const { isFavorite, toggleFavorite, browserFilters, setBrowserFilters, settings } = usePrefs();
@@ -87,10 +90,8 @@ export function Browser({ search, onOpenHistory, onOpenCraft }: BrowserProps) {
     const cycleSortBy = () => setBrowserFilters((s) => ({ ...s, sortBy: ((s.sortBy + 1) % 3) as 0 | 1 | 2 }));
     const cycleSortOrder = () => setBrowserFilters((s) => ({ ...s, sortOrder: s.sortOrder === 0 ? 1 : 0 }));
 
-    // By identity rather than the row object, so the open panel follows the item through a refresh.
-    const [detailKey, setDetailKey] = useState<string | null>(null);
-    const detailItem =
-        detailKey === null ? null : (items.find((it) => prefsKey(it.sourceGridKey, it.itemid) === detailKey) ?? null);
+    // By itemid rather than the row object, so the open panel follows the item through a refresh.
+    const detailItem = selectedItem === null ? null : (items.find((it) => it.itemid === selectedItem) ?? null);
 
     const onCraft = (item: BrowserItem) => {
         startOrder({
@@ -122,6 +123,14 @@ export function Browser({ search, onOpenHistory, onOpenCraft }: BrowserProps) {
     return (
         <>
             <section className="browser__toolbar">
+                <input
+                    type="search"
+                    className="field"
+                    placeholder="Filter items and fluids…"
+                    title="@mod filters by mod, -word excludes, >100 filters by minimum quantity"
+                    value={search}
+                    onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+                />
                 <Button variant="pill" onClick={cycleStoredCraftable}>
                     {STORED_CRAFTABLE[storedCraftable]}
                 </Button>
@@ -173,7 +182,7 @@ export function Browser({ search, onOpenHistory, onOpenCraft }: BrowserProps) {
                                     type="button"
                                     className="item-table-identity item-open"
                                     title="Show stock, crafts and stock rule"
-                                    onClick={() => setDetailKey(key)}
+                                    onClick={() => onSelectItem(item.itemid)}
                                 >
                                     <ItemIcon itemid={item.itemid} name={item.itemname} size={24} />
                                     <div className="item-table-text">
@@ -241,7 +250,7 @@ export function Browser({ search, onOpenHistory, onOpenCraft }: BrowserProps) {
                                     type="button"
                                     className="item-card__head item-open"
                                     title="Show stock, crafts and stock rule"
-                                    onClick={() => setDetailKey(key)}
+                                    onClick={() => onSelectItem(item.itemid)}
                                 >
                                     <ItemIcon itemid={item.itemid} name={item.itemname} size={44} />
                                     <div className="item-card__title">
@@ -292,14 +301,14 @@ export function Browser({ search, onOpenHistory, onOpenCraft }: BrowserProps) {
             {detailItem && (
                 <ItemDetail
                     item={detailItem}
-                    onClose={() => setDetailKey(null)}
+                    onClose={() => onSelectItem(null)}
                     onCraft={onCraft}
                     onOpenHistory={(itemid) => {
-                        setDetailKey(null);
+                        onSelectItem(null);
                         onOpenHistory(itemid);
                     }}
                     onOpenCraft={(entry) => {
-                        setDetailKey(null);
+                        onSelectItem(null);
                         onOpenCraft(entry);
                     }}
                 />

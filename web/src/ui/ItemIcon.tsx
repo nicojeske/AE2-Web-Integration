@@ -19,9 +19,14 @@ function hashString(s: string): number {
     return Math.abs(h);
 }
 
-function initialsOf(name: string): string {
+/** Two-letter initials of a display name - also the palette's CPU tiles. */
+export function initialsOf(name: string): string {
     const plain = skipSpecialFormat(name).trim();
-    const words = plain.split(/\s+/).filter(Boolean);
+    // Letters and digits only, so "Processor (Calculation)" reads "PC", not "P(".
+    const words = plain
+        .split(/\s+/)
+        .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
+        .filter(Boolean);
     if (words.length === 0) return "?";
     if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
     return (words[0]![0]! + words[1]![0]!).toUpperCase();

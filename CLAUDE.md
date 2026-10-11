@@ -174,14 +174,18 @@ stock rules and statistics stay keyed by `itemid`. Read
 is an **untracked local reference copy**, not part of any branch, so it needs to be re-requested if missing.
 
 Routing is a small hand-rolled hash router (`src/shell/route.ts`): `#/<section>[/<detail>]?grid=<selection>`,
-where the selection is a grid key or `all` (Crafting History also takes `&item=<itemid>`, its server-side filter).
-The order/plan flow (`state/order.tsx`) is deliberately **not** addressable — it's server-side job state (a
-computed-but-not-submitted plan), not a page to re-enter from a URL. The shell is responsive down to phone
-width in three CSS tiers (see `app-shell.css`'s "Responsive shell" section): full sidebar >=1024px, a
-76px icon rail with the network picker moved into the topbar 768–1023px, and an off-canvas Drawer-based nav
-below that — `shell/NetworkPicker.tsx` is the one network-select+tracking-checkbox component both the
-sidebar and the topbar render. A Settings modal (`views/SettingsModal.tsx`, gear icon in the topbar) holds
-number-format/density/tile-size/auto-refresh preferences, persisted via `state/prefs.tsx`'s `settings` blob.
+where the selection is a grid key or `all` (`&item=<itemid>` is Crafting History's server-side filter, and the
+Item Browser's selected item). The order/plan flow (`state/order.tsx`) is deliberately **not** addressable — it's
+server-side job state (a computed-but-not-submitted plan), not a page to re-enter from a URL.
+
+The look is the "Fluix Console" redesign (Claude Design handoff, 2026-10): a 52px topbar (network chip with the
+tracking toggle - `shell/NetworkMenu.tsx`, the Ctrl K command-bar trigger, CPU LEDs, sync age, account menu), a
+56px icon rail (`shell/Rail.tsx`), and pages built from dense tables (`.dtable`, columns from a `--cols`
+variable) plus a right-hand `ui/Inspector.tsx` that sits inline from 1280px and slides over below. Below 768px
+the rail gives way to `shell/PhoneNav.tsx` (CPU strip, bottom tabs, a "More" sheet). The command palette
+(`shell/CommandPalette.tsx`, query parsing and results in `shell/commandModel.ts`) also opens with `/`, and
+`g`+letter jumps between sections. A Settings modal (`views/SettingsModal.tsx`, gear at the foot of the rail)
+holds number-format/density/tile-size/auto-refresh preferences, persisted via `state/prefs.tsx`'s `settings` blob.
 
 Key structural constraint: Vite's `vite-plugin-singlefile` inlines everything into one self-contained HTML
 file per entry, with **no support for multiple entries** — this is why the build runs `vite build` twice

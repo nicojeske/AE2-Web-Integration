@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { formatRelativeAge } from "./api/format";
 import { logout } from "./api/client";
 import { getContext } from "./context";
 import { CpusProvider, useCpus } from "./state/cpus";
@@ -18,7 +17,12 @@ import { OutdatedBanner } from "./shell/OutdatedBanner";
 import { useRoute } from "./shell/route";
 import type { Section } from "./shell/section";
 import { isGTSection } from "./shell/section";
-import { Sidebar } from "./shell/Sidebar";
+import { CommandPalette } from "./shell/CommandPalette";
+import type { CommandAction, CommandSources } from "./shell/commandModel";
+import { GO_KEYS } from "./shell/commandModel";
+import { navItems } from "./shell/nav";
+import { PhoneNav } from "./shell/PhoneNav";
+import { Rail } from "./shell/Rail";
 import { Topbar } from "./shell/Topbar";
 import { cx } from "./ui/cx";
 import { Browser } from "./views/Browser";
@@ -41,7 +45,7 @@ function Shell() {
     const route = useRoute();
     const { selected, selectGrid, refresh: refreshGrids } = useNetwork();
     const { items, fetchedAt, refresh: refreshItems } = useItems();
-    const { busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
+    const { cpus, busyCount, setDetailScope, refresh: refreshCpus } = useCpus();
     const { refresh: refreshHistory, setItemFilter: setHistoryItemFilter } = useHistory();
     const { setActive: setStatsActive, refresh: refreshStats } = useStats();
     const { notifyEnabled, setNotifyEnabled, settings } = usePrefs();
@@ -49,9 +53,8 @@ function Shell() {
     const gt = useGT();
     const order = useOrder();
     const toast = useToast();
-    const [search, setSearch] = useState("");
-    const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [paletteOpen, setPaletteOpen] = useState(false);
 
     // A deep link to a GT section on a server without GregTech lands on the browser instead (the
     // effect below rewrites the URL to match).
@@ -74,8 +77,7 @@ function Shell() {
     // `?grid=` from the next section's URL too (`buildHash` omits it again for GT sections).
     const changeSection = useCallback(
         (next: Section) => {
-            setMobileNavOpen(false);
-            route.push({ section: next, detail: null, grid: selected });
+            route.push({ section: next, detail: null, grid: selected, item: null });
         },
         [route, selected],
     );
@@ -159,32 +161,102 @@ function Shell() {
     );
 
     // Item-list freshness - meaningless on the GT sections, which show their own scan age instead.
-    const updatedLabel = fetchedAt !== null && !isGTSection(section) ? `Updated ${formatRelativeAge(fetchedAt)}` : null;
+    const syncedAt = isGTSection(section) ? null : fetchedAt;
+    const badges = { busyCount, lowStockFavCount, gtProblemCount: gt.problemCount };
+    const openJobs = useCallback(() => changeSection("jobs"), [changeSection]);
+
+    const paletteSources: CommandSources = useMemo(
+        () => ({ items, cpus, nav: navItems(gt.enabled), numberFormat: settings.numberFormat }),
+        [items, cpus, gt.enabled, settings.numberFormat],
+    );
+
+    const runCommand = useCallback(
+        (action: CommandAction) => {
+            switch (action.type) {
+                case "craft":
+                    order.startOrder({
+                        sourceGridKey: action.item.sourceGridKey,
+                        itemid: action.item.itemid,
+                        itemname: action.item.itemname,
+                        quantity: action.quantity,
+                        preferredCpu: action.cpuKey,
+                    });
+                    break;
+                case "item":
+                    route.push({ section: "browser", detail: null, grid: selected, item: action.item.itemid });
+                    break;
+                case "cpu":
+                    route.push({
+                        section: "jobs",
+                        detail: { type: "cpu", gridKey: action.cpu.sourceGridKey, cpuKey: action.cpu.cpuKey },
+                        item: null,
+                    });
+                    break;
+                case "section":
+                    changeSection(action.section);
+                    break;
+                case "refresh":
+                    void onRefresh();
+                    break;
+                case "settings":
+                    setSettingsOpen(true);
+                    break;
+            }
+        },
+        [order.startOrder, route, selected, changeSection, onRefresh],
+    );
+
+    // Ctrl/Cmd K or `/` opens the palette; `g` then a section letter jumps there. Typing in a field is left alone.
+    const goPendingRef = useRef(0);
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                setPaletteOpen((o) => !o);
+                return;
+            }
+            const target = e.target as HTMLElement | null;
+            const typing =
+                target !== null &&
+                (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+            if (typing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector("[aria-modal='true']")) return;
+            if (e.key === "/") {
+                e.preventDefault();
+                setPaletteOpen(true);
+            } else if (e.key === "g") {
+                goPendingRef.current = Date.now();
+            } else if (Date.now() - goPendingRef.current < 1000) {
+                goPendingRef.current = 0;
+                const hit = navItems(gt.enabled).find((n) => GO_KEYS[n.section] === e.key.toLowerCase());
+                if (hit) changeSection(hit.section);
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [gt.enabled, changeSection]);
 
     return (
         <div className={cx("app-shell", settings.density === "compact" && "app-shell--density-compact")}>
-            <Sidebar
-                section={section}
-                onSectionChange={changeSection}
-                busyCount={busyCount}
-                lowStockFavCount={lowStockFavCount}
-                hasGT={gt.enabled}
-                gtProblemCount={gt.problemCount}
+            {context.isAdmin && context.isOutdated && <OutdatedBanner />}
+            <Topbar
+                networkDisabled={isGTSection(section)}
+                itemCount={items.length}
+                onOpenPalette={() => setPaletteOpen(true)}
+                cpus={cpus}
+                onOpenJobs={openJobs}
+                syncedAt={syncedAt}
+                onRefresh={() => void onRefresh()}
                 username={context.username}
                 isAdmin={context.isAdmin}
+                onOpenSettings={() => setSettingsOpen(true)}
                 onLogout={logout}
-                mobileOpen={mobileNavOpen}
-                onCloseMobile={() => setMobileNavOpen(false)}
             />
-            <div className="main">
-                {context.isAdmin && context.isOutdated && <OutdatedBanner />}
-                <Topbar
+            <div className="app-body">
+                <Rail
                     section={section}
-                    search={section === "browser" ? search : undefined}
-                    onSearchChange={section === "browser" ? setSearch : undefined}
-                    onRefresh={() => void onRefresh()}
-                    onToggleNav={() => setMobileNavOpen(true)}
-                    updatedLabel={updatedLabel}
+                    onSectionChange={changeSection}
+                    hasGT={gt.enabled}
+                    badges={badges}
                     onOpenSettings={() => setSettingsOpen(true)}
                 />
                 <div className="content">
@@ -206,7 +278,8 @@ function Shell() {
                         <>
                             {section === "browser" && (
                                 <Browser
-                                    search={search}
+                                    selectedItem={route.item}
+                                    onSelectItem={(item) => route.push({ item })}
                                     onOpenHistory={(item) =>
                                         route.push({ section: "history", detail: null, grid: selected, item })
                                     }
@@ -260,7 +333,19 @@ function Shell() {
                     )}
                 </div>
             </div>
+            <PhoneNav
+                section={section}
+                onSectionChange={changeSection}
+                hasGT={gt.enabled}
+                badges={badges}
+                cpus={cpus}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onLogout={logout}
+            />
             <OrderModal onSubmitted={onOrderSubmitted} />
+            {paletteOpen && (
+                <CommandPalette sources={paletteSources} onRun={runCommand} onClose={() => setPaletteOpen(false)} />
+            )}
             {settingsOpen && (
                 <SettingsModal
                     onClose={() => setSettingsOpen(false)}

@@ -135,6 +135,16 @@ export function formatRelativeAge(fetchedAtMs: number, nowMs: number = Date.now(
     return `${hours}h ago`;
 }
 
+/** `"4s"` / `"12m"` / `"3h"` / `"2d"` - the topbar's terse data age. */
+export function formatAgeShort(fetchedAtMs: number, nowMs: number = Date.now()): string {
+    const seconds = Math.max(0, Math.round((nowMs - fetchedAtMs) / 1000));
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
 /** `"Today, 14:02"` / `"Yesterday, 22:15"` / `"12 Mar, 14:02"` / a full locale string across years. */
 export function formatTimestamp(ms: number): string {
     const date = new Date(ms);

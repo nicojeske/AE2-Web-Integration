@@ -8,6 +8,7 @@
 //   #/browser?grid=<key>    #/jobs                  #/jobs/cpu/<gridKey>/<cpuKey>
 //   #/history                #/history/<gridKey>/482 #/favorites?grid=<key> #/stats?grid=all
 //   #/history?item=<itemid>  (Crafting History filtered to one item)
+//   #/browser?item=<itemid>  (the Item Browser with that item in its inspector)
 //   #/machines               #/machines/0%3A120%3A64%3A-340                 #/power   #/production
 //
 // The GregTech sections aren't grid-scoped, so `buildHash` never writes `?grid=` for them and
@@ -30,8 +31,13 @@ export interface Route {
     /** `null` when the URL carries no `?grid=` - the caller falls back to the persisted selection. */
     grid: GridSelection | null;
     detail: RouteDetail;
-    /** Crafting History's item filter (an itemid) - `null` everywhere else. */
+    /** An itemid: Crafting History's filter, or the Item Browser's selected item - `null` everywhere else. */
     item: string | null;
+}
+
+/** The sections whose URL can carry `?item=`. */
+function takesItem(section: Section): boolean {
+    return section === "history" || section === "browser";
 }
 
 const SECTIONS: readonly Section[] = [
@@ -65,7 +71,7 @@ export function parseHash(hash: string): Route {
     const section = isSection(segments[0] ?? "") ? (segments[0] as Section) : "browser";
     const params = new URLSearchParams(queryPart ?? "");
     const grid = isGTSection(section) ? null : parseGridParam(params.get("grid"));
-    const item = section === "history" ? params.get("item") || null : null;
+    const item = takesItem(section) ? params.get("item") || null : null;
 
     let detail: RouteDetail = null;
     if (section === "jobs" && segments[1] === "cpu" && segments.length >= 4) {
@@ -94,7 +100,7 @@ export function buildHash(route: Route): string {
     }
     const params: string[] = [];
     if (route.grid !== null && !isGTSection(route.section)) params.push(`grid=${encodeURIComponent(route.grid)}`);
-    if (route.item && route.section === "history") params.push(`item=${encodeURIComponent(route.item)}`);
+    if (route.item && takesItem(route.section)) params.push(`item=${encodeURIComponent(route.item)}`);
     return `#${path}${params.length ? `?${params.join("&")}` : ""}`;
 }
 

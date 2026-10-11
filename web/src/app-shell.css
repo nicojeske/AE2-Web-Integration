@@ -1,314 +1,487 @@
 .app-shell {
     display: flex;
+    flex-direction: column;
     width: 100%;
-    /* Not `min-height` - `.content`'s `overflow:auto`/`min-height:0` further down only actually clips
-       and scrolls internally (rather than growing the whole page) if this ancestor has a definite
-       height for the flex chain to shrink against. A `min-height` alone lets `.app-shell` grow past one
-       viewport to fit tall content instead, silently moving the scrollbar from `.content` to the page -
-       found via M12's virtualization, whose padding-based spacers were the first content ever tall
-       enough to expose it. `100dvh` (not `100vh`) so mobile browser chrome showing/hiding doesn't leave
-       a gap at the bottom. */
+    /* A definite height (not `min-height`) so `.content` scrolls internally instead of growing the page;
+       `100dvh` so mobile browser chrome showing/hiding doesn't leave a gap at the bottom. */
     height: 100vh;
     height: 100dvh;
     background: var(--bg-app);
     font-family: var(--font-body);
 }
 
-/* Sidebar */
-.sidebar {
-    width: 248px;
-    flex: 0 0 248px;
-    background: var(--bg-panel);
-    border-right: 1px solid var(--border-subtle);
+.app-body {
+    flex: 1;
     display: flex;
-    flex-direction: column;
-    padding: 20px 16px;
-    gap: 24px;
+    min-height: 0;
 }
 
-.sidebar__brand {
+/* Main column. A page that lays itself out (`.page`: header row, table, inspector) fills it edge to
+   edge; anything else gets the padded flow. */
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 20px;
+    overflow: auto;
+    min-width: 0;
+    min-height: 0;
+}
+.content:has(> .page) {
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+}
+
+/* ---- Topbar ---- */
+.topbar {
+    height: 52px;
+    flex: 0 0 52px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.topbar__left {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 4px;
+    min-width: 0;
+}
+.topbar__center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+}
+.topbar__right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
 }
 
-.sidebar__brand-mark {
-    width: 30px;
-    height: 30px;
-    border-radius: var(--radius-md);
-    background: linear-gradient(135deg, var(--accent), var(--teal));
-    flex: 0 0 30px;
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
-
-.sidebar__brand-name {
+.brand__mark {
+    display: grid;
+    grid-template-columns: repeat(2, 9px);
+    gap: 2px;
+}
+.brand__mark > span {
+    height: 9px;
+}
+.brand__mark > span:nth-child(1),
+.brand__mark > span:nth-child(4) {
+    background: var(--accent);
+}
+.brand__mark > span:nth-child(2),
+.brand__mark > span:nth-child(3) {
+    background: var(--cyan);
+}
+.brand__name {
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 15px;
-    letter-spacing: 0.5px;
+    letter-spacing: 2px;
     color: var(--text-primary);
 }
 
-/* Network picker - shared by the sidebar (full column layout) and the topbar's compact copy (M11, see
-   shell/NetworkPicker.tsx and its `variant` prop); `.sidebar__network`/`.topbar__network` only adjust
-   layout for their context, never restyle the controls themselves. */
-.network-picker {
+.network-menu {
+    position: relative;
+    margin-left: 6px;
+}
+.network-menu__chip {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.network-picker__label {
-    font-family: var(--font-display);
-    font-size: 11px;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    padding: 0 4px;
-}
-
-.network-picker__select {
-    width: 100%;
-    background: var(--bg-card);
-    color: var(--text-primary);
+    align-items: center;
+    gap: 8px;
+    max-width: 220px;
+    padding: 5px 10px;
+    background: none;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 9px 10px;
-    font-family: var(--font-body);
-    font-size: 13px;
-}
-
-.network-picker__meta {
-    font-size: 11px;
-    color: var(--text-dim);
-    padding: 0 4px;
-}
-
-.network-picker .checkbox-row {
-    padding: 0 4px;
-}
-
-.network-picker__tracking-label {
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
-/* Topbar's compact copy: one row instead of a column, sized to share space with the title/actions. */
-.topbar__network.network-picker {
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    flex: 1 1 auto;
-    min-width: 0;
-}
-.topbar__network .network-picker__select {
-    width: auto;
-    min-width: 140px;
-    flex: 0 1 220px;
-}
-.topbar__network .network-picker__meta {
-    padding: 0;
-}
-.topbar__network .checkbox-row {
-    padding: 0;
-}
-
-.sidebar__nav {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    background: none;
-    border: 0;
-    color: var(--text-muted);
-    padding: 10px;
-    border-radius: var(--radius-md);
-    font-size: 13.5px;
-    font-family: var(--font-body);
+    font-size: 12.5px;
+    color: var(--text-secondary);
     cursor: pointer;
-    text-align: left;
 }
-
-.nav-item:hover {
-    background: var(--bg-hover);
-}
-
-.nav-item--active {
-    background: rgba(139, 123, 245, 0.12);
-    color: var(--accent-soft-text);
-}
-
-.nav-item__icon {
-    flex: 0 0 18px;
-}
-
-.nav-item__pill {
-    margin-left: auto;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    border-radius: 10px;
-    padding: 1px 7px;
-}
-
-.nav-item__pill--busy {
-    background: var(--green);
-    color: var(--bg-app);
-}
-
-.nav-item__pill--low-stock,
-.nav-item__pill--problem {
-    background: var(--red);
-    color: var(--bg-app);
-}
-
-.sidebar__footer {
-    margin-top: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    border-top: 1px solid var(--border-subtle);
-    padding-top: 16px;
-}
-
-.sidebar__account {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.sidebar__avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--border);
-    flex: 0 0 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--accent);
-}
-
-.sidebar__account-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.sidebar__account-name {
-    font-size: 13px;
-    font-weight: 500;
+.network-menu__chip:hover:not(:disabled) {
+    border-color: var(--border-hover);
     color: var(--text-primary);
+}
+.network-menu__chip:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+.network-menu__label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-
-.sidebar__account-role {
-    font-size: 11px;
-    color: var(--text-dim);
-}
-
-/* Main column */
-.main {
-    flex: 1;
+.network-menu__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 800;
+    width: 280px;
     display: flex;
     flex-direction: column;
-    min-width: 0;
-}
-
-.topbar {
-    height: 68px;
-    flex: 0 0 68px;
-    border-bottom: 1px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-    padding: 0 28px;
-    gap: 16px;
-}
-
-.topbar__title {
-    font-family: var(--font-display);
-    font-size: 19px;
-    font-weight: 600;
-    margin: 0;
-    color: var(--text-primary);
-}
-
-.topbar__search {
-    margin-left: 16px;
-    width: 280px;
-    background: var(--bg-card);
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-raised);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 9px 12px;
-    color: var(--text-primary);
+    border-radius: var(--radius-modal);
+    box-shadow: var(--shadow-float);
+}
+.network-menu__list {
+    display: flex;
+    flex-direction: column;
+    max-height: 320px;
+    overflow-y: auto;
+}
+.network-menu__option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 7px 10px;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    text-align: left;
     font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.network-menu__option:hover {
+    background: var(--border-subtle);
+}
+.network-menu__option--active {
+    background: var(--accent-soft-bg);
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+.network-menu__meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+}
+.network-menu__tracking {
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle);
 }
 
-.topbar__actions {
-    margin-left: auto;
+.command-trigger {
+    width: 100%;
+    max-width: 560px;
     display: flex;
     align-items: center;
     gap: 10px;
-}
-
-.topbar__updated {
-    font-size: 11px;
+    padding: 7px 12px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     color: var(--text-dim);
+    font-size: 13px;
+    cursor: text;
+    text-align: left;
+}
+.command-trigger:hover {
+    border-color: var(--border-hover);
+}
+.command-trigger__prompt {
+    font-family: var(--font-mono);
+}
+.command-trigger__text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.kbd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1px 6px;
     white-space: nowrap;
 }
 
-/* <768px only (see the off-canvas breakpoint below) - toggles Sidebar's mobile Drawer. */
-.topbar__nav-toggle {
-    display: none;
-    flex: 0 0 32px;
+.topbar__cpus {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+.topbar__cpus:hover {
+    background: var(--border-subtle);
+}
+.topbar__cpus-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.topbar__cpus-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.topbar__synced {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.topbar__synced:hover {
+    color: var(--text-secondary);
 }
 
-/* <1024px only - the sidebar's own network picker is hidden at that width (icon rail / off-canvas has
-   no room for it), so this compact copy takes over; see NetworkPicker's `variant="topbar"`. */
-.topbar__network {
-    display: none;
+.account {
+    position: relative;
 }
-
-.content {
-    padding: 20px 28px;
+.account__avatar {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--border-subtle);
+    border: 0;
+    border-radius: var(--radius-md);
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--accent);
+    cursor: pointer;
+}
+.account__avatar:hover {
+    background: var(--border);
+}
+.account__menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 800;
+    min-width: 200px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    overflow: auto;
+    padding: 4px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-modal);
+    box-shadow: var(--shadow-float);
+}
+.account__who {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 8px 10px 10px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.account__name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.account__role {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.account__danger {
+    color: var(--red);
+}
+.account__danger:hover {
+    color: var(--red);
+}
+
+/* ---- Rail ---- */
+.rail {
+    width: 56px;
+    flex: 0 0 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 0;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border-subtle);
+    overflow-y: auto;
+}
+.rail__item {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.rail__item:hover {
+    color: var(--text-primary);
+    background: var(--border-subtle);
+}
+.rail__item--active,
+.rail__item--active:hover {
+    color: var(--accent-soft-text);
+    background: rgba(157, 132, 255, 0.16);
+}
+.rail__gear {
+    margin-top: auto;
+    color: var(--text-dim);
+}
+.rail__pill {
+    position: absolute;
+    top: 3px;
+    right: 2px;
+    padding: 0 4px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--bg-app);
+}
+.rail__pill--green {
+    background: var(--green);
+}
+.rail__pill--red {
+    background: var(--red);
+}
+
+/* ---- Phone nav (<768px) ---- */
+.phone-nav {
+    display: none;
+}
+.phone-nav__cpus {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 16px;
+    background: var(--bg-panel);
+    border: 0;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
+}
+.phone-nav__cpus-text {
     flex: 1;
-    min-height: 0;
+    white-space: nowrap;
+}
+.phone-nav__stalled {
+    color: var(--red);
+}
+.phone-nav__cpus-top {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 45%;
+}
+.phone-nav__tabs {
+    display: flex;
+    justify-content: space-around;
+    padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border-subtle);
+}
+.phone-nav__tab {
+    position: relative;
+    width: 72px;
+    height: 46px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: 0;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    cursor: pointer;
+}
+.phone-nav__tab--active {
+    color: var(--accent-soft-text);
+}
+.phone-nav__tab .rail__pill {
+    right: 14px;
+}
+.phone-more {
+    display: flex;
+    flex-direction: column;
+}
+.phone-more__item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 4px;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--row-divider);
+    font-size: 14px;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+.phone-more__item svg {
+    color: var(--text-muted);
+}
+.phone-more__item--active svg,
+.phone-more__item--active {
+    color: var(--accent-soft-text);
+}
+.phone-more__item .rail__pill {
+    position: static;
+    margin-left: auto;
+}
+.phone-more__item--danger {
+    color: var(--red);
+    border-bottom: 0;
+}
+.phone-more__spacer {
+    width: 18px;
 }
 
 /* Outdated-version banner */
 .outdated-banner {
-    background: #929292;
-    color: #101219;
+    background: var(--accent-soft-bg);
+    border-bottom: 1px solid var(--accent-soft-border);
+    color: var(--accent-soft-text);
     text-align: center;
-    padding: 10px 16px;
-    font-size: 13px;
+    padding: 8px 16px;
+    font-size: 12.5px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
 }
-
 .outdated-banner a {
-    color: #062f2b;
+    color: var(--cyan);
     font-weight: 600;
 }
-
 .outdated-banner__actions {
     display: flex;
     gap: 8px;
@@ -322,10 +495,11 @@
     color: var(--text-dim);
     font-size: 13px;
 }
+.page .placeholder-panel {
+    margin: 16px;
+}
 
-/* Density setting (M11's Settings modal). Browser switches to `.item-table` entirely in compact mode
-   (M12, browser.css) rather than a tighter card grid - the rules below cover every *other* card surface,
-   which just get tighter gaps/padding instead. */
+/* Density setting: compact tightens the card surfaces not yet reworked into tables. */
 .app-shell--density-compact .content {
     gap: 12px;
 }
@@ -342,90 +516,42 @@
     padding: 10px 12px;
 }
 
-/* ---- Responsive shell (M11) ----
-   Three tiers, CSS-only except the mobile nav Drawer toggle (Sidebar.tsx already renders both the
-   persistent aside and the off-canvas Drawer; this only ever decides which one is visible/reachable):
-     >=1024px  - unchanged desktop layout.
-     768-1023px - sidebar collapses to a 76px icon rail; the network picker moves into the topbar.
-     <768px    - sidebar is fully hidden; a hamburger in the topbar opens Sidebar's Drawer instead. */
-
-/* Below 1024px, the sidebar has no room for the network picker - the topbar's compact copy takes over. */
+/* ---- Responsive shell ----
+     >=1024px   - rail, full topbar.
+     768-1023px - rail; the command bar shrinks to its prompt, the CPU label and sync age drop out.
+     <768px     - no rail: the bottom tab bar and CPU strip (PhoneNav) take over navigation.
+   Inspectors switch between inline and slide-over at 1280px in JS (ui/Inspector.tsx). */
 @media (max-width: 1023.98px) {
-    .sidebar__network {
+    .topbar__cpus-label,
+    .topbar__synced,
+    .kbd {
         display: none;
     }
-    .topbar__network {
-        display: flex;
+}
+
+@media (max-width: 767.98px) {
+    .rail {
+        display: none;
+    }
+    .phone-nav {
+        display: block;
     }
     .topbar {
-        /* Overrides the base rule's `flex: 0 0 68px` - fixed-basis + wrap would just overflow the box
-           instead of growing it, since `flex-shrink: 0` stops the extra wrapped rows from being
-           accounted for at all (found by screenshotting this breakpoint: the wrapped rows silently
-           overlapped `.content` below). */
-        height: auto;
-        flex: 0 1 auto;
-        min-height: 68px;
-        flex-wrap: wrap;
-        row-gap: 10px;
-        padding: 12px 16px;
+        gap: 10px;
+        padding: 0 12px;
     }
-    .topbar__search {
+    .brand__name,
+    .topbar__cpus {
+        display: none;
+    }
+    .network-menu {
         margin-left: 0;
-        width: 100%;
-        order: 3;
-        flex: 1 1 100%;
     }
-}
-
-/* Icon rail: labels/account text disappear, nav icons + badge pills remain. */
-@media (min-width: 768px) and (max-width: 1023.98px) {
-    .sidebar {
-        width: 76px;
-        flex: 0 0 76px;
-        padding: 16px 10px;
-        align-items: center;
-    }
-    .sidebar__brand {
-        padding: 0;
-    }
-    .sidebar__brand-name {
-        display: none;
-    }
-    .nav-item {
-        justify-content: center;
-        padding: 10px 6px;
-    }
-    .nav-item__label {
-        display: none;
-    }
-    .nav-item__pill {
-        margin-left: 0;
-        position: absolute;
-        transform: translate(40%, -60%);
-    }
-    .nav-item {
-        position: relative;
-    }
-    .sidebar__account {
-        flex-wrap: wrap;
-        justify-content: center;
-    }
-    .sidebar__account-info {
-        display: none;
-    }
-}
-
-/* Off-canvas: the inline sidebar disappears entirely; Sidebar.tsx's Drawer copy (opened via the
-   hamburger) is the only way to reach navigation, network selection and account controls. */
-@media (max-width: 767.98px) {
-    .sidebar {
-        display: none;
-    }
-    .topbar__nav-toggle {
-        display: inline-flex;
+    .network-menu__chip {
+        max-width: 150px;
     }
     .content {
-        padding: 16px;
+        padding: 12px;
     }
     .favorites-list {
         padding: 16px;
@@ -443,15 +569,7 @@
         width: 110px;
         flex-basis: 110px;
     }
-    .craft-detail__bottleneck-name {
-        width: 110px;
-        flex-basis: 110px;
-    }
-    /* Touch targets: the design's icon-only controls (16-20px hit areas) are too small to tap reliably -
-       bump each closer to the ~44px minimum without changing the visible icon size. `.item-card__star`
-       is corner-pinned via `top`/`right`, so it only gets extra padding (a negative-margin compensation
-       would shift its pinned position); the two chip-remove buttons sit in normal flow, so they use the
-       padding+negative-margin trick to grow the hit area without disturbing their neighbours' layout. */
+    /* Touch targets: bump icon-only controls toward ~44px without changing the visible icon size. */
     .item-card__star {
         padding: 10px;
     }
@@ -459,5 +577,143 @@
     .compare__chip-remove {
         padding: 12px;
         margin: -12px;
+    }
+}
+
+/* ---- Command palette ---- */
+.palette-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px 16px 16px;
+    background: rgba(5, 6, 10, 0.75);
+}
+.palette {
+    width: 640px;
+    max-width: 100%;
+    max-height: calc(100dvh - 120px);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-modal);
+    box-shadow: var(--shadow-modal);
+}
+.palette__input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.palette__prompt {
+    font-family: var(--font-mono);
+    color: var(--accent);
+}
+.palette__input {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: 0;
+    outline: none;
+    font-size: 15px;
+    color: var(--text-primary);
+    caret-color: var(--accent);
+}
+.palette__input::placeholder {
+    color: var(--text-dim);
+}
+.palette__esc {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.palette__list {
+    overflow-y: auto;
+    padding-bottom: 6px;
+}
+.palette__group {
+    padding: 10px 16px 4px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.palette__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 6px;
+    padding: 7px 10px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+.palette__row--active {
+    background: rgba(157, 132, 255, 0.16);
+}
+.palette__label {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.palette__meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.palette__hint {
+    min-width: 44px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.palette__cpu-tile,
+.palette__blank-tile {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 8.5px;
+    color: var(--text-primary);
+}
+.palette__cpu-tile {
+    background: var(--border-subtle);
+    border: 1px solid;
+}
+.palette__empty {
+    padding: 18px 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+}
+.palette__foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+}
+@media (max-width: 767.98px) {
+    .palette-backdrop {
+        padding-top: 12px;
+    }
+    .palette__meta {
+        display: none;
     }
 }

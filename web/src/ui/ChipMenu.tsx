@@ -1,7 +1,6 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-
 import { cx } from "./cx";
+import { usePopover } from "./usePopover";
 
 export interface ChipMenuOption<T> {
     value: T;
@@ -20,25 +19,8 @@ export interface ChipMenuProps<T> {
 
 /** A `Label ▾` chip that opens a small option list - the console's dropdown filter. */
 export function ChipMenu<T>({ options, value, onChange, label, align = "start", title }: ChipMenuProps<T>) {
-    const [open, setOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
+    const { open, setOpen, ref } = usePopover();
     const current = options.find((o) => o.value === value);
-
-    useEffect(() => {
-        if (!open) return;
-        const onDown = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") setOpen(false);
-        };
-        document.addEventListener("mousedown", onDown);
-        document.addEventListener("keydown", onKey);
-        return () => {
-            document.removeEventListener("mousedown", onDown);
-            document.removeEventListener("keydown", onKey);
-        };
-    }, [open]);
 
     return (
         <div className="chip-menu" ref={ref}>

@@ -27,6 +27,8 @@ export interface OrderFlow {
     job: JobData | null;
     /** CPU key of the CPU the plan will be submitted to. */
     selectedCpu: string | null;
+    /** CPU the order asked for (the command palette's ⇧⏎); it replaces the default pick once a plan is in. */
+    preferredCpu: string | null;
     error: string | null;
     /** `false` while the order modal is showing; `true` once "Preview plan" swaps in the full-page view. */
     previewing: boolean;
@@ -44,6 +46,8 @@ export interface StartOrderItem {
     itemname: string;
     /** Prefilled quantity ("Craft again"); defaults to a stack. */
     quantity?: number;
+    /** Preselects this CPU (key on `sourceGridKey`) once the plan is calculated, if it's still idle. */
+    preferredCpu?: string;
 }
 
 /** How long the quantity has to settle before the plan is (re)calculated on its own. */
@@ -125,6 +129,7 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
             jobId: null,
             job: null,
             selectedCpu: null,
+            preferredCpu: item.preferredCpu ?? null,
             error: null,
             previewing: false,
             calcStartedAt: 0,
@@ -182,7 +187,9 @@ export function OrderProvider({ children }: { children?: ComponentChildren }) {
                 await refreshCpus();
                 if (generationRef.current !== generation) return;
                 const candidates = cpusRef.current.filter((c) => c.sourceGridKey === snapshot.gridKey);
-                const defaultCpu = pickDefaultCpu(candidates, handle.job.bytesTotal, snapshot.itemid);
+                const preferred = candidates.find((c) => c.cpuKey === snapshot.preferredCpu && !c.isBusy);
+                const defaultCpu =
+                    preferred?.cpuKey ?? pickDefaultCpu(candidates, handle.job.bytesTotal, snapshot.itemid);
                 setFlow((f) =>
                     f ? { ...f, phase: "plan", job: handle.job, selectedCpu: defaultCpu, error: null } : f,
                 );
