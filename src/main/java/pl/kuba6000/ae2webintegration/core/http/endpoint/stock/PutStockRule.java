@@ -78,14 +78,14 @@ public final class PutStockRule extends IAsyncRequest {
         public long alertBelow;
 
         /**
-         * Auto-craft tops the stored amount back up to this.
+         * Auto-craft orders a batch while the stored amount is below this.
          *
          * @example 200
          */
         public long keepStock;
 
         /**
-         * What one auto-craft orders, once it fits under keepStock; at least 1.
+         * What one auto-craft orders; at least 1.
          *
          * @example 64
          */

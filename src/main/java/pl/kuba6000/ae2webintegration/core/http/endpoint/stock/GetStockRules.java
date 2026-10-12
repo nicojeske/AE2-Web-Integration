@@ -69,8 +69,8 @@ public final class GetStockRules extends IAsyncRequest {
      *
      * @param itemid       the item, in the same format as an item's {@code itemid}
      * @param alertBelow   notify once when the stored amount drops below this; 0 never alerts
-     * @param keepStock    auto-craft tops the stored amount back up to this
-     * @param batchSize    what one auto-craft orders, once it fits under keepStock
+     * @param keepStock    auto-craft orders a batch while the stored amount is below this
+     * @param batchSize    what one auto-craft orders
      * @param autoCraft    whether the server crafts the item when it is below {@code keepStock}
      * @param stored       stored amount at the last check, or -1 before the first one
      * @param low          whether the stored amount is below {@code alertBelow}

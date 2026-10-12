@@ -67,13 +67,13 @@ export function StockRuleEditor({ gridKey, itemid, rule, stored, numberFormat }:
                     onChange={(n) => update("alertBelow", n)}
                 />
                 <NumberField
-                    label="Keep stock at"
+                    label="Craft when below"
                     value={rule.keepStock}
                     min={0}
                     onChange={(n) => update("keepStock", n)}
                 />
                 <NumberField
-                    label="Batch size"
+                    label="Craft at a time"
                     value={rule.batchSize}
                     min={1}
                     onChange={(n) => update("batchSize", n)}
@@ -116,12 +116,20 @@ function StockRuleStatus({ rule, numberFormat }: { rule: StockRule; numberFormat
             </p>
         );
     }
+    // While crafting, the Crafting badge says it all.
+    if (rule.autoCraft && !rule.crafting) {
+        const batch = formatNumber(rule.batchSize, numberFormat);
+        const below = formatNumber(rule.keepStock, numberFormat);
+        parts.push(
+            rule.stored < rule.keepStock ? `below ${below} → ordering ${batch}` : `crafts ${batch} once below ${below}`,
+        );
+    }
     if (rule.lastAttempt > 0) parts.push(`last auto-craft ${formatDuration(now - rule.lastAttempt)} ago`);
     return <p className="stock-rule__status">{parts.join(" · ")}</p>;
 }
 
 /**
- * A bare rule-number input (the Favorites table's Keep at least / Alert below cells): commits a sanitized
+ * A bare rule-number input (the Favorites table's Craft when below / Alert below cells): commits a sanitized
  * whole number on blur or Enter; an item without a rule shows `placeholder` and gets one on its first commit.
  */
 export function RuleNumberInput({

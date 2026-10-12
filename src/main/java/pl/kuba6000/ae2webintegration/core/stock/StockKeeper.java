@@ -263,8 +263,8 @@ public final class StockKeeper {
                 if (low) alertLow(itemid, displayName(itemid, keys, craftable), amount, rule.alertBelow());
             }
 
-            // Only once a whole batch fits under the target, so stock never overshoots it.
-            if (rule.autoCraft() && amount <= rule.keepStock() - rule.batchSize()
+            // Like GTNH's Level Maintainer: below the threshold, one whole batch - it may overshoot.
+            if (rule.autoCraft() && amount < rule.keepStock()
                 && state.pending == null
                 && !beingCrafted.contains(itemid)
                 && state.backoffUntil.getOrDefault(itemid, 0L) <= nowMillis

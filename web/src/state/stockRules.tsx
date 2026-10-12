@@ -1,4 +1,4 @@
-// Per-grid stock rules (alert level, keep-stock target, auto-craft). They live on the server, which checks
+// Per-grid stock rules (alert level, craft-when-below level and batch, auto-craft). They live on the server, which checks
 // them every `stock.check_interval_seconds` with no browser open - auto-crafting what's below its target and
 // sending a Discord/ntfy alert when something drops below its alert level. This store only edits them and
 // shows the server's last check. Rules are shared by everyone with access to a grid; favourites stay per

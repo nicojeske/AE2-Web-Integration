@@ -276,8 +276,8 @@ which keeps all crafting completion notifications enabled.
 
 Low-stock alerts come from the stock rules set in the web terminal (Favorites, "Add stock rule"): one alert each
 time an item drops below its alert level, on any grid, tracked or not. The server checks every rule every
-`[stock] check_interval_seconds` (default 30) and auto-crafts one full batch of each item with auto-craft on once a
-whole batch fits under its keep-stock level; those jobs show `Auto-stock` as their requester. `[stock] enabled = false` stops
+`[stock] check_interval_seconds` (default 30) and auto-crafts one full batch of each item with auto-craft on that is
+below its "craft when below" level, like GTNH's Level Maintainer (the batch may overshoot it); those jobs show `Auto-stock` as their requester. `[stock] enabled = false` stops
 both.
 Notifications are initialized ONLY for tracked grids
 

@@ -27,7 +27,7 @@ interface FavoriteRow {
     rule: StockRule | null;
 }
 
-/** 0 below the alert level, 1 below the keep-stock target, 2 fine or without a rule. */
+/** 0 below the alert level, 1 below the craft-when-below level, 2 fine or without a rule. */
 function urgency(row: FavoriteRow): number {
     if (!row.rule) return 2;
     if (row.stored < row.rule.alertBelow) return 0;
@@ -115,7 +115,7 @@ export function Favorites({ onOpenItem }: FavoritesProps) {
                                 <span />
                                 <span>Item</span>
                                 <span>Stored vs. rule</span>
-                                <span>Keep at least</span>
+                                <span>Craft when below</span>
                                 <span>Alert below</span>
                                 <span />
                             </div>
@@ -174,7 +174,7 @@ export function Favorites({ onOpenItem }: FavoritesProps) {
                                             </span>
                                         </div>
                                         <RuleNumberInput
-                                            label="Keep at least"
+                                            label="Craft when below"
                                             value={row.rule?.keepStock ?? null}
                                             min={0}
                                             placeholder="No rule"

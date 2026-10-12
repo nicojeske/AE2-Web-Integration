@@ -150,7 +150,7 @@ export function OrderModal({ onSubmitted }: OrderModalProps) {
                 </div>
                 {topUp > 0 && (
                     <button type="button" className="order-modal__topup" onClick={() => order.setQuantity(topUp)}>
-                        Top up to keep-stock {formatNumber(keepStock, settings.numberFormat)} (+
+                        Top up to {formatNumber(keepStock, settings.numberFormat)} (+
                         {formatNumber(topUp, settings.numberFormat)})
                     </button>
                 )}

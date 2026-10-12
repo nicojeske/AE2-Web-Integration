@@ -169,9 +169,9 @@ export interface JobData {
 export interface StockRuleInput {
     /** Notify once when the stored amount drops below this; 0 never alerts. */
     alertBelow: number;
-    /** Auto-craft tops the stored amount back up to this. */
+    /** Auto-craft orders a batch while the stored amount is below this. */
     keepStock: number;
-    /** Most one auto-craft orders at a time (>= 1). */
+    /** What one auto-craft orders (>= 1); the result may exceed `keepStock`. */
     batchSize: number;
     autoCraft: boolean;
 }

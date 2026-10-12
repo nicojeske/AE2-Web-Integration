@@ -16,13 +16,13 @@ public final class StockRule {
      */
     private long alertBelow;
     /**
-     * Auto-craft tops the stored amount back up to this.
+     * Auto-craft orders a batch while the stored amount is below this.
      *
      * @example 200
      */
     private long keepStock;
     /**
-     * What one auto-craft orders: the whole batch, once that fits under {@code keepStock}.
+     * What one auto-craft orders; the result may exceed {@code keepStock}.
      *
      * @example 64
      */

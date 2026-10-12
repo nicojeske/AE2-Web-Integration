@@ -185,13 +185,13 @@ class StockKeeperTest {
     }
 
     @Test
-    void ordersOnlyOnceAWholeBatchFitsUnderTheTarget() {
+    void aSmallDipStillOrdersTheWholeBatch() {
         rule(IRON, new StockRule(0, 200, 64, true));
-        grid.stored.put(IRON, 137L);
+        grid.stored.put(IRON, 200L);
         grid.craftable.add(IRON);
         StockKeeper.check(key, grid, NOW);
         assertTrue(grid.crafting.planned.isEmpty());
-        grid.stored.put(IRON, 136L);
+        grid.stored.put(IRON, 199L);
         StockKeeper.check(key, grid, NOW + 1);
         assertEquals(Collections.singletonList(64L), grid.crafting.planned);
     }
