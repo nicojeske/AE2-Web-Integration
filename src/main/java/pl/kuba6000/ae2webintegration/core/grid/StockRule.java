@@ -22,7 +22,7 @@ public final class StockRule {
      */
     private long keepStock;
     /**
-     * Most one auto-craft orders at a time.
+     * What one auto-craft orders: the whole batch, once that fits under {@code keepStock}.
      *
      * @example 64
      */

@@ -263,7 +263,8 @@ public final class StockKeeper {
                 if (low) alertLow(itemid, displayName(itemid, keys, craftable), amount, rule.alertBelow());
             }
 
-            if (rule.autoCraft() && amount < rule.keepStock()
+            // Only once a whole batch fits under the target, so stock never overshoots it.
+            if (rule.autoCraft() && amount <= rule.keepStock() - rule.batchSize()
                 && state.pending == null
                 && !beingCrafted.contains(itemid)
                 && state.backoffUntil.getOrDefault(itemid, 0L) <= nowMillis
@@ -274,7 +275,7 @@ public final class StockKeeper {
                     // No pattern: nothing to retry until one appears, so no backoff - the check is cheap.
                     state.lastError.put(itemid, "No crafting pattern");
                 } else {
-                    long quantity = Math.max(1L, Math.min(rule.batchSize(), rule.keepStock() - amount));
+                    long quantity = rule.batchSize();
                     state.lastAttempt.put(itemid, nowMillis);
                     try {
                         state.pending = new PendingPlan(

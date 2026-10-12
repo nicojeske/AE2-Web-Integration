@@ -150,7 +150,7 @@ class StockKeeperTest {
     }
 
     @Test
-    void autoCraftPlansTheGapClampedToTheBatchAndSubmitsOnTheNextCheck() {
+    void autoCraftPlansABatchAndSubmitsOnTheNextCheck() {
         rule(IRON, new StockRule(0, 200, 64, true));
         grid.stored.put(IRON, 50L);
         grid.craftable.add(IRON);
@@ -185,12 +185,15 @@ class StockKeeperTest {
     }
 
     @Test
-    void aSmallGapOrdersOnlyTheGap() {
+    void ordersOnlyOnceAWholeBatchFitsUnderTheTarget() {
         rule(IRON, new StockRule(0, 200, 64, true));
-        grid.stored.put(IRON, 190L);
+        grid.stored.put(IRON, 137L);
         grid.craftable.add(IRON);
         StockKeeper.check(key, grid, NOW);
-        assertEquals(Collections.singletonList(10L), grid.crafting.planned);
+        assertTrue(grid.crafting.planned.isEmpty());
+        grid.stored.put(IRON, 136L);
+        StockKeeper.check(key, grid, NOW + 1);
+        assertEquals(Collections.singletonList(64L), grid.crafting.planned);
     }
 
     @Test

@@ -85,7 +85,7 @@ public final class PutStockRule extends IAsyncRequest {
         public long keepStock;
 
         /**
-         * Most one auto-craft orders at a time; at least 1.
+         * What one auto-craft orders, once it fits under keepStock; at least 1.
          *
          * @example 64
          */
