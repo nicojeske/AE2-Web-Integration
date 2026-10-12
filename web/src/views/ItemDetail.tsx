@@ -61,7 +61,7 @@ function ruleProgress(stored: number, rule: StockRule) {
 
 function StockSection({ item, rule }: { item: BrowserItem; rule: StockRule | null }) {
     const { settings } = usePrefs();
-    const [range, setRange] = useState<StatsRange>("7d");
+    const [range, setRange] = useState<StatsRange>("15m");
     const [history, setHistory] = useState<Loaded<HistoryBundle>>({ state: "loading" });
     const gridKey = item.sourceGridKey;
 
