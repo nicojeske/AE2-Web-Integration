@@ -268,7 +268,8 @@ public final class StockKeeper {
                 && !beingCrafted.contains(itemid)
                 && state.backoffUntil.getOrDefault(itemid, 0L) <= nowMillis
                 && craftingGrid != null) {
-                IAEKey key = craftable.get(itemid);
+                // 1.7.10 lists craftables inside the storage list, not in getCraftables.
+                IAEKey key = craftable.getOrDefault(itemid, keys.get(itemid));
                 if (key == null || !craftingGrid.web$isCurrentlyCraftable(key)) {
                     // No pattern: nothing to retry until one appears, so no backoff - the check is cheap.
                     state.lastError.put(itemid, "No crafting pattern");

@@ -267,6 +267,20 @@ class StockKeeperTest {
     }
 
     @Test
+    void aPatternListedOnlyInStorageIsCrafted() {
+        rule(IRON, new StockRule(0, 200, 64, true));
+        grid.stored.put(IRON, 0L);
+        grid.craftable.add(IRON);
+        grid.listsCraftables = false;
+        StockKeeper.check(key, grid, NOW);
+        assertEquals(Collections.singletonList(64L), grid.crafting.planned);
+        assertNull(
+            StockKeeper.status(key)
+                .get(IRON)
+                .lastError());
+    }
+
+    @Test
     void anItemWithoutAPatternReportsItWithoutPlanning() {
         rule(IRON, new StockRule(0, 200, 64, true));
         StockKeeper.check(key, grid, NOW);
@@ -527,6 +541,7 @@ class StockKeeperTest {
         @Override
         public Set<IAEKey> web$getCraftables(Function<IAEKey, Boolean> filter) {
             Set<IAEKey> out = new HashSet<>();
+            if (!grid.listsCraftables) return out;
             for (String itemid : grid.craftable) {
                 IAEKey key = new FakeKey(itemid);
                 if (filter == null || filter.apply(key)) out.add(key);
@@ -539,6 +554,8 @@ class StockKeeperTest {
 
         final Map<String, Long> stored = new LinkedHashMap<>();
         final Set<String> craftable = new HashSet<>();
+        // false: craftables only appear in the storage list, as on 1.7.10.
+        boolean listsCraftables = true;
         final FakeCrafting crafting = new FakeCrafting(this);
         private final PlayerIdentity owner = new PlayerIdentity(UUID.nameUUIDFromBytes(new byte[] { 1 }), "Owner");
 
