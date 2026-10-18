@@ -512,8 +512,13 @@ async function handleApi(
             if (method === "PATCH") {
                 const body = await readJson(req);
                 if (typeof body.isTracked === "boolean") grid.isTrackingEnabled = body.isTracked;
+                if (typeof body.name === "string") {
+                    const name = body.name.trim();
+                    if (name.length > 48 || /\p{Cc}/u.test(name)) return respond(res, "BAD_PARAM", null);
+                    grid.name = name || null;
+                }
             }
-            return ok(res, { isTracked: grid.isTrackingEnabled });
+            return ok(res, { isTracked: grid.isTrackingEnabled, name: grid.name });
         }
         case "GET capacity": {
             if (!historyEnabled(req.headers.referer)) return respond(res, "HISTORY_DISABLED", null);

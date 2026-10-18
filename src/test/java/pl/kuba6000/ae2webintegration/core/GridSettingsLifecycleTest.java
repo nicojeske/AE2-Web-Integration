@@ -146,6 +146,71 @@ class GridSettingsLifecycleTest extends GridTestScope {
         assertFalse(TestGridFixtures.isTracked(CoreEngine.GRID_IDENTITIES, key));
     }
 
+    @Test
+    void nameIsTrimmedPersistedAndClearedByAnEmptyString() throws Exception {
+        Path file = gridSave.toPath()
+            .resolve("ae2webintegration/grid-identities.json");
+        JsonObject named = patchName("  Main base  ");
+        assertEquals(
+            "Main base",
+            named.getAsJsonObject("data")
+                .get("name")
+                .getAsString());
+        GridPersistentData reloaded = new GridIdentityRegistry(file.toFile()).getPersistentData(key);
+        assertNotNull(reloaded);
+        assertEquals(
+            "Main base",
+            reloaded.getSettings()
+                .getName());
+        assertFalse(reloaded.isDefault());
+
+        PatchGridSettings unchanged = new PatchGridSettings();
+        unchanged.handle(TestGridFixtures.context(owner, "grid=" + key + "&track=1"));
+        assertEquals("Main base", currentName());
+
+        patchName("");
+        assertNull(currentName());
+        GridPersistentData cleared = new GridIdentityRegistry(file.toFile()).getPersistentData(key);
+        assertNotNull(cleared);
+        assertNull(
+            cleared.getSettings()
+                .getName());
+    }
+
+    @Test
+    void invalidNameIsRejectedWithoutChangingSettings() {
+        patchName("Kept");
+        StringBuilder tooLong = new StringBuilder();
+        for (int i = 0; i < 49; i++) tooLong.append('x');
+        for (String name : new String[] { "a\nb", tooLong.toString() }) {
+            assertEquals(
+                "BAD_PARAM",
+                patchName(name).get("status")
+                    .getAsString());
+            assertEquals("Kept", currentName());
+        }
+    }
+
+    private JsonObject patchName(String name) {
+        PatchGridSettings request = new PatchGridSettings();
+        JsonObject body = new JsonObject();
+        body.addProperty("name", name);
+        request.handle(
+            new AE2Controller.RequestContext(
+                new TestGridFixtures.TestExchange(""),
+                owner,
+                Collections.singletonMap("gridKey", key.toString()),
+                body));
+        return response(request);
+    }
+
+    private String currentName() {
+        GridPersistentData data = CoreEngine.GRID_IDENTITIES.getPersistentData(key);
+        assertNotNull(data);
+        return data.getSettings()
+            .getName();
+    }
+
     private JsonObject requestAfter(Runnable event, boolean write) {
         IAsyncRequest request = write ? new PatchGridSettings() : new GetGridSettings();
         assertTrue(request.init(TestGridFixtures.context(owner, "grid=" + key + (write ? "&track=1" : ""))));

@@ -53,6 +53,9 @@ class GridListPermissionsTest extends GridTestScope {
             }
         };
         CoreEngine.GRID_IDENTITIES.controllerValidated(grid);
+        CoreEngine.GRID_IDENTITIES.getPersistentData(CoreEngine.GRID_IDENTITIES.getKey(grid))
+            .getSettings()
+            .setName("Main base");
         GetGrids request = new GetGrids();
         request.init(TestGridFixtures.context(42, ""));
         request.runOnServerThread(TestGridFixtures.ae(grid));
@@ -68,10 +71,14 @@ class GridListPermissionsTest extends GridTestScope {
             "OK",
             response.get("status")
                 .getAsString());
-        JsonObject sources = response.getAsJsonArray("data")
+        JsonObject info = response.getAsJsonArray("data")
             .get(0)
-            .getAsJsonObject()
-            .getAsJsonObject("accessSources");
+            .getAsJsonObject();
+        assertEquals(
+            "Main base",
+            info.get("name")
+                .getAsString());
+        JsonObject sources = info.getAsJsonObject("accessSources");
         assertEquals(2, sources.size());
         for (int playerId : new int[] { TestGridFixtures.OWNER_ID, 42 }) {
             PlayerIdentity player = TestGridFixtures.playerIdentity(playerId);

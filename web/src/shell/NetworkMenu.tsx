@@ -2,7 +2,7 @@
 // with the selected grid's tracking switch underneath.
 import { useEffect, useState } from "preact/hooks";
 
-import { ApiError, setGridTracking } from "../api/client";
+import { ApiError, setGridName, setGridTracking } from "../api/client";
 import type { GridSummary } from "../api/types";
 import { useNetwork } from "../state/network";
 import type { GridSelection } from "../state/network";
@@ -10,7 +10,7 @@ import { useToast } from "../state/toast";
 import { Checkbox } from "../ui/Checkbox";
 import { cx } from "../ui/cx";
 import { usePopover } from "../ui/usePopover";
-import { gridMetaLine, gridOptionLabel } from "./gridLabel";
+import { gridFallbackLabel, gridMetaLine, gridOptionLabel } from "./gridLabel";
 
 /**
  * `gridsettings?track=` is the only way to switch tracking on anywhere in the mod, and tracking gates
@@ -44,6 +44,58 @@ function GridTrackingCheckbox({ grid, onTracked }: { grid: GridSummary; onTracke
     );
 }
 
+/** Renames the grid for everyone with access to it; saved on Enter or blur, an empty field clears the name. */
+function GridNameField({
+    grid,
+    grids,
+    onRenamed,
+}: {
+    grid: GridSummary;
+    grids: GridSummary[];
+    onRenamed: () => Promise<void>;
+}) {
+    const toast = useToast();
+    const [value, setValue] = useState(grid.name ?? "");
+
+    useEffect(() => {
+        setValue(grid.name ?? "");
+    }, [grid.key, grid.name]);
+
+    const save = async () => {
+        if (value.trim() === (grid.name ?? "")) return;
+        try {
+            const result = await setGridName(grid.key, value);
+            setValue(result.name ?? "");
+            await onRenamed();
+        } catch (e) {
+            setValue(grid.name ?? "");
+            toast(e instanceof ApiError ? e.status : "Failed to rename network");
+        }
+    };
+
+    return (
+        <input
+            type="text"
+            className="field network-menu__name"
+            aria-label="Network name"
+            title="Network name, shared with everyone who can access this network"
+            placeholder={`Name (${gridFallbackLabel(grid, grids)})`}
+            maxLength={48}
+            value={value}
+            onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+            onBlur={() => void save()}
+            onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") {
+                    // Revert instead of letting the popover close with a half-typed name.
+                    e.stopPropagation();
+                    setValue(grid.name ?? "");
+                }
+            }}
+        />
+    );
+}
+
 interface MenuRow {
     key: GridSelection;
     name: string;
@@ -56,7 +108,7 @@ function menuRows(grids: GridSummary[]): MenuRow[] {
         ...grids.map((g) => ({
             key: g.key,
             name: gridOptionLabel(g, grids),
-            meta: `${g.cpuCount} CPU${g.cpuCount === 1 ? "" : "s"}${g.isTrackingEnabled ? " · tracked" : ""}`,
+            meta: `${g.name ? `${g.owner} · ` : ""}${g.cpuCount} CPU${g.cpuCount === 1 ? "" : "s"}${g.isTrackingEnabled ? " · tracked" : ""}`,
         })),
     ];
 }
@@ -114,6 +166,7 @@ export function NetworkMenu({ disabled }: { disabled?: boolean }) {
                     </div>
                     {selectedGrid && (
                         <div className="network-menu__tracking">
+                            <GridNameField grid={selectedGrid} grids={grids} onRenamed={refresh} />
                             <GridTrackingCheckbox grid={selectedGrid} onTracked={refresh} />
                         </div>
                     )}

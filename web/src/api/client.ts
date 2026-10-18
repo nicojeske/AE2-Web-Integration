@@ -163,6 +163,11 @@ export function setGridTracking(gridKey: GridKey, track: boolean): Promise<GridS
     return apiRequest("PATCH", `${grid(gridKey)}/settings`, { isTracked: track });
 }
 
+/** At most 48 characters; an empty string clears the name. */
+export function setGridName(gridKey: GridKey, name: string): Promise<GridSettingsResult> {
+    return apiRequest("PATCH", `${grid(gridKey)}/settings`, { name });
+}
+
 /** Every item of a grid is sampled server-side; `items` (1-50 itemids) picks which series come back. */
 export function getGridCapacity(gridKey: GridKey, range: StatsRange, customMinutes?: number): Promise<GridCapacity> {
     return apiGet(

@@ -141,6 +141,9 @@
     color: var(--text-dim);
 }
 .network-menu__tracking {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     padding-top: 10px;
     border-top: 1px solid var(--border-subtle);
 }

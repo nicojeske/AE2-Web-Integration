@@ -23,12 +23,13 @@ import pl.kuba6000.ae2webintegration.core.identity.GridIdentityRegistry;
 /**
  * Updates selected grid settings.
  * <p>
- * Omitted settings remain unchanged. Returns the settings after applying the update.
+ * Omitted settings remain unchanged. A name longer than 48 characters or containing control characters is
+ * rejected. Returns the settings after applying the update.
  *
  * @pathParam gridKey Persistent grid identifier.
  * @response 200 {@link Response} Updated grid settings.
- * @response 400 {@link ErrorResponse} BAD_PARAM: malformed path value, unexpected body, or invalid JSON/input
- *           fields.
+ * @response 400 {@link ErrorResponse} BAD_PARAM: malformed path value, unexpected body, invalid JSON/input
+ *           fields, or an invalid name.
  * @response 401 {@link ErrorResponse} UNAUTHORIZED: no valid session was provided; response includes
  *           WWW-Authenticate: Bearer.
  * @response 403 {@link ErrorResponse} NO_PERMISSIONS: the user cannot access this grid. CSRF_REJECTED: cookie or
@@ -75,7 +76,17 @@ public final class PatchGridSettings extends IAsyncRequest {
          */
         @OptionalInput
         public @Nullable Boolean isTracked;
+
+        /**
+         * Display name shared by everyone with access to the grid, at most 48 characters; an empty string clears it.
+         *
+         * @example Main base
+         */
+        @OptionalInput
+        public @Nullable String name;
     }
+
+    static final int MAX_NAME_LENGTH = 48;
 
     @Body
     @SuppressWarnings("NotNullFieldNotInitialized") // Bound before the request is handled.
@@ -87,6 +98,10 @@ public final class PatchGridSettings extends IAsyncRequest {
             deny(ApiStatus.GRID_NOT_FOUND);
             return;
         }
+        if (input.name != null && !isValidName(input.name.trim())) {
+            deny(ApiStatus.BAD_PARAM);
+            return;
+        }
         GridIdentityRegistry registry = CoreEngine.GRID_IDENTITIES;
         synchronized (registry) {
             GridPersistentData data = registry.getPersistentData(gridKey);
@@ -96,15 +111,19 @@ public final class PatchGridSettings extends IAsyncRequest {
             }
             GridSettingsData settings = data.getSettings();
             try {
-                if (input.isTracked != null) {
-                    settings.setTracked(input.isTracked);
-                    registry.saveIfDirty();
-                }
+                if (input.isTracked != null) settings.setTracked(input.isTracked);
+                if (input.name != null) settings.setName(input.name);
+                registry.saveIfDirty();
                 // Completion serializes under the same monitor used by settings mutations and file writes.
                 respond(HttpURLConnection.HTTP_OK, new Response(ApiStatus.OK, settings));
             } catch (IOException e) {
                 deny(ApiStatus.INTERNAL_ERROR);
             }
         }
+    }
+
+    private static boolean isValidName(String name) {
+        return name.length() <= MAX_NAME_LENGTH && name.codePoints()
+            .noneMatch(Character::isISOControl);
     }
 }

@@ -49,6 +49,7 @@ export interface MockBusyCpu {
 
 export interface MockGrid {
     key: GridKey;
+    name: string | null;
     owner: string;
     isOwned: boolean;
     isTrackingEnabled: boolean;
@@ -83,6 +84,7 @@ const MOCK_HOURLY_BUCKET_MS = 60 * 60_000;
 export const mockGrids: MockGrid[] = [
     {
         key: "mockGridSteve000000001",
+        name: "Main base",
         owner: "Steve",
         isOwned: true,
         isTrackingEnabled: true,
@@ -666,6 +668,7 @@ export const mockGrids: MockGrid[] = [
     },
     {
         key: "mockGridNotch000000002",
+        name: null,
         owner: "Notch",
         isOwned: false,
         isTrackingEnabled: false,
@@ -767,6 +770,7 @@ export function mockCpuKey(name: string): string {
 export function toGridSummaries(): GridSummary[] {
     return mockGrids.map((g) => ({
         key: g.key,
+        name: g.name,
         owner: g.owner,
         cpuCount: g.idleCpus.length + g.busyCpus.length,
         isOwned: g.isOwned,

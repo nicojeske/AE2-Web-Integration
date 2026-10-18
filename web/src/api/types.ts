@@ -22,6 +22,8 @@ export interface GridAccessSource {
 /** `GET /api/grids` entry. */
 export interface GridSummary {
     key: GridKey;
+    /** Display name given on the web panel, shared by everyone with access; `null` when unnamed. */
+    name: string | null;
     cpuCount: number;
     owner: string;
     isOwned: boolean;
@@ -272,6 +274,7 @@ export interface TrackingDetail {
 /** `GET|PATCH /api/grids/{gridKey}/settings` response. */
 export interface GridSettingsResult {
     isTracked: boolean;
+    name: string | null;
 }
 
 /**
