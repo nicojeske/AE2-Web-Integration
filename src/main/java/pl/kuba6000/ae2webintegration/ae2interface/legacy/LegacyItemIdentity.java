@@ -60,10 +60,8 @@ public final class LegacyItemIdentity {
     }
 
     public static @NotNull IAEKey copy(@NotNull IAEStack<?> stack) {
-        if (!(stack instanceof AEItemStack) && !(stack instanceof AEFluidStack)) {
-            throw new UnsupportedOperationException("Unsupported legacy resource identity");
-        }
-        // Follow AE2's native identity-sharing contract; only amount/crafting state is reset.
+        // Follow AE2's native identity-sharing contract; only amount/crafting state is reset. Works for every
+        // stack type (items, fluids, GTNH's extra types such as essentia), even those encode() can't key.
         IAEStack<?> result = stack.copy();
         result.reset();
         return (IAEKey) result;
