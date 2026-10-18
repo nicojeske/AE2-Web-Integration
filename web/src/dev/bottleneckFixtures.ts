@@ -9,6 +9,7 @@ import type {
     Bottlenecks,
     GTMachineStates,
     GTMachineStatus,
+    ServerTickRate,
     TrackingHistoryElement,
 } from "../api/types.ts";
 import { GT_STATUS_ORDER } from "../api/types.ts";
@@ -353,4 +354,36 @@ export function mockGTMachineStates(span: number, now: number): GTMachineStates[
             };
         });
     return rows.sort((a, b) => b.runningShare - a.runningShare || a.id.localeCompare(b.id));
+}
+
+/** Mostly 20 TPS with an evening lag hump and a few autosave-sized spikes; nothing before the mock server start. */
+export function mockServerTickRate(from: number, to: number, points: number): ServerTickRate {
+    const fine = to - from <= 2 * 86_400_000;
+    const bucket = fine ? 30_000 : 3_600_000;
+    const first = Math.floor(from / bucket);
+    const buckets = Math.floor((to - 1) / bucket) - first + 1;
+    const step = Math.max(1, Math.ceil(buckets / points));
+    const windows = Math.ceil(buckets / step);
+    const tps: number[] = [];
+    const mspt: number[] = [];
+    const maxTickMillis: number[] = [];
+    for (let w = 0; w < windows; w++) {
+        const at = (first + w * step) * bucket;
+        const hour = new Date(at).getHours();
+        const load = 28 + (hour >= 18 && hour <= 22 ? 30 : 0) + 8 * noise(String(at), 0);
+        mspt.push(Math.round(load * 10) / 10);
+        tps.push(Math.min(20, Math.round((1000 / Math.max(50, load)) * 100) / 100));
+        maxTickMillis.push(Math.round(load * 2 + (noise(String(at), 1) > 0.93 ? 2400 : 0)));
+    }
+    return {
+        from: first * bucket,
+        to: (first + (windows - 1) * step) * bucket,
+        stepMillis: step * bucket,
+        resolution: fine ? "fine" : "hourly",
+        tps,
+        mspt,
+        maxTickMillis,
+        currentTps: tps[tps.length - 1] ?? -1,
+        currentMspt: mspt[mspt.length - 1] ?? -1,
+    };
 }

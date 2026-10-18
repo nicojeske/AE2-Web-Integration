@@ -1,6 +1,7 @@
 import type {
     BottleneckRange,
     Bottlenecks,
+    ServerTickRate,
     CpuDetail,
     CpuList,
     DetailedItem,
@@ -207,6 +208,10 @@ export function deleteStockRule(gridKey: GridKey, itemid: string): Promise<null>
 }
 
 /** Prefs follow the logged-in principal, not any one grid. */
+export function getServerTickRate(from: number, to: number, points: number): Promise<ServerTickRate> {
+    return apiGet(`server/tick-rate${query({ from, to, points })}`);
+}
+
 export function getPrefs(): Promise<PrefsResult> {
     return apiGet("prefs");
 }

@@ -141,6 +141,18 @@
     color: var(--amber);
 }
 
+/* Server tick rate */
+.bn-tps {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0 20px;
+}
+.bn-tps--lag {
+    color: var(--amber);
+}
+
 /* Missing ingredients */
 .bn-miss-table {
     --cols: 24px minmax(0, 1fr) 110px 110px 150px minmax(0, 1fr);
@@ -246,6 +258,7 @@
     .bn-out-row,
     .bn-miss-table .dtable__head,
     .bn-miss-row,
+    .bn-tps,
     .bn-gt-table .dtable__head,
     .bn-gt-row {
         padding: 0 12px;

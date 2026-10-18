@@ -26,6 +26,7 @@ import pl.kuba6000.ae2webintegration.core.identity.GridIdentityRegistry;
 import pl.kuba6000.ae2webintegration.core.identity.StableKey;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
+import pl.kuba6000.ae2webintegration.core.server.ServerLoad;
 import pl.kuba6000.ae2webintegration.core.stock.StockKeeper;
 import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
 import pl.kuba6000.ae2webintegration.core.tracking.ItemHistoryStore;
@@ -109,7 +110,13 @@ public class CoreEngine {
      * platform's tick event - cadence, bounding and fault handling are decisions that belong here, not in
      * four copies of an event handler that no test can reach.
      */
+    /** The platform's tick start event; optional, it only adds milliseconds per tick to the tick-rate history. */
+    public static void onServerTickStart() {
+        ServerLoad.onTickStart(System.nanoTime());
+    }
+
     public static void onServerTick() {
+        ServerLoad.onTickEnd(System.nanoTime(), System.currentTimeMillis());
         drainRequests(System::nanoTime);
         runPlanMaintenance(System.nanoTime());
         runHistorySampling(System.nanoTime(), System.currentTimeMillis());
@@ -322,6 +329,7 @@ public class CoreEngine {
         resetHistorySampling();
         StockKeeper.clear();
         GTEngine.onServerStopped();
+        ServerLoad.reset();
     }
 
     public static String getModVersion() {

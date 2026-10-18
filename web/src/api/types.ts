@@ -548,6 +548,21 @@ export interface Bottlenecks {
     missingIngredients: MissingIngredient[];
 }
 
+/** `GET /api/server/tick-rate`: per window, -1 = no sample (server offline). */
+export interface ServerTickRate {
+    from: number;
+    to: number;
+    stepMillis: number;
+    resolution: "fine" | "hourly";
+    tps: number[];
+    /** -1 also when the platform reports no tick start. */
+    mspt: number[];
+    maxTickMillis: number[];
+    /** Last finished 30 s window; -1 before the first. */
+    currentTps: number;
+    currentMspt: number;
+}
+
 /** An ingredient failed crafting plans were missing. */
 export interface MissingIngredient {
     itemid: string;

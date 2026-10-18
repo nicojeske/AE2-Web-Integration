@@ -29,6 +29,7 @@ import {
 import {
     MOCK_CRAFT_RETENTION_DAYS,
     mockBottlenecks,
+    mockServerTickRate,
     mockGTMachineStates,
     parseBottleneckRange,
 } from "./bottleneckFixtures.ts";
@@ -284,6 +285,14 @@ async function handleApi(
     if (route === "GET grids") return ok(res, toGridSummaries());
     if (route === "POST auth/logout") return ok(res, null);
     if (route === "GET prefs") return ok(res, { blob: mockPrefsBlob });
+    if (route === "GET server/tick-rate") {
+        if (!historyEnabled(req.headers.referer)) return respond(res, "HISTORY_DISABLED", null);
+        const to = Number(params.get("to") ?? Date.now());
+        const from = Number(params.get("from") ?? to - 86_400_000);
+        const points = Number(params.get("points") ?? 300);
+        if (!(from < to) || !(points >= 1)) return respond(res, "BAD_PARAM", null);
+        return ok(res, mockServerTickRate(from, to, points));
+    }
     if (route === "PUT prefs") {
         const body = await readJson(req);
         if (typeof body.blob !== "string") return respond(res, "BAD_PARAM", null);

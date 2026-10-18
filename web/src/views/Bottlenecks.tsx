@@ -3,7 +3,7 @@
 // splits its time between running, idle and the ways it can be stopped. Single-grid only, like Statistics.
 import { useMemo, useState } from "preact/hooks";
 
-import { getBottlenecks, getGTMachineStates } from "../api/client";
+import { getBottlenecks, getGTMachineStates, getServerTickRate } from "../api/client";
 import { formatDuration, formatNumber, formatPercent, formatTimestamp } from "../api/format";
 import type {
     BottleneckIncident,
@@ -136,6 +136,7 @@ function BottlenecksPage({
                         </div>
                     ) : (
                         <>
+                            <TickRateSection data={data} range={range} />
                             <MachinesTable
                                 data={data}
                                 before={before}
@@ -491,6 +492,64 @@ function OutputsTable({ data, before }: { data: BottlenecksData; before: Bottlen
                     {showAll ? "Show fewer" : `Show all ${data.outputs.length} outputs`}
                 </Button>
             )}
+        </section>
+    );
+}
+
+/** Below this a server is visibly lagging: machines and crafts run that much slower. */
+const LAG_TPS = 18;
+
+function TickRateSection({ data, range }: { data: BottlenecksData; range: BottleneckRange }) {
+    const gt = useGT();
+    const { settings } = usePrefs();
+    const rate = useGTPoll(
+        () => getServerTickRate(data.from, data.to, 200),
+        POLL_MS,
+        `${data.from}|${data.to}`,
+        gt.nonce,
+    );
+    const r = rate.data;
+    if (!r) return null;
+    const sampled = r.tps.filter((t) => t >= 0);
+    if (sampled.length === 0) return null;
+    const lagShare = sampled.filter((t) => t < LAG_TPS).length / sampled.length;
+    const worst = Math.max(...r.maxTickMillis);
+    const timestamps = r.tps.map((_, i) => r.from + i * r.stepMillis);
+    return (
+        <section className="bn__section">
+            <h3 className="section-label bn__title">
+                Server tick rate
+                {r.currentTps >= 0 && (
+                    <span className={cx("dim", r.currentTps < LAG_TPS && "bn-tps--lag")}>
+                        {" "}
+                        · now {r.currentTps.toFixed(1)} TPS
+                        {r.currentMspt >= 0 && ` · ${r.currentMspt.toFixed(1)} ms/tick`}
+                    </span>
+                )}
+            </h3>
+            <div className="bn-tps">
+                <Chart
+                    values={r.tps.map((t) => (t < 0 ? null : t))}
+                    timestamps={timestamps}
+                    range={range}
+                    spanMillis={data.to - data.from}
+                    width={1000}
+                    height={70}
+                    showAxes
+                    yTickCount={2}
+                    zeroBased
+                    yMax={20}
+                    threshold={LAG_TPS}
+                    numberFormat={settings.numberFormat}
+                    formatValue={(v) => `${v.toFixed(1)} TPS`}
+                    ariaLabel="Server ticks per second"
+                />
+                <span className="bn-detail__note">
+                    Below {LAG_TPS} TPS {Math.round(lagShare * 100)}% of the time
+                    {worst > 0 && ` · longest tick ${formatDuration(worst)}`}. Lag slows every machine and craft alike,
+                    so weigh the times below against it.
+                </span>
+            </div>
         </section>
     );
 }
