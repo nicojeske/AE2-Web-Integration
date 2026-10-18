@@ -36,6 +36,10 @@ public final class GTStateLog {
      */
     public static final String IDLE_REASON_PREFIX = "idle:";
 
+    /** Running parallels and the parallel limit, each times the scan interval; not statuses. */
+    public static final String PARALLELS_USED = "parallels:used";
+    public static final String PARALLELS_MAX = "parallels:max";
+
     /** Series key of a status: its enum name in lower case, stable because the enum is part of the contract. */
     public static String key(GTMachineStatus status) {
         return status.name()
@@ -66,6 +70,21 @@ public final class GTStateLog {
                 continue;
             }
             db.addCounter(HistoryTable.GT_STATE_HOURLY, machine.id, key(machine.status), hourStart, elapsed);
+            if (machine.status == GTMachineStatus.RUNNING && machine.maxParallels > 1 && machine.parallels > 0) {
+                // Parallel-milliseconds, so used / max over any range is the time-weighted parallel use.
+                db.addCounter(
+                    HistoryTable.GT_STATE_HOURLY,
+                    machine.id,
+                    PARALLELS_USED,
+                    hourStart,
+                    Math.min(machine.parallels, machine.maxParallels) * elapsed);
+                db.addCounter(
+                    HistoryTable.GT_STATE_HOURLY,
+                    machine.id,
+                    PARALLELS_MAX,
+                    hourStart,
+                    (long) machine.maxParallels * elapsed);
+            }
             if (machine.status == GTMachineStatus.IDLE && machine.idleReason != null) {
                 db.addCounter(
                     HistoryTable.GT_STATE_HOURLY,

@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { getGTMachine, getGTProductionHistory } from "../api/client";
-import { formatEUt, formatRelativeAge, gtTierName } from "../api/format";
+import { formatDuration, formatEUt, formatNumber, formatRelativeAge, gtTierName } from "../api/format";
 import type { GTMachine, GTMachines, GTMachineStatus, GTProductionEntry, GTRange } from "../api/types";
 import { GT_STATUS_ORDER } from "../api/types";
 import { getContext } from "../context";
@@ -763,6 +763,17 @@ function MachineInspector({
         ["Status", duration ? `${statusText} (for ${duration})` : statusText],
         ["Energy", m.euPerTick < 0 ? `+${formatEUt(-m.euPerTick)} (generating)` : formatEUt(m.euPerTick)],
         ["Voltage tier", gtTierName(m.voltageTier)],
+        ...(m.maxParallels > 1 && m.parallels > 0
+            ? ([["Parallels", `${formatNumber(m.parallels)} of ${formatNumber(m.maxParallels)}`]] as [string, string][])
+            : []),
+        ...(m.baseDurationTicks > 0 && m.maxProgressTicks > 0
+            ? ([
+                  [
+                      "Speed-up",
+                      `${(m.baseDurationTicks / m.maxProgressTicks).toFixed(1)}× faster than the base ${formatDuration(m.baseDurationTicks * 50)}`,
+                  ],
+              ] as [string, string][])
+            : []),
         ["Efficiency", `${(m.efficiency / 100).toFixed(m.efficiency % 100 === 0 ? 0 : 1)}%`],
         ["Owner", m.ownerName ?? "Admin only"],
         ["Type", m.type],

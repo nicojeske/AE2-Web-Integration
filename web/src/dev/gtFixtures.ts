@@ -118,6 +118,9 @@ function machine(
             status,
             statusDetail: null,
             maxProgressTicks: 0,
+            parallels: 0,
+            maxParallels: 0,
+            baseDurationTicks: 0,
             euPerTick: 0,
             voltageTier: 3,
             efficiency: 10000,
@@ -136,6 +139,9 @@ function machine(
 const MOCK_MACHINES: MockMachine[] = [
     machine([0, 120, 64, -340], "Electric Blast Furnace", "multimachine.blastfurnace", "RUNNING", {
         maxProgressTicks: 1200,
+        parallels: 4,
+        maxParallels: 16,
+        baseDurationTicks: 4800,
         euPerTick: 7680,
         voltageTier: 5,
         outputs: [{ ...TITANIUM, amount: 1 }],

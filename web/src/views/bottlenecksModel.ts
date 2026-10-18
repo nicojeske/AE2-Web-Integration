@@ -116,6 +116,13 @@ export function machineVerdicts(machine: GTMachineStates): MachineVerdict[] {
             title: "Idle for want of inputs much of the time - whatever feeds it can't keep up",
         });
     }
+    if (machine.parallelUse !== null && machine.runningShare >= 0.5 && machine.parallelUse < 0.5) {
+        verdicts.push({
+            label: "Few parallels",
+            variant: "teal",
+            title: `Ran ${Math.round(machine.parallelUse * 100)}% of its parallel limit on average - each recipe found too little input or power for more`,
+        });
+    }
     if (machine.runningShare >= 0.9) {
         verdicts.push({
             label: "At capacity",

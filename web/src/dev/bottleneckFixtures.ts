@@ -358,6 +358,7 @@ export function mockGTMachineStates(span: number, now: number): GTMachineStates[
                 runningShare: (states.running ?? 0) / observedMillis,
                 states,
                 idleReasons,
+                parallelUse: index % 4 === 0 ? 0.3 : index % 3 === 0 ? 0.95 : null,
             };
         });
     return rows.sort((a, b) => b.runningShare - a.runningShare || a.id.localeCompare(b.id));

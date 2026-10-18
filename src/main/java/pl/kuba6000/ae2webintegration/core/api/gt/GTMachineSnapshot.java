@@ -40,6 +40,15 @@ public class GTMachineSnapshot {
     /** Progress of the running recipe in ticks; 0 when idle. */
     public int progressTicks;
     public int maxProgressTicks;
+    /** Parallels of the running recipe (batch mode included); 0 when idle or unknown. */
+    public int parallels;
+    /** Most parallels the machine may run at its current settings; 0 when it has no parallel limit to report. */
+    public int maxParallels;
+    /**
+     * Duration of the running recipe as GregTech lists it, before overclocking, in ticks; 0 when unknown. Its ratio
+     * to {@link #maxProgressTicks} is the speed-up the machine gets from overclocking.
+     */
+    public int baseDurationTicks;
     /** EU/t of the running recipe: positive = consumes, negative = generates. 0 when idle. */
     public long euPerTick;
     /** Voltage tier index as GregTech counts it (0 = ULV, 1 = LV, ... 5 = IV, 6 = LuV); -1 if unknown. */
@@ -86,6 +95,9 @@ public class GTMachineSnapshot {
         copy.idleReason = idleReason;
         copy.progressTicks = progressTicks;
         copy.maxProgressTicks = maxProgressTicks;
+        copy.parallels = parallels;
+        copy.maxParallels = maxParallels;
+        copy.baseDurationTicks = baseDurationTicks;
         copy.euPerTick = euPerTick;
         copy.voltageTier = voltageTier;
         copy.efficiency = efficiency;

@@ -86,6 +86,32 @@ class GTStateLogTest {
     }
 
     @Test
+    void runningParallelsAreWeightedByTime() {
+        GTMachineSnapshot half = GTTestSupport.machine(1, ALICE, GTMachineStatus.RUNNING);
+        half.parallels = 8;
+        half.maxParallels = 16;
+        GTMachineSnapshot full = GTTestSupport.machine(1, ALICE, GTMachineStatus.RUNNING);
+        full.parallels = 16;
+        full.maxParallels = 16;
+        GTMachineSnapshot single = GTTestSupport.machine(2, ALICE, GTMachineStatus.RUNNING);
+        single.parallels = 1;
+        single.maxParallels = 1;
+        scan(NOW, half, single);
+        scan(NOW + 10 * SECOND, half, single);
+        scan(NOW + 20 * SECOND, full, single);
+        GTTestSupport.flushHistory();
+
+        Map<String, Map<String, Long>> totals = GTStateLog.totals(NOW - HOUR, NOW + HOUR, owner -> true);
+        Map<String, Long> states = totals.get(half.id);
+        assertEquals(240 * SECOND, (long) states.get(GTStateLog.PARALLELS_USED));
+        assertEquals(320 * SECOND, (long) states.get(GTStateLog.PARALLELS_MAX));
+        assertFalse(
+            totals.get(single.id)
+                .containsKey(GTStateLog.PARALLELS_MAX),
+            "a machine without parallels has no parallel use");
+    }
+
+    @Test
     void totalsOnlyCoverVisibleMachines() {
         GTMachineSnapshot alices = GTTestSupport.machine(1, ALICE, GTMachineStatus.RUNNING);
         GTMachineSnapshot bobs = GTTestSupport.machine(2, BOB, GTMachineStatus.RUNNING);

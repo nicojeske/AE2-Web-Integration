@@ -111,6 +111,13 @@ public final class GetGTMachineStates extends GTRequest {
          * more where no reason was known.
          */
         public Map<String, Long> idleReasons = new LinkedHashMap<>();
+        /**
+         * Running parallels over the parallel limit, weighted by running time, 0-1; null for a machine without
+         * parallels or with no running time recorded since they are.
+         *
+         * @example 0.4
+         */
+        public @Nullable Double parallelUse;
     }
 
     @Override
@@ -144,6 +151,12 @@ public final class GetGTMachineStates extends GTRequest {
                 }
             }
             if (row.observedMillis == 0) continue;
+            Long parallelsMax = entry.getValue()
+                .get(GTStateLog.PARALLELS_MAX);
+            if (parallelsMax != null && parallelsMax > 0) {
+                row.parallelUse = entry.getValue()
+                    .getOrDefault(GTStateLog.PARALLELS_USED, 0L) / (double) parallelsMax;
+            }
             entry.getValue()
                 .entrySet()
                 .stream()

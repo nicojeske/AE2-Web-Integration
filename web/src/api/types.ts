@@ -363,6 +363,12 @@ export interface GTMachine {
     statusDetail: string | null;
     progressTicks: number;
     maxProgressTicks: number;
+    /** Parallels of the running recipe; 0 when idle or unknown. */
+    parallels: number;
+    /** Parallel limit at the current settings; 0 when the machine reports none. */
+    maxParallels: number;
+    /** Recipe duration before overclocking, in ticks; 0 when unknown. */
+    baseDurationTicks: number;
     /** Positive = consumes, negative = generates. */
     euPerTick: number;
     /** Index into `GT_TIERS`; -1 = unknown. */
@@ -607,4 +613,6 @@ export interface GTMachineStates {
     states: Record<string, number>;
     /** Idle time by GregTech recipe check id (`no_recipe`, `missing_item`, `insufficient_voltage`, ...), largest first. */
     idleReasons: Record<string, number>;
+    /** Time-weighted running parallels over the limit, 0-1; null without parallels. */
+    parallelUse: number | null;
 }
