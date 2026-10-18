@@ -4,9 +4,9 @@
 // each expandable into its stored-EU history. Rates read as amps at a tier plus raw EU/t.
 import { useState } from "preact/hooks";
 
-import { getGTPower, getGTPowerHistory } from "../api/client";
-import { formatDuration, formatEU, formatEUt, formatEUtTier } from "../api/format";
-import type { GTPowerSource, GTRange } from "../api/types";
+import { getGTEnergy, getGTPower, getGTPowerHistory } from "../api/client";
+import { formatDuration, formatEU, formatEUt, formatEUtTier, gtTierName } from "../api/format";
+import type { GTEnergyMachine, GTPowerSource, GTRange } from "../api/types";
 import { GT_FAST_POLL_MS, useGT, useGTPoll } from "../state/gt";
 import { usePrefs } from "../state/prefs";
 import { Badge } from "../ui/Badge";
@@ -34,8 +34,15 @@ export function Power() {
             {({ sources }) => {
                 if (sources.length === 0) {
                     return (
-                        <div className="placeholder-panel">
-                            No Lapotronic Supercapacitors or wireless EU networks found yet.
+                        <div className="page">
+                            <div className="page__main">
+                                <div className="page__scroll">
+                                    <div className="placeholder-panel">
+                                        No Lapotronic Supercapacitors or wireless EU networks found yet.
+                                    </div>
+                                    <EnergyByMachine />
+                                </div>
+                            </div>
                         </div>
                     );
                 }
@@ -107,12 +114,105 @@ export function Power() {
                                         </div>
                                     </>
                                 )}
+                                <EnergyByMachine />
                             </div>
                         </div>
                     </div>
                 );
             }}
         </GTPollState>
+    );
+}
+
+const ENERGY_ROWS = 15;
+
+/** Where the power goes and which generators carry the base, from the per-machine EU the scans sample. */
+function EnergyByMachine() {
+    const { nonce } = useGT();
+    const { machineNames } = usePrefs();
+    const [range, setRange] = useState<GTRange>("24h");
+    const [customMinutes, setCustomMinutes] = useState(24 * 60);
+    const [showAll, setShowAll] = useState(false);
+    const minutes = range === "custom" ? customMinutes : undefined;
+    const energy = useGTPoll(() => getGTEnergy(range, minutes), 60_000, `${range}|${minutes ?? ""}`, nonce);
+    if (energy.notAvailable || energy.error === "HISTORY_DISABLED") return null;
+    const data = energy.data;
+    const ticks = data ? (data.to - data.from) / 50 : 1;
+    const consumers = data?.machines.filter((m) => m.consumed > 0) ?? [];
+    const generators = data?.machines.filter((m) => m.generated > 0) ?? [];
+    const rows = (list: GTEnergyMachine[], pick: (m: GTEnergyMachine) => number, total: number) =>
+        (showAll ? list : list.slice(0, ENERGY_ROWS)).map((m) => (
+            <div key={m.id} className="dtable__row energy-row">
+                <span className="cell-text" title={m.id}>
+                    {machineNames[m.id] ?? m.name}
+                    {m.ownerName && <span className="dim"> · {m.ownerName}</span>}
+                </span>
+                <span className="cell-text dim">{m.voltageTier >= 0 ? gtTierName(m.voltageTier) : "—"}</span>
+                <span className="energy-row__share">
+                    <span style={{ width: `${total > 0 ? (pick(m) / total) * 100 : 0}%` }} />
+                </span>
+                <span className="cell-num">{total > 0 ? Math.round((pick(m) / total) * 100) : 0}%</span>
+                <span className="cell-num">{formatEUt(pick(m) / ticks)}</span>
+                <span className="cell-num dim">{formatEU(pick(m))}</span>
+            </div>
+        ));
+    const head = (label: string) => (
+        <div className="dtable__head">
+            <span>{label}</span>
+            <span>Tier</span>
+            <span>Share</span>
+            <span />
+            <span className="right">Avg EU/t</span>
+            <span className="right">EU</span>
+        </div>
+    );
+    return (
+        <section className="energy">
+            <div className="energy__header">
+                <span className="power__section-label section-label">Energy by machine</span>
+                {data && (
+                    <span className="dim">
+                        using {formatEUt(data.totalConsumed / ticks)} · generating{" "}
+                        {formatEUt(data.totalGenerated / ticks)} on average
+                    </span>
+                )}
+                <RangeControls
+                    range={range}
+                    onRange={setRange}
+                    customMinutes={customMinutes}
+                    onCustomMinutes={setCustomMinutes}
+                />
+            </div>
+            {!data ? (
+                <div className="placeholder-panel">{energy.error ?? "Loading energy use…"}</div>
+            ) : data.machines.length === 0 ? (
+                <div className="placeholder-panel">No machine used or made EU in this range yet.</div>
+            ) : (
+                <>
+                    {consumers.length > 0 && (
+                        <div className="dtable energy-table">
+                            {head("Consumer")}
+                            {rows(consumers, (m) => m.consumed, data.totalConsumed)}
+                        </div>
+                    )}
+                    {generators.length > 0 && (
+                        <div className="dtable energy-table">
+                            {head("Generator")}
+                            {rows(generators, (m) => m.generated, data.totalGenerated)}
+                        </div>
+                    )}
+                    {Math.max(consumers.length, generators.length) > ENERGY_ROWS && (
+                        <Button variant="text" onClick={() => setShowAll((v) => !v)}>
+                            {showAll ? "Show fewer" : "Show all machines"}
+                        </Button>
+                    )}
+                    <p className="energy__note">
+                        Sampled every GregTech scan from each running machine&apos;s EU/t, counted in ticks so lag
+                        doesn&apos;t inflate it. Unloaded machines aren&apos;t counted.
+                    </p>
+                </>
+            )}
+        </section>
     );
 }
 

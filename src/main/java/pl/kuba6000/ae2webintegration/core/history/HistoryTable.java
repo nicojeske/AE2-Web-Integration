@@ -24,6 +24,8 @@ public enum HistoryTable {
     CONSUMPTION_DAILY("consumption_daily", Kind.COUNTER, TimeUnit.DAYS.toMillis(30), 0L),
     /** GregTech machine time per status (scope = machine id, key = status), milliseconds summed per hour. */
     GT_STATE_HOURLY("gt_state_hourly", Kind.COUNTER, TimeUnit.DAYS.toMillis(7), 0L),
+    /** GregTech EU per machine (scope = machine id, key = consumed/generated), summed per hour. */
+    GT_EU_HOURLY("gt_eu_hourly", Kind.COUNTER, TimeUnit.DAYS.toMillis(7), 0L),
     /** Server tick rate per 30 s window (scope {@code server}, key = metric), one row per window. */
     SERVER_FINE("server_fine", Kind.GAUGE, TimeUnit.DAYS.toMillis(1), 0L),
     /** Server tick rate per hour, rewritten as the hour goes on. */

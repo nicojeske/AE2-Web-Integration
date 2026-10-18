@@ -30,6 +30,7 @@ import {
     MOCK_CRAFT_RETENTION_DAYS,
     mockBottlenecks,
     mockServerTickRate,
+    mockGTEnergy,
     mockGTMachineStates,
     parseBottleneckRange,
 } from "./bottleneckFixtures.ts";
@@ -239,6 +240,12 @@ function handleGT(
         const span = range("7d", MOCK_CRAFT_RETENTION_DAYS * 86_400_000);
         if (span === null) return respond(res, "BAD_PARAM", null);
         return ok(res, mockGTMachineStates(span, now));
+    }
+    if (section === "energy" && id === undefined) {
+        if (!historyEnabled(referer)) return respond(res, "HISTORY_DISABLED", null);
+        const span = range("24h", MOCK_CRAFT_RETENTION_DAYS * 86_400_000);
+        if (span === null) return respond(res, "BAD_PARAM", null);
+        return ok(res, mockGTEnergy(span, now));
     }
     if (section === "power" && id === undefined) return ok(res, { sources: mockGTPower(now) });
     if (section === "power" && id !== undefined && sub === "history") {

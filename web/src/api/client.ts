@@ -11,6 +11,7 @@ import type {
     GridSummary,
     GTMachineDetail,
     GTMachines,
+    GTEnergy,
     GTMachineStates,
     GTPower,
     GTPowerHistory,
@@ -236,6 +237,10 @@ export function getGTMachines(): Promise<GTMachines> {
 
 export function getGTMachine(id: string, range: GTRange, minutes?: number): Promise<GTMachineDetail> {
     return apiGet(`gt/machines/${seg(id)}${query(gtRange(range, minutes))}`);
+}
+
+export function getGTEnergy(range: GTRange, minutes?: number): Promise<GTEnergy> {
+    return apiGet(`gt/energy${query(gtRange(range, minutes))}`);
 }
 
 export function getGTMachineStates(range: GTRange, minutes?: number): Promise<GTMachineStates[]> {

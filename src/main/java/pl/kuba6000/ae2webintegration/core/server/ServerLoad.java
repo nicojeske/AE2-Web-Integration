@@ -87,9 +87,15 @@ public final class ServerLoad {
     private static long lastEndNanos;
     private static long tickStartNanos;
     private static volatile @Nullable Sample latest;
+    private static long tickCount;
 
     public static @Nullable Sample latest() {
         return latest;
+    }
+
+    /** Ticks ended since the server started; lets per-tick rates be turned into totals that honour lag. */
+    public static long tickCount() {
+        return tickCount;
     }
 
     public static void onTickStart(long nowNanos) {
@@ -97,6 +103,7 @@ public final class ServerLoad {
     }
 
     public static void onTickEnd(long nowNanos, long nowMillis) {
+        tickCount++;
         if (lastEndNanos == 0L) {
             // The first tick only starts the clock: there is no previous end to measure from.
             lastEndNanos = nowNanos;
@@ -233,5 +240,6 @@ public final class ServerLoad {
         lastEndNanos = 0L;
         tickStartNanos = 0L;
         latest = null;
+        tickCount = 0L;
     }
 }

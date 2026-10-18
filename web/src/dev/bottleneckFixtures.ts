@@ -7,6 +7,7 @@ import type {
     BottleneckOutput,
     BottleneckRange,
     Bottlenecks,
+    GTEnergy,
     GTMachineStates,
     GTMachineStatus,
     ServerTickRate,
@@ -391,5 +392,35 @@ export function mockServerTickRate(from: number, to: number, points: number): Se
         maxTickMillis,
         currentTps: tps[tps.length - 1] ?? -1,
         currentMspt: mspt[mspt.length - 1] ?? -1,
+    };
+}
+
+/** EU per loaded machine: what it would use running at its rate for its running share, plus two turbines. */
+export function mockGTEnergy(span: number, now: number): GTEnergy {
+    const ticks = span / 50;
+    const machines = mockGTMachines(now)
+        .machines.filter((m) => m.loaded && !m.name.startsWith("Lapotronic"))
+        .map((m, index) => {
+            const rate = m.euPerTick !== 0 ? Math.abs(m.euPerTick) : 30 * 4 ** Math.max(1, m.voltageTier);
+            const share = 0.2 + 0.7 * noise(m.id, 3);
+            const generator = index % 9 === 4;
+            const eu = Math.round(rate * ticks * share);
+            return {
+                id: m.id,
+                name: generator ? "Large Gas Turbine" : m.name,
+                type: generator ? "multimachine.largegasturbine" : m.type,
+                ownerName: m.ownerName ?? null,
+                voltageTier: m.voltageTier,
+                consumed: generator ? 0 : eu,
+                generated: generator ? eu * 6 : 0,
+            };
+        })
+        .sort((a, b) => b.consumed - a.consumed || b.generated - a.generated);
+    return {
+        from: now - span,
+        to: now,
+        totalConsumed: machines.reduce((sum, m) => sum + m.consumed, 0),
+        totalGenerated: machines.reduce((sum, m) => sum + m.generated, 0),
+        machines,
     };
 }

@@ -548,6 +548,26 @@ export interface Bottlenecks {
     missingIngredients: MissingIngredient[];
 }
 
+/** `GET /api/gt/energy`: EU per machine over a range, sampled from the scans. */
+export interface GTEnergy {
+    from: number;
+    to: number;
+    totalConsumed: number;
+    totalGenerated: number;
+    /** Most consumed first, then most generated. */
+    machines: GTEnergyMachine[];
+}
+
+export interface GTEnergyMachine {
+    id: string;
+    name: string;
+    type: string;
+    ownerName: string | null;
+    voltageTier: number;
+    consumed: number;
+    generated: number;
+}
+
 /** `GET /api/server/tick-rate`: per window, -1 = no sample (server offline). */
 export interface ServerTickRate {
     from: number;

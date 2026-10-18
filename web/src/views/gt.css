@@ -866,6 +866,51 @@ th.gt-table__num {
     min-width: 0;
 }
 
+/* Energy by machine */
+.energy {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+.energy__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    padding: 0 20px;
+}
+.energy__header .power__section-label {
+    margin: 0;
+}
+.energy__header .power__range {
+    margin-left: auto;
+}
+.energy-table {
+    --cols: minmax(0, 1fr) 60px 160px 50px 130px 110px;
+}
+.energy-table .dtable__head,
+.energy-row {
+    gap: 14px;
+    padding: 0 20px;
+}
+.energy-row {
+    min-height: 34px;
+}
+.energy-row__share {
+    height: 5px;
+    background: var(--border-subtle);
+}
+.energy-row__share > span {
+    display: block;
+    height: 100%;
+    background: var(--accent-soft-text);
+}
+.energy__note {
+    margin: 0 20px;
+    color: var(--text-dim);
+}
+
 @media (max-width: 1279.98px) {
     .mtable {
         --cols: 8px minmax(0, 1fr) 34px 160px 84px 110px;
@@ -963,4 +1008,20 @@ th.gt-table__num {
 .power-history__net {
     --chart-line: var(--green);
     --chart-area: transparent;
+}
+
+@media (max-width: 767.98px) {
+    .energy-table {
+        --cols: minmax(0, 1fr) 44px 90px;
+    }
+    .energy-table .dtable__head,
+    .energy-row > :nth-child(3),
+    .energy-row > :nth-child(6) {
+        display: none;
+    }
+    .energy-table .dtable__head,
+    .energy-row,
+    .energy__header {
+        padding: 0 12px;
+    }
 }

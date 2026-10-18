@@ -8,6 +8,7 @@ import org.apache.logging.log4j.Logger;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTScanResult;
 import pl.kuba6000.ae2webintegration.core.api.gt.IGTProvider;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.server.ServerLoad;
 
 /**
  * Drives the GregTech side from the server tick: one {@link IGTProvider#scan} every
@@ -88,6 +89,7 @@ public final class GTEngine {
             GTPowerHistoryStore.prune(nowMillis);
             GTProductionLog.prune(nowMillis);
             GTStateLog.prune(nowMillis);
+            GTEnergyLog.prune(nowMillis);
             GTMachineRegistry.flushIfDirty();
             GTProductionLog.flushIfDirty();
         }
@@ -116,6 +118,7 @@ public final class GTEngine {
         GTMachineRegistry.apply(result.machines, nowMillis);
         GTStateLog.record(result.machines, nowMillis);
         GTPowerHistoryStore.updateLatest(result.powerSources, nowMillis);
+        GTEnergyLog.record(result.machines, nowMillis, ServerLoad.tickCount());
         if (!powerSampleScheduled || nowNanos - nextPowerSampleNanos >= 0) {
             powerSampleScheduled = true;
             nextPowerSampleNanos = nowNanos
@@ -154,6 +157,7 @@ public final class GTEngine {
         nextSlowScanLogNanos = 0L;
         GTPassiveDetector.clear();
         GTStateLog.clear();
+        GTEnergyLog.clear();
     }
 
     /** Test hook: forget the provider and every stored GregTech datum in memory. */
