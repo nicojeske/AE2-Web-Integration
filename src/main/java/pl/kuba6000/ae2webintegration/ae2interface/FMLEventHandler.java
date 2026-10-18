@@ -20,7 +20,10 @@ public class FMLEventHandler {
 
     @SubscribeEvent
     public void tick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.START) return;
+        if (event.phase == TickEvent.Phase.START) {
+            CoreEngine.onServerTickStart();
+            return;
+        }
         CoreEngine.onServerTick();
     }
 

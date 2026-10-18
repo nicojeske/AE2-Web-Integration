@@ -24,7 +24,6 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEExtendedPowerMultiBlockBase;
 import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.api.recipe.check.CheckRecipeResult;
-import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.shutdown.ShutDownReason;
 import gregtech.api.util.shutdown.ShutDownReasonRegistry;
@@ -33,6 +32,7 @@ import gregtech.common.misc.spaceprojects.SpaceProjectManager;
 import kekztech.common.tileentities.MTELapotronicSuperCapacitor;
 import pl.kuba6000.ae2webintegration.ae2interface.AE2WebIntegration;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
+import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTScanResult;
 import pl.kuba6000.ae2webintegration.core.api.gt.IGTProvider;
@@ -135,14 +135,14 @@ public class GTProvider implements IGTProvider {
         in.reasonDisplay = reason == null ? null : GTStatusMapper.stripFormatting(reason.getDisplayString());
         in.maxProgressTicks = mte.mMaxProgresstime;
         CheckRecipeResult check = mte.getCheckRecipeResult();
-        if (check != null && !check.wasSuccessful()
-            && !CheckRecipeResultRegistry.NONE.getID()
-                .equals(check.getID())) {
+        String checkId = GTRecipeChecks.idOf(check);
+        if (checkId != null) {
             in.failedRecipeCheck = GTStatusMapper.stripFormatting(check.getDisplayString());
         }
         GTStatusMapper.Result status = GTStatusMapper.map(in);
         m.status = status.status;
         m.statusDetail = status.detail;
+        if (m.status == GTMachineStatus.IDLE) m.idleReason = checkId;
         m.maintenanceIssues = GTStatusMapper.maintenanceIssues(in);
 
         if (mte.mMaxProgresstime > 0) {
