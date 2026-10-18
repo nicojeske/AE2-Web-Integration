@@ -290,4 +290,49 @@ public class JSON_Bottlenecks {
     public List<Machine> machines = new ArrayList<>();
     /** Job outputs, most job time first. */
     public List<Output> outputs = new ArrayList<>();
+    /**
+     * Crafting plans in the range that came back with missing ingredients (web and auto-stock).
+     *
+     * @example 6
+     */
+    public int failedPlans;
+    /** Ingredients those plans were missing, most often missing first. */
+    public List<MissingIngredient> missingIngredients = new ArrayList<>();
+
+    /** An ingredient crafting plans were missing. */
+    public static class MissingIngredient {
+
+        /**
+         * Registry resource identifier.
+         *
+         * @example gregtech:gt.metaitem.01:11305
+         */
+        public String itemid;
+        /**
+         * Display name.
+         *
+         * @example Steel Ingot
+         */
+        public String name;
+        /**
+         * Failed plans it was missing from.
+         *
+         * @example 3
+         */
+        public int plans;
+        /**
+         * Units missing, summed over those plans.
+         *
+         * @example 2048
+         */
+        public long amount;
+        /**
+         * When it was last missing, in Unix epoch milliseconds.
+         *
+         * @example 1700600000000
+         */
+        public long lastSeen;
+        /** Display names of the outputs it blocked most often, up to three. */
+        public List<String> blockedOutputs = new ArrayList<>();
+    }
 }

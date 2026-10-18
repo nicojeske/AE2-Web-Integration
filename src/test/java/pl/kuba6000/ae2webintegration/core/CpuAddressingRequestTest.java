@@ -324,7 +324,7 @@ class CpuAddressingRequestTest extends GridTestScope {
                 throw new AssertionError("Unexpected plan operation");
             });
         return GridData.getOrCreate(TestGridFixtures.resolvedKey(grid))
-            .addJob(CompletableFuture.completedFuture(plan));
+            .addJob(CompletableFuture.completedFuture(plan), null);
     }
 
     private static JsonObject submit(TestGrid grid, String selection) {

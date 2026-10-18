@@ -283,6 +283,43 @@ export function mockBottlenecks(
         powerData: true,
         machines,
         outputs,
+        ...mockMissingIngredients(to, days * (previous ? 0.6 : 1)),
+    };
+}
+
+const MISSING = [
+    {
+        itemid: "gregtech:gt.metaitem.01:11305",
+        name: "Steel Ingot",
+        perDay: 2.5,
+        unit: 512,
+        blocks: ["Any LuV Circuit", "Aluminium Ingot"],
+    },
+    {
+        itemid: "gregtech:gt.metaitem.01:30595",
+        name: "Phthalic Acid",
+        perDay: 1.2,
+        unit: 4000,
+        blocks: ["Phthalic Acid"],
+    },
+    { itemid: "minecraft:redstone", name: "Redstone", perDay: 0.4, unit: 128, blocks: ["Fine Copper Wire"] },
+];
+
+function mockMissingIngredients(to: number, days: number): Pick<Bottlenecks, "failedPlans" | "missingIngredients"> {
+    const missingIngredients = MISSING.map((m, i) => {
+        const plans = Math.round(m.perDay * days);
+        return {
+            itemid: m.itemid,
+            name: m.name,
+            plans,
+            amount: plans * m.unit,
+            lastSeen: to - (i + 1) * 47 * 60_000,
+            blockedOutputs: m.blocks,
+        };
+    }).filter((m) => m.plans > 0);
+    return {
+        failedPlans: Math.round(missingIngredients.reduce((sum, m) => sum + m.plans, 0) * 0.7),
+        missingIngredients,
     };
 }
 

@@ -30,6 +30,7 @@ import org.jetbrains.annotations.Nullable;
 import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.grid.CraftingPlanRegistry;
 import pl.kuba6000.ae2webintegration.core.history.HistoryWriter.SeriesKey;
 
 /**
@@ -344,6 +345,96 @@ public final class HistoryDb {
     }
 
     /**
+     * Queues a crafting plan that came back with missing ingredients; {@code missingJson} is an array of
+     * {@code {itemid, name, amount}}.
+     */
+    public void putCraftShortfall(String gridKey, long at, CraftingPlanRegistry.Request request, String missingJson) {
+        writer.enqueue(new HistoryWriter.TaskOp("craft shortfall", (c, w) -> {
+            try (PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO ae2wi_craft_shortfall (grid_key, at, output_itemid, output_name, quantity, requested_by,"
+                    + " missing) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb)")) {
+                ps.setString(1, gridKey);
+                ps.setTimestamp(2, timestamp(at), utc());
+                ps.setString(3, request.itemid());
+                ps.setString(4, request.itemname());
+                ps.setLong(5, request.quantity());
+                ps.setString(6, request.requester());
+                ps.setString(7, missingJson);
+                ps.executeUpdate();
+            }
+        }, null));
+    }
+
+    /** A missing ingredient summed over the failed plans of a range. */
+    public static final class MissingIngredient {
+
+        public final String itemid;
+        public final String name;
+        /** Failed plans it was missing from. */
+        public final int plans;
+        /** Units missing, summed over those plans. */
+        public final long amount;
+        public final long lastSeen;
+        /** Display names of the outputs it blocked, most frequent first. */
+        public final List<String> blockedOutputs;
+
+        MissingIngredient(ResultSet rs) throws SQLException {
+            itemid = rs.getString("itemid");
+            name = rs.getString("name");
+            plans = rs.getInt("plans");
+            amount = rs.getLong("amount");
+            lastSeen = rs.getTimestamp("last_seen", utc())
+                .getTime();
+            String outputs = rs.getString("outputs");
+            blockedOutputs = outputs == null ? new ArrayList<>() : Arrays.asList(outputs.split("\n"));
+        }
+    }
+
+    /** Failed plans and their missing ingredients over {@code [from, to)}, most often missing first. */
+    @Desugar
+    public record Shortfalls(int failedPlans, List<MissingIngredient> ingredients) {}
+
+    /** {@code null} when the database is unreachable. */
+    public @Nullable Shortfalls readCraftShortfalls(String gridKey, long from, long to, int limit) {
+        return read(c -> {
+            int failed;
+            try (PreparedStatement ps = c.prepareStatement(
+                "SELECT count(*) FROM ae2wi_craft_shortfall WHERE grid_key = ? AND at >= ? AND at < ?")) {
+                ps.setQueryTimeout(READ_TIMEOUT_SECONDS);
+                ps.setString(1, gridKey);
+                ps.setTimestamp(2, timestamp(from), utc());
+                ps.setTimestamp(3, timestamp(to), utc());
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    failed = rs.getInt(1);
+                }
+            }
+            List<MissingIngredient> ingredients = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement(
+                "SELECT m.itemid, max(m.name) AS name, count(*) AS plans, sum(m.amount) AS amount,"
+                    + " max(s.at) AS last_seen, (SELECT string_agg(o.output_name, E'\\n' ORDER BY o.n DESC)"
+                    + " FROM (SELECT s2.output_name, count(*) AS n FROM ae2wi_craft_shortfall s2,"
+                    + " jsonb_array_elements(s2.missing) m2 WHERE s2.grid_key = ? AND s2.at >= ? AND s2.at < ?"
+                    + " AND m2->>'itemid' = m.itemid GROUP BY s2.output_name ORDER BY n DESC LIMIT 3) o) AS outputs"
+                    + " FROM ae2wi_craft_shortfall s, jsonb_to_recordset(s.missing) AS m(itemid TEXT, name TEXT,"
+                    + " amount BIGINT) WHERE s.grid_key = ? AND s.at >= ? AND s.at < ?"
+                    + " GROUP BY m.itemid ORDER BY plans DESC, amount DESC LIMIT ?")) {
+                ps.setQueryTimeout(READ_TIMEOUT_SECONDS);
+                for (int i = 0; i < 2; i++) {
+                    ps.setString(1 + i * 3, gridKey);
+                    ps.setTimestamp(2 + i * 3, timestamp(from), utc());
+                    ps.setTimestamp(3 + i * 3, timestamp(to), utc());
+                }
+                ps.setInt(7, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) ingredients.add(new MissingIngredient(rs));
+                }
+            }
+            return new Shortfalls(failed, ingredients);
+        }, null);
+    }
+
+    /**
      * A grid's finished jobs, newest first: those done before {@code beforeMillis} ({@code Long.MAX_VALUE} for
      * no bound), optionally only those producing {@code itemid}. Empty when the database is unreachable.
      */
@@ -479,6 +570,10 @@ public final class HistoryDb {
         nextCraftJobPruneMillis = nowMillis + PRUNE_INTERVAL_MILLIS;
         writer.enqueue(new HistoryWriter.TaskOp("prune craft jobs", (c, w) -> {
             try (PreparedStatement ps = c.prepareStatement("DELETE FROM ae2wi_craft_job WHERE done < ?")) {
+                ps.setTimestamp(1, timestamp(beforeMillis), utc());
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = c.prepareStatement("DELETE FROM ae2wi_craft_shortfall WHERE at < ?")) {
                 ps.setTimestamp(1, timestamp(beforeMillis), utc());
                 ps.executeUpdate();
             }

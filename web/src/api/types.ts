@@ -542,6 +542,23 @@ export interface Bottlenecks {
     powerData: boolean;
     machines: BottleneckMachine[];
     outputs: BottleneckOutput[];
+    /** Crafting plans in the range that came back with missing ingredients (web and auto-stock). */
+    failedPlans: number;
+    /** What those plans were missing, most often missing first. */
+    missingIngredients: MissingIngredient[];
+}
+
+/** An ingredient failed crafting plans were missing. */
+export interface MissingIngredient {
+    itemid: string;
+    name: string;
+    /** Failed plans it was missing from. */
+    plans: number;
+    /** Units missing, summed over those plans. */
+    amount: number;
+    lastSeen: number;
+    /** Outputs it blocked most often, up to three. */
+    blockedOutputs: string[];
 }
 
 /** One GregTech machine's observed time per status (lower-case `GTMachineStatus`), from `/api/gt/machine-states`. */

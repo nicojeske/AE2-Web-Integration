@@ -141,6 +141,22 @@
     color: var(--amber);
 }
 
+/* Missing ingredients */
+.bn-miss-table {
+    --cols: 24px minmax(0, 1fr) 110px 110px 150px minmax(0, 1fr);
+}
+.bn-miss-table .dtable__head,
+.bn-miss-row {
+    padding: 0 20px;
+}
+.bn-miss-row {
+    min-height: 36px;
+}
+.bn__empty {
+    padding: 0 20px;
+    color: var(--text-dim);
+}
+
 /* GregTech machine states */
 .bn-gt-table {
     --cols: minmax(0, 1fr) 260px 90px 110px 240px;
@@ -196,6 +212,13 @@
     .bn-out-row > :nth-child(5) {
         display: none;
     }
+    .bn-miss-table {
+        --cols: 24px minmax(0, 1fr) 90px 100px minmax(0, 1fr);
+    }
+    .bn-miss-table .dtable__head > :nth-child(5),
+    .bn-miss-row > :nth-child(5) {
+        display: none;
+    }
     .bn-gt-table {
         --cols: minmax(0, 1fr) 160px 80px 180px;
     }
@@ -221,6 +244,8 @@
     .bn-row,
     .bn-out-table .dtable__head,
     .bn-out-row,
+    .bn-miss-table .dtable__head,
+    .bn-miss-row,
     .bn-gt-table .dtable__head,
     .bn-gt-row {
         padding: 0 12px;
@@ -236,6 +261,15 @@
     .bn-out-row > :nth-child(5),
     .bn-out-row > :nth-child(6),
     .bn-out-row > :nth-child(7) {
+        display: none;
+    }
+    .bn-miss-table {
+        --cols: 22px minmax(0, 1fr) 60px;
+    }
+    .bn-miss-table .dtable__head,
+    .bn-miss-row > :nth-child(4),
+    .bn-miss-row > :nth-child(5),
+    .bn-miss-row > :nth-child(6) {
         display: none;
     }
     .bn-gt-table {

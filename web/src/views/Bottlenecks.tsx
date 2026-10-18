@@ -144,6 +144,7 @@ function BottlenecksPage({
                                 onOpenItemHistory={onOpenItemHistory}
                             />
                             <OutputsTable data={data} before={before} />
+                            <MissingTable data={data} before={before} />
                             <p className="bn__footer">
                                 <b>Held</b> is job time spent waiting on that machine alone, summed over jobs - the best
                                 single measure of what delays crafts. <b>Queued</b> is time two or more jobs had work
@@ -488,6 +489,62 @@ function OutputsTable({ data, before }: { data: BottlenecksData; before: Bottlen
             {data.outputs.length > MAX_ROWS && (
                 <Button variant="text" onClick={() => setShowAll((s) => !s)}>
                     {showAll ? "Show fewer" : `Show all ${data.outputs.length} outputs`}
+                </Button>
+            )}
+        </section>
+    );
+}
+
+function MissingTable({ data, before }: { data: BottlenecksData; before: BottlenecksData | null }) {
+    const [showAll, setShowAll] = useState(false);
+    const previous = useMemo(() => new Map(before?.missingIngredients.map((m) => [m.itemid, m]) ?? []), [before]);
+    const shown = showAll ? data.missingIngredients : data.missingIngredients.slice(0, MAX_ROWS);
+    return (
+        <section className="bn__section">
+            <h3 className="section-label bn__title">
+                Missing ingredients
+                <span className="dim">
+                    {" "}
+                    · {formatNumber(data.failedPlans)} failed plan{data.failedPlans === 1 ? "" : "s"}
+                </span>
+            </h3>
+            {data.missingIngredients.length === 0 ? (
+                <p className="bn__empty">No crafting plan came back with missing ingredients in this range.</p>
+            ) : (
+                <div className="dtable bn-miss-table">
+                    <div className="dtable__head">
+                        <span />
+                        <span>Ingredient</span>
+                        <span className="right">Plans ↓</span>
+                        <span className="right">Missing</span>
+                        <span>Last missing</span>
+                        <span>Blocked</span>
+                    </div>
+                    {shown.map((m) => (
+                        <div key={m.itemid} className="dtable__row bn-miss-row">
+                            <ItemIcon itemid={m.itemid} name={m.name} size={22} />
+                            <span className="cell-text" title={m.name}>
+                                {m.name}
+                            </span>
+                            <span className="cell-num">
+                                {formatNumber(m.plans)}
+                                <Delta
+                                    current={m.plans}
+                                    previous={before ? (previous.get(m.itemid)?.plans ?? 0) : undefined}
+                                />
+                            </span>
+                            <span className="cell-num">{formatNumber(m.amount)}</span>
+                            <span className="cell-num dim">{formatTimestamp(m.lastSeen)}</span>
+                            <span className="cell-text dim" title={m.blockedOutputs.join(", ")}>
+                                {m.blockedOutputs.join(", ")}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+            {data.missingIngredients.length > MAX_ROWS && (
+                <Button variant="text" onClick={() => setShowAll((s) => !s)}>
+                    {showAll ? "Show fewer" : `Show all ${data.missingIngredients.length} ingredients`}
                 </Button>
             )}
         </section>

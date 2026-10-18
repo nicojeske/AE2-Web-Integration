@@ -36,7 +36,7 @@ class CraftingPlanRequestLifecycleTest extends GridTestScope {
         TestCraftingGrid crafting = new TestCraftingGrid(null);
         TestGrid grid = new TestGrid(GRID_KEY, crafting);
         GridData gridData = GridData.getOrCreate(TestGridFixtures.resolvedKey(grid));
-        int id = gridData.addJob(CompletableFuture.completedFuture(new TestCraftingJob()));
+        int id = gridData.addJob(CompletableFuture.completedFuture(new TestCraftingJob()), null);
 
         assertStatus("OK", submit(grid, id));
         assertStatus("INVALID_ID", submit(grid, id));
@@ -47,7 +47,7 @@ class CraftingPlanRequestLifecycleTest extends GridTestScope {
         TestCraftingGrid crafting = new TestCraftingGrid("Submission failed");
         TestGrid grid = new TestGrid(GRID_KEY, crafting);
         int id = GridData.getOrCreate(TestGridFixtures.resolvedKey(grid))
-            .addJob(CompletableFuture.completedFuture(new TestCraftingJob()));
+            .addJob(CompletableFuture.completedFuture(new TestCraftingJob()), null);
 
         assertStatus("FAIL", submit(grid, id));
         assertStatus("FAIL", submit(grid, id));
@@ -58,7 +58,7 @@ class CraftingPlanRequestLifecycleTest extends GridTestScope {
         TestGrid grid = new TestGrid(GRID_KEY, new TestCraftingGrid(null));
         CompletableFuture<IAECraftingJob> pending = new CompletableFuture<>();
         int id = GridData.getOrCreate(TestGridFixtures.resolvedKey(grid))
-            .addJob(pending);
+            .addJob(pending, null);
         DeleteCraftingPlan request = new DeleteCraftingPlan();
         assertTrue(
             request
@@ -85,7 +85,7 @@ class CraftingPlanRequestLifecycleTest extends GridTestScope {
     void pollingPendingCalculationSucceedsButSubmissionConflicts() {
         TestGrid grid = new TestGrid(GRID_KEY, new TestCraftingGrid(null));
         int id = GridData.getOrCreate(TestGridFixtures.resolvedKey(grid))
-            .addJob(new CompletableFuture<>());
+            .addJob(new CompletableFuture<>(), null);
         GetCraftingPlan poll = new GetCraftingPlan();
         assertTrue(
             poll.init(TestGridFixtures.context(-1, "grid=" + CoreEngine.GRID_IDENTITIES.getKey(grid) + "&id=" + id)));

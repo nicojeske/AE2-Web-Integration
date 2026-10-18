@@ -214,10 +214,10 @@ class AE2JobTrackerLifecycleTest extends GridTestScope {
         TestGridFixtures.setTracked(CoreEngine.GRID_IDENTITIES, losingKey, false);
         CompletableFuture<IAECraftingJob> losingPlan = new CompletableFuture<>();
         int losingId = GridData.getOrCreate(losingKey)
-            .addJob(losingPlan);
+            .addJob(losingPlan, null);
         CompletableFuture<IAECraftingJob> winningPlan = new CompletableFuture<>();
         int winningId = GridData.getOrCreate(gridKey)
-            .addJob(winningPlan);
+            .addJob(winningPlan, null);
         TestGridFixtures.TestGrid merged = new TestGridFixtures.TestGrid(
             gridKey,
             false,
@@ -267,7 +267,7 @@ class AE2JobTrackerLifecycleTest extends GridTestScope {
         AE2JobTracker.completeCrafting(grid, cpu);
         CompletableFuture<IAECraftingJob> plan = new CompletableFuture<>();
         int planId = GridData.getOrCreate(gridKey)
-            .addJob(plan);
+            .addJob(plan, null);
 
         CoreEngine.GRID_IDENTITIES.controllerRemoved(grid.position());
         TestGridFixtures.TestGrid replacement = TestGridFixtures.grid(900_101L, 42);

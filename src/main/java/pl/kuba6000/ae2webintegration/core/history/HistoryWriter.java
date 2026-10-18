@@ -651,6 +651,12 @@ final class HistoryWriter implements Runnable {
                 "ALTER TABLE ae2wi_craft_job ADD COLUMN IF NOT EXISTS cpu_key TEXT,"
                     + " ADD COLUMN IF NOT EXISTS cpu_name TEXT, ADD COLUMN IF NOT EXISTS cpu_bytes BIGINT,"
                     + " ADD COLUMN IF NOT EXISTS cpu_coprocessors BIGINT");
+            st.execute(
+                "CREATE TABLE IF NOT EXISTS ae2wi_craft_shortfall (id BIGSERIAL PRIMARY KEY, grid_key TEXT NOT NULL,"
+                    + " at TIMESTAMPTZ NOT NULL, output_itemid TEXT NOT NULL, output_name TEXT NOT NULL,"
+                    + " quantity BIGINT NOT NULL, requested_by TEXT, missing JSONB NOT NULL)");
+            st.execute(
+                "CREATE INDEX IF NOT EXISTS ae2wi_craft_shortfall_grid ON ae2wi_craft_shortfall (grid_key, at DESC)");
             st.execute("CREATE INDEX IF NOT EXISTS ae2wi_craft_job_grid ON ae2wi_craft_job (grid_key, done DESC)");
             st.execute(
                 "CREATE INDEX IF NOT EXISTS ae2wi_craft_job_output ON ae2wi_craft_job"

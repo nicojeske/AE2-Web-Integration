@@ -25,7 +25,7 @@ class CoreEngineMaintenanceTest {
         CoreEngine.onServerStopped();
         GridData gridData = GridData.getOrCreate(GRID_KEY);
         CompletableFuture<IAECraftingJob> plan = CompletableFuture.completedFuture(null);
-        int id = gridData.addJob(plan);
+        int id = gridData.addJob(plan, null);
         assertSame(plan, gridData.getJob(id));
 
         long afterRetention = System.nanoTime() + TimeUnit.MINUTES.toNanos(16);
@@ -41,7 +41,7 @@ class CoreEngineMaintenanceTest {
         CoreEngine.onServerStopped();
         GridData gridData = GridData.getOrCreate(TestGridFixtures.key(900_302L));
         CompletableFuture<IAECraftingJob> pending = new CompletableFuture<>();
-        int id = gridData.addJob(pending);
+        int id = gridData.addJob(pending, null);
 
         long muchLater = System.nanoTime() + TimeUnit.DAYS.toNanos(1);
         for (int i = 0; i < 100; i++) {
@@ -59,7 +59,7 @@ class CoreEngineMaintenanceTest {
         int planCount = CoreEngine.PLAN_SWEEP_GRIDS_PER_TICK + 1;
         for (int i = 0; i < planCount; i++) {
             GridData gridData = GridData.getOrCreate(TestGridFixtures.key(900_401L + i));
-            int id = gridData.addJob(CompletableFuture.completedFuture(null));
+            int id = gridData.addJob(CompletableFuture.completedFuture(null), null);
             gridData.getJob(id);
             grids.add(gridData);
             planIds.add(id);

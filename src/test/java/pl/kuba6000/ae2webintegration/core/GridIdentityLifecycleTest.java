@@ -213,7 +213,7 @@ class GridIdentityLifecycleTest extends GridTestScope {
         assertNotNull(key);
         CompletableFuture<IAECraftingJob> plan = new CompletableFuture<>();
         int id = GridData.getOrCreate(key)
-            .addJob(plan);
+            .addJob(plan, null);
 
         GridAccess.list(TestGridFixtures.ae());
         GridAccess.list(TestGridFixtures.ae(grid));

@@ -168,7 +168,7 @@ class CoreEngineTickPumpTest {
         CoreEngine.onServerStopped();
         for (int i = 0; i <= CoreEngine.PLAN_SWEEP_GRIDS_PER_TICK; i++) {
             GridData.getOrCreate(TestGridFixtures.key(910_000L + i))
-                .addJob(new CompletableFuture<>());
+                .addJob(new CompletableFuture<>(), null);
         }
         queue("request", null);
 

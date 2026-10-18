@@ -26,6 +26,7 @@ import com.github.bsideup.jabel.Desugar;
 import pl.kuba6000.ae2webintegration.core.AE2Controller;
 import pl.kuba6000.ae2webintegration.core.CoreEngine;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.grid.CraftingPlanRegistry;
 import pl.kuba6000.ae2webintegration.core.grid.GridFilter;
 import pl.kuba6000.ae2webintegration.core.grid.GridPersistentData;
 import pl.kuba6000.ae2webintegration.core.grid.StockRule;
@@ -43,6 +44,7 @@ import pl.kuba6000.ae2webintegration.core.notification.NotificationManager;
 import pl.kuba6000.ae2webintegration.core.notification.message.IMessage;
 import pl.kuba6000.ae2webintegration.core.notification.message.StatusMessage;
 import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
+import pl.kuba6000.ae2webintegration.core.tracking.CraftShortfallLog;
 
 /**
  * Checks every grid's {@link StockRulesData} on the server thread: posts one low-stock notification per dip
@@ -59,6 +61,7 @@ public final class StockKeeper {
 
     /** Shown as the requester of an auto-craft, in Active Jobs and Crafting History. */
     public static final String REQUESTER = "Auto-stock";
+    private static final String MISSING_INGREDIENTS = "Missing ingredients";
     /** No new attempt at an item for this long after one failed (missing inputs, no free CPU, ...). */
     static final long BACKOFF_MILLIS = TimeUnit.MINUTES.toMillis(5);
     /** A plan still computing after this long is abandoned and counts as a failure. */
@@ -99,11 +102,13 @@ public final class StockKeeper {
     private static final class PendingPlan {
 
         final String itemid;
+        final CraftingPlanRegistry.Request request;
         final Future<IAECraftingJob> plan;
         final long startedAt;
 
-        PendingPlan(String itemid, Future<IAECraftingJob> plan, long startedAt) {
-            this.itemid = itemid;
+        PendingPlan(CraftingPlanRegistry.Request request, Future<IAECraftingJob> plan, long startedAt) {
+            this.itemid = request.itemid();
+            this.request = request;
             this.plan = plan;
             this.startedAt = startedAt;
         }
@@ -238,7 +243,7 @@ public final class StockKeeper {
             }
         }
 
-        resolvePending(state, rules, grid, craftingGrid, beingCrafted, nowMillis);
+        resolvePending(gridKey, state, rules, grid, craftingGrid, beingCrafted, nowMillis);
         if (state.pending != null) beingCrafted.add(state.pending.itemid);
 
         // Forget runtime state of deleted rules.
@@ -279,7 +284,7 @@ public final class StockKeeper {
                     state.lastAttempt.put(itemid, nowMillis);
                     try {
                         state.pending = new PendingPlan(
-                            itemid,
+                            new CraftingPlanRegistry.Request(itemid, key.web$getDisplayName(), quantity, REQUESTER),
                             craftingGrid.web$beginCraftingJob(grid, key, quantity),
                             nowMillis);
                         beingCrafted.add(itemid);
@@ -318,7 +323,7 @@ public final class StockKeeper {
      * Submits a finished plan, or records why it failed; leaves one still computing alone. A submitted item
      * joins {@code beingCrafted}: the CPU list was read before the submit.
      */
-    private static void resolvePending(GridState state, Map<String, StockRule> rules, IAEGrid grid,
+    private static void resolvePending(StableKey gridKey, GridState state, Map<String, StockRule> rules, IAEGrid grid,
         @Nullable IAECraftingGrid craftingGrid, Set<String> beingCrafted, long nowMillis) {
         PendingPlan pending = state.pending;
         if (pending == null) return;
@@ -343,7 +348,11 @@ public final class StockKeeper {
             return;
         }
         if (job == null || job.web$isSimulation()) {
-            fail(state, pending.itemid, "Missing ingredients", nowMillis);
+            // Once per failure streak: the retries every backoff would otherwise swamp the ranking.
+            if (job != null && !MISSING_INGREDIENTS.equals(state.lastError.get(pending.itemid))) {
+                CraftShortfallLog.record(gridKey, pending.request, job.web$generateSummary(grid), nowMillis);
+            }
+            fail(state, pending.itemid, MISSING_INGREDIENTS, nowMillis);
             return;
         }
         String[] error = new String[1];

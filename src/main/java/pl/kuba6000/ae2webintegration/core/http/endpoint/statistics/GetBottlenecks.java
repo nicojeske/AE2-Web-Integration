@@ -1,6 +1,7 @@
 package pl.kuba6000.ae2webintegration.core.http.endpoint.statistics;
 
 import java.net.HttpURLConnection;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -27,7 +28,8 @@ import pl.kuba6000.ae2webintegration.core.http.contract.QueryParam;
 /**
  * Ranks the machines crafting jobs waited on over a range, from the recorded crafting history: how long work
  * queued behind each one, how long each was a job's only open step, and which job outputs starved for
- * ingredients. Cancel-closed and outlier intervals are excluded or clipped, see {@code BottleneckAnalysis}.
+ * ingredients, plus the ingredients failed crafting plans were missing. Cancel-closed and outlier intervals are
+ * excluded or clipped, see {@code BottleneckAnalysis}.
  *
  * @pathParam gridKey Persistent grid identifier.
  * @response 200 {@link Response} Successful response.
@@ -48,6 +50,7 @@ public final class GetBottlenecks extends IAsyncRequest {
 
     private static final long CACHE_MILLIS = TimeUnit.MINUTES.toMillis(1);
     private static final int CACHE_SIZE = 32;
+    private static final int MAX_INGREDIENTS = 50;
 
     @Desugar
     private record Cached(long createdMillis, JSON_Bottlenecks data) {}
@@ -116,6 +119,22 @@ public final class GetBottlenecks extends IAsyncRequest {
             JSON_Bottlenecks data = analysis
                 .result(powerData ? GTStateLog.outages(from, to) : BottleneckAnalysis.OutageCheck.NONE);
             data.powerData = powerData;
+            HistoryDb.Shortfalls shortfalls = db.readCraftShortfalls(gridKey.toString(), from, to, MAX_INGREDIENTS);
+            if (shortfalls == null) {
+                deny(ApiStatus.INTERNAL_ERROR);
+                return;
+            }
+            data.failedPlans = shortfalls.failedPlans();
+            for (HistoryDb.MissingIngredient row : shortfalls.ingredients()) {
+                JSON_Bottlenecks.MissingIngredient ingredient = new JSON_Bottlenecks.MissingIngredient();
+                ingredient.itemid = row.itemid;
+                ingredient.name = row.name;
+                ingredient.plans = row.plans;
+                ingredient.amount = row.amount;
+                ingredient.lastSeen = row.lastSeen;
+                ingredient.blockedOutputs = new ArrayList<>(row.blockedOutputs);
+                data.missingIngredients.add(ingredient);
+            }
             if (cache.size() >= CACHE_SIZE) cache.clear();
             cached = new Cached(now, data);
             cache.put(cacheKey, cached);

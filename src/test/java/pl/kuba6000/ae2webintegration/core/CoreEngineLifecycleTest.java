@@ -63,7 +63,7 @@ class CoreEngineLifecycleTest extends GridTestScope {
         assertNotNull(gridKey);
         GridData gridData = GridData.getOrCreate(gridKey);
         CompletableFuture<IAECraftingJob> pendingPlan = new CompletableFuture<>();
-        int planId = gridData.addJob(pendingPlan);
+        int planId = gridData.addJob(pendingPlan, null);
         ICraftingCPUCluster cpu = new TestCpu();
         AE2JobTracker.addJob(cpu, grid, false);
         gridData.trackingInfo.trackingInfos.put(1, AE2JobTracker.findActiveJob(cpu));
@@ -122,7 +122,7 @@ class CoreEngineLifecycleTest extends GridTestScope {
             assertTrue(gridData.trackingInfo.trackingInfos.isEmpty());
             assertNull(gridData.getJob(planId));
             assertTrue(pendingPlan.isCancelled());
-            assertEquals(1, gridData.addJob(new CompletableFuture<>()), "the next world gets fresh plan ids");
+            assertEquals(1, gridData.addJob(new CompletableFuture<>(), null), "the next world gets fresh plan ids");
         }
     }
 

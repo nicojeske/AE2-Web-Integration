@@ -53,11 +53,24 @@ class CraftingPlanRegistryTest {
     }
 
     @Test
+    void aShortfallIsClaimedOncePerPlan() {
+        CraftingPlanRegistry registry = new CraftingPlanRegistry(System::nanoTime);
+        CraftingPlanRegistry.Request request = new CraftingPlanRegistry.Request("gear", "Gear", 16, "Steve");
+        int id = registry.add(new CompletableFuture<>(), request);
+        int anonymous = registry.add(new CompletableFuture<>(), null);
+
+        assertSame(request, registry.claimShortfall(id));
+        assertNull(registry.claimShortfall(id));
+        assertNull(registry.claimShortfall(anonymous));
+        assertNull(registry.claimShortfall(999));
+    }
+
+    @Test
     void aPendingPlanIsNeverEvictedMerelyBecauseTimePassed() {
         AtomicLong clock = new AtomicLong();
         CraftingPlanRegistry registry = new CraftingPlanRegistry(clock::get);
         CompletableFuture<IAECraftingJob> plan = new CompletableFuture<>();
-        int id = registry.add(plan);
+        int id = registry.add(plan, null);
 
         clock.set(TimeUnit.DAYS.toNanos(1));
         registry.evictExpiredCompleted();
@@ -71,7 +84,7 @@ class CraftingPlanRegistryTest {
         AtomicLong clock = new AtomicLong();
         CraftingPlanRegistry registry = new CraftingPlanRegistry(clock::get);
         CompletedRecordingFuture plan = new CompletedRecordingFuture();
-        int id = registry.add(plan);
+        int id = registry.add(plan, null);
 
         clock.set(TimeUnit.DAYS.toNanos(1));
         registry.evictExpiredCompleted();
@@ -88,7 +101,7 @@ class CraftingPlanRegistryTest {
         AtomicLong clock = new AtomicLong();
         CraftingPlanRegistry registry = new CraftingPlanRegistry(clock::get);
         CompletableFuture<IAECraftingJob> plan = CompletableFuture.completedFuture(null);
-        int id = registry.add(plan);
+        int id = registry.add(plan, null);
         registry.evictExpiredCompleted();
 
         clock.set(TimeUnit.MINUTES.toNanos(14));
@@ -107,7 +120,7 @@ class CraftingPlanRegistryTest {
     void explicitCancellationCancelsAndRemovesThePlan() {
         CraftingPlanRegistry registry = new CraftingPlanRegistry(() -> 0L);
         CompletableFuture<IAECraftingJob> plan = new CompletableFuture<>();
-        int id = registry.add(plan);
+        int id = registry.add(plan, null);
 
         assertTrue(registry.cancel(id));
 
@@ -120,8 +133,8 @@ class CraftingPlanRegistryTest {
         CraftingPlanRegistry registry = new CraftingPlanRegistry(() -> 0L);
         CompletableFuture<IAECraftingJob> pending = new CompletableFuture<>();
         CompletableFuture<IAECraftingJob> completed = CompletableFuture.completedFuture(null);
-        int pendingId = registry.add(pending);
-        int completedId = registry.add(completed);
+        int pendingId = registry.add(pending, null);
+        int completedId = registry.add(completed, null);
 
         registry.clearForServerStop();
 
@@ -129,17 +142,17 @@ class CraftingPlanRegistryTest {
         assertFalse(completed.isCancelled());
         assertNull(registry.find(pendingId));
         assertNull(registry.find(completedId));
-        assertEquals(1, registry.add(new CompletableFuture<>()), "a new world gets a fresh runtime id space");
+        assertEquals(1, registry.add(new CompletableFuture<>(), null), "a new world gets a fresh runtime id space");
     }
 
     @Test
     void onlyTheThreeNewestPlansRemainAddressable() {
         CraftingPlanRegistry registry = new CraftingPlanRegistry(() -> 0L);
         CompletableFuture<IAECraftingJob> oldest = new CompletableFuture<>();
-        int first = registry.add(oldest);
-        int second = registry.add(new CompletableFuture<>());
-        int third = registry.add(new CompletableFuture<>());
-        int fourth = registry.add(new CompletableFuture<>());
+        int first = registry.add(oldest, null);
+        int second = registry.add(new CompletableFuture<>(), null);
+        int third = registry.add(new CompletableFuture<>(), null);
+        int fourth = registry.add(new CompletableFuture<>(), null);
 
         assertNull(registry.find(first));
         assertFalse(oldest.isCancelled(), "capacity eviction preserves the existing non-cancelling behavior");

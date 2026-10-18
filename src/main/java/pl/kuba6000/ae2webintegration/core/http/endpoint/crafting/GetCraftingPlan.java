@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.ae2request.sync.ISyncedRequest;
+import pl.kuba6000.ae2webintegration.core.grid.CraftingPlanRegistry;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
 import pl.kuba6000.ae2webintegration.core.http.ErrorResponse;
 import pl.kuba6000.ae2webintegration.core.http.contract.Endpoint;
@@ -25,6 +26,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.IAEMeInventoryItem;
 import pl.kuba6000.ae2webintegration.core.interfaces.ICraftingPlanSummary;
 import pl.kuba6000.ae2webintegration.core.interfaces.ICraftingPlanSummaryEntry;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
+import pl.kuba6000.ae2webintegration.core.tracking.CraftShortfallLog;
 
 /**
  * Reads the calculation state and contents of a crafting plan.
@@ -167,6 +169,12 @@ public final class GetCraftingPlan extends ISyncedRequest {
                 jobData.isSimulating = craftingJob.web$isSimulation();
                 jobData.bytesTotal = craftingJob.web$getByteTotal();
                 ICraftingPlanSummary summary = craftingJob.web$generateSummary(grid);
+                if (jobData.isSimulating) {
+                    CraftingPlanRegistry.Request request = gridData.claimShortfall(jobID);
+                    if (request != null) {
+                        CraftShortfallLog.record(gridKey, request, summary, System.currentTimeMillis());
+                    }
+                }
                 jobData.plan = new ArrayList<>();
                 for (ICraftingPlanSummaryEntry entry : summary.web$getEntries()) {
                     IAEKey key = entry.web$getWhat();

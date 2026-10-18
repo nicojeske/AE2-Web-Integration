@@ -4,9 +4,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.interfaces.IAECraftingJob;
 
@@ -17,13 +23,21 @@ public final class CraftingPlanRegistry {
     private static final long RETENTION_NANOS = TimeUnit.MINUTES.toNanos(15);
     private static final long NOT_COMPLETED_OBSERVED = Long.MIN_VALUE;
 
+    /** What a plan was asked to craft, and by whom. */
+    @Desugar
+    public record Request(@NotNull String itemid, @NotNull String itemname, long quantity,
+        @Nullable String requester) {}
+
     private static final class Entry {
 
         private final Future<IAECraftingJob> plan;
+        private final @Nullable Request request;
         private final AtomicLong lastCompletedAccessNanos = new AtomicLong(NOT_COMPLETED_OBSERVED);
+        private final AtomicBoolean shortfallClaimed = new AtomicBoolean();
 
-        private Entry(Future<IAECraftingJob> plan) {
+        private Entry(Future<IAECraftingJob> plan, @Nullable Request request) {
             this.plan = plan;
+            this.request = request;
         }
 
     }
@@ -36,9 +50,9 @@ public final class CraftingPlanRegistry {
         this.nanoClock = nanoClock;
     }
 
-    public int add(Future<IAECraftingJob> plan) {
+    public int add(Future<IAECraftingJob> plan, @Nullable Request request) {
         int id = nextId.getAndIncrement();
-        plans.put(id, new Entry(plan));
+        plans.put(id, new Entry(plan, request));
         plans.remove(id - MAX_PLANS);
         return id;
     }
@@ -52,6 +66,16 @@ public final class CraftingPlanRegistry {
             entry.lastCompletedAccessNanos.set(nanoClock.getAsLong());
         }
         return entry.plan;
+    }
+
+    /**
+     * The plan's request the first time this is called for it, so a plan that came back with missing ingredients
+     * is recorded once however often it is polled; {@code null} afterwards or when unknown.
+     */
+    public @Nullable Request claimShortfall(int id) {
+        Entry entry = plans.get(id);
+        if (entry == null || entry.request == null || !entry.shortfallClaimed.compareAndSet(false, true)) return null;
+        return entry.request;
     }
 
     public boolean cancel(int id) {

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import pl.kuba6000.ae2webintegration.core.grid.CraftingPlanRegistry;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport.Flavor;
 
 /** Finished crafting jobs in the history database: write, page, filter, read back the detail, prune. */
@@ -154,5 +156,42 @@ class CraftJobHistoryTest {
             db.readCraftJobs("g", null, Long.MAX_VALUE, 10)
                 .isEmpty());
         assertNull(db.readCraftJobDetail("g", 1));
+    }
+
+    @Test
+    void shortfallsRankIngredientsByFailedPlansWithinTheRange() {
+        HistoryDb db = HistoryDbTestSupport.start(Flavor.POSTGRES);
+        CraftingPlanRegistry.Request gears = new CraftingPlanRegistry.Request("gear", "Gear", 16, "Steve");
+        CraftingPlanRegistry.Request plates = new CraftingPlanRegistry.Request("plate", "Plate", 8, "Auto-stock");
+        String steelAndTin = "[{\"itemid\":\"steel\",\"name\":\"Steel\",\"amount\":10},"
+            + "{\"itemid\":\"tin\",\"name\":\"Tin\",\"amount\":3}]";
+        db.putCraftShortfall("g", NOW - 3000, gears, steelAndTin);
+        db.putCraftShortfall("g", NOW - 2000, gears, steelAndTin);
+        db.putCraftShortfall("g", NOW - 1000, plates, "[{\"itemid\":\"steel\",\"name\":\"Steel\",\"amount\":5}]");
+        db.putCraftShortfall("g", NOW - 2 * DAY, plates, steelAndTin);
+        db.putCraftShortfall("other", NOW - 1000, plates, steelAndTin);
+        HistoryDbTestSupport.flush();
+
+        HistoryDb.Shortfalls result = db.readCraftShortfalls("g", NOW - DAY, NOW, 10);
+        assertEquals(3, result.failedPlans());
+        assertEquals(
+            2,
+            result.ingredients()
+                .size());
+        HistoryDb.MissingIngredient steel = result.ingredients()
+            .get(0);
+        assertEquals("steel", steel.itemid);
+        assertEquals(3, steel.plans);
+        assertEquals(25, steel.amount);
+        assertEquals(NOW - 1000, steel.lastSeen);
+        assertEquals(Arrays.asList("Gear", "Plate"), steel.blockedOutputs);
+        assertEquals(
+            "tin",
+            result.ingredients()
+                .get(1).itemid);
+        assertEquals(
+            Arrays.asList("Gear"),
+            result.ingredients()
+                .get(1).blockedOutputs);
     }
 }
