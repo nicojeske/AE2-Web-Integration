@@ -18,7 +18,8 @@ import pl.kuba6000.ae2webintegration.ae2interface.gt.GTProductionHook;
 /**
  * Records the inputs of every recipe a multiblock starts through {@link ProcessingLogic}. By the time
  * {@code applyRecipe} returns, {@code ParallelHelper} has consumed them and {@code calculatedParallels} holds the
- * parallels including batch mode. Multiblocks with their own recipe check (TecTech EM and older overrides)
+ * parallels including batch mode. The recipe's listed duration is kept too, for the overclock speed-up. Multiblocks
+ * with their own recipe check (TecTech EM and older overrides)
  * never get here and log outputs only.
  */
 @Mixin(value = ProcessingLogic.class, remap = false)
@@ -36,7 +37,11 @@ public abstract class ProcessingLogicConsumptionMixin {
         CheckRecipeResult applied = cir.getReturnValue();
         if (recipe == null || applied == null || !applied.wasSuccessful()) return;
         if (!(machine instanceof MTEMultiBlockBase)) return;
-        GTProductionHook
-            .recordInputs((MTEMultiBlockBase) machine, recipe.mInputs, recipe.mFluidInputs, calculatedParallels);
+        GTProductionHook.recordInputs(
+            (MTEMultiBlockBase) machine,
+            recipe.mInputs,
+            recipe.mFluidInputs,
+            calculatedParallels,
+            recipe.mDuration);
     }
 }

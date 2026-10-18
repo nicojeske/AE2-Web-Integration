@@ -29,6 +29,9 @@ public final class GTProductionHook {
     private static final Map<MTEMultiBlockBase, List<GTStack>> currentInputs = Collections
         .synchronizedMap(new WeakHashMap<>());
 
+    private static final Map<MTEMultiBlockBase, Integer> baseDurations = Collections
+        .synchronizedMap(new WeakHashMap<>());
+
     private GTProductionHook() {}
 
     /** One finished recipe's outputs, just before the machine clears them. */
@@ -54,7 +57,9 @@ public final class GTProductionHook {
      * The inputs a recipe took as it started: {@code recipe} inputs times its parallels (batch mode included).
      * Stacks of size zero are non-consumed circuits and catalysts and are skipped.
      */
-    public static void recordInputs(MTEMultiBlockBase mte, ItemStack[] items, FluidStack[] fluids, int parallel) {
+    public static void recordInputs(MTEMultiBlockBase mte, ItemStack[] items, FluidStack[] fluids, int parallel,
+        int baseDuration) {
+        if (baseDuration > 0) baseDurations.put(mte, baseDuration);
         if ((items == null && fluids == null) || parallel <= 0) return;
         try {
             IGregTechTileEntity base = mte.getBaseMetaTileEntity();
@@ -106,6 +111,12 @@ public final class GTProductionHook {
     }
 
     /** Inputs of the recipe {@code mte} last started; empty if none was seen since the server started. */
+    /** Listed duration of the recipe the machine last started through ProcessingLogic, in ticks; 0 if unknown. */
+    public static int baseDuration(MTEMultiBlockBase mte) {
+        Integer ticks = baseDurations.get(mte);
+        return ticks == null ? 0 : ticks;
+    }
+
     public static List<GTStack> currentInputs(MTEMultiBlockBase mte) {
         List<GTStack> inputs = currentInputs.get(mte);
         return inputs == null ? Collections.emptyList() : inputs;

@@ -154,7 +154,10 @@ public class GTProvider implements IGTProvider {
             m.euPerTick = -eut;
             GTStacks.addAll(mte.mOutputItems, mte.mOutputFluids, m.outputs);
             m.inputs = new ArrayList<>(GTProductionHook.currentInputs(mte));
+            m.parallels = mte.lastParallel;
+            m.baseDurationTicks = GTProductionHook.baseDuration(mte);
         }
+        m.maxParallels = mte.getTrueParallel();
         m.efficiency = mte.mEfficiency;
         long maxVoltage = mte.getMaxInputVoltage();
         long tier = mte.getInputVoltageTier();
