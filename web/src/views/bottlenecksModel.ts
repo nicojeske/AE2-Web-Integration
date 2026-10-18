@@ -5,6 +5,7 @@ import type { BottleneckMachine, BottleneckRange, GTMachineStates, GTMachineStat
 import { GT_STATUS_ORDER } from "../api/types";
 import type { BadgeVariant } from "../ui/Badge";
 import type { SegmentedOption } from "../ui/SegmentedControl";
+import { idleReasonLabel, isStarvedReason } from "./gtModel";
 
 export const BOTTLENECK_RANGES: SegmentedOption<BottleneckRange>[] = [
     { value: "24h", label: "24h" },
@@ -94,6 +95,26 @@ export function machineVerdicts(machine: GTMachineStates): MachineVerdict[] {
     }
     if (share("MAINTENANCE") + share("STRUCTURE_INCOMPLETE") >= 0.05) {
         verdicts.push({ label: "Maintenance", variant: "amber", title: "Down for maintenance or a broken structure" });
+    }
+    let starvedMillis = 0;
+    let blocked: [string, number] | null = null;
+    for (const [reason, millis] of Object.entries(machine.idleReasons)) {
+        if (isStarvedReason(reason)) starvedMillis += millis;
+        else if (!blocked || millis > blocked[1]) blocked = [reason, millis];
+    }
+    if (machine.observedMillis > 0 && blocked && blocked[1] / machine.observedMillis >= 0.05) {
+        verdicts.push({
+            label: idleReasonLabel(blocked[0]),
+            variant: "amber",
+            title: "Idle because it could not run the recipe it was given - a setup problem, not missing work",
+        });
+    }
+    if (machine.observedMillis > 0 && starvedMillis / machine.observedMillis >= 0.25) {
+        verdicts.push({
+            label: "Starved",
+            variant: "teal",
+            title: "Idle for want of inputs much of the time - whatever feeds it can't keep up",
+        });
     }
     if (machine.runningShare >= 0.9) {
         verdicts.push({

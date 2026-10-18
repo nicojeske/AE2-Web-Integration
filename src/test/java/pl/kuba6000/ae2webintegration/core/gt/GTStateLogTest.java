@@ -68,6 +68,24 @@ class GTStateLogTest {
     }
 
     @Test
+    void idleTimeIsAlsoSplitByItsReason() {
+        GTMachineSnapshot starved = GTTestSupport.machine(1, ALICE, GTMachineStatus.IDLE);
+        starved.idleReason = "no_recipe";
+        GTMachineSnapshot underVolted = GTTestSupport.machine(1, ALICE, GTMachineStatus.IDLE);
+        underVolted.idleReason = "insufficient_voltage";
+        scan(NOW, starved);
+        scan(NOW + 10 * SECOND, starved);
+        scan(NOW + 20 * SECOND, underVolted);
+        GTTestSupport.flushHistory();
+
+        Map<String, Long> states = GTStateLog.totals(NOW - HOUR, NOW + HOUR, owner -> true)
+            .get(starved.id);
+        assertEquals(20 * SECOND, (long) states.get("idle"));
+        assertEquals(10 * SECOND, (long) states.get("idle:no_recipe"));
+        assertEquals(10 * SECOND, (long) states.get("idle:insufficient_voltage"));
+    }
+
+    @Test
     void totalsOnlyCoverVisibleMachines() {
         GTMachineSnapshot alices = GTTestSupport.machine(1, ALICE, GTMachineStatus.RUNNING);
         GTMachineSnapshot bobs = GTTestSupport.machine(2, BOB, GTMachineStatus.RUNNING);

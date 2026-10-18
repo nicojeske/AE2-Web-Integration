@@ -105,6 +105,12 @@ public final class GetGTMachineStates extends GTRequest {
         public double runningShare;
         /** Milliseconds per status, keyed by the lower-case status name ({@code running}, {@code no_power}, ...). */
         public Map<String, Long> states = new LinkedHashMap<>();
+        /**
+         * Idle time split by why no recipe ran, keyed by GregTech's recipe check id ({@code no_recipe},
+         * {@code missing_item}, {@code insufficient_voltage}, ...); part of {@code states.idle}, which may hold
+         * more where no reason was known.
+         */
+        public Map<String, Long> idleReasons = new LinkedHashMap<>();
     }
 
     @Override
@@ -138,6 +144,20 @@ public final class GetGTMachineStates extends GTRequest {
                 }
             }
             if (row.observedMillis == 0) continue;
+            entry.getValue()
+                .entrySet()
+                .stream()
+                .filter(
+                    e -> e.getKey()
+                        .startsWith(GTStateLog.IDLE_REASON_PREFIX) && e.getValue() > 0)
+                .sorted(
+                    Map.Entry.<String, Long>comparingByValue()
+                        .reversed())
+                .forEach(
+                    e -> row.idleReasons.put(
+                        e.getKey()
+                            .substring(GTStateLog.IDLE_REASON_PREFIX.length()),
+                        e.getValue()));
             row.runningShare = row.states.getOrDefault(GTStateLog.key(GTMachineStatus.RUNNING), 0L)
                 / (double) row.observedMillis;
             rows.add(row);

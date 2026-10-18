@@ -30,6 +30,12 @@ public final class GTStateLog {
 
     private GTStateLog() {}
 
+    /**
+     * Prefix of the keys that split idle time by {@link GTMachineSnapshot#idleReason}: a breakdown of the
+     * {@code idle} total, not a status of its own.
+     */
+    public static final String IDLE_REASON_PREFIX = "idle:";
+
     /** Series key of a status: its enum name in lower case, stable because the enum is part of the contract. */
     public static String key(GTMachineStatus status) {
         return status.name()
@@ -60,6 +66,14 @@ public final class GTStateLog {
                 continue;
             }
             db.addCounter(HistoryTable.GT_STATE_HOURLY, machine.id, key(machine.status), hourStart, elapsed);
+            if (machine.status == GTMachineStatus.IDLE && machine.idleReason != null) {
+                db.addCounter(
+                    HistoryTable.GT_STATE_HOURLY,
+                    machine.id,
+                    IDLE_REASON_PREFIX + machine.idleReason,
+                    hourStart,
+                    elapsed);
+            }
         }
     }
 

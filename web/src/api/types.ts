@@ -585,4 +585,6 @@ export interface GTMachineStates {
     observedMillis: number;
     runningShare: number;
     states: Record<string, number>;
+    /** Idle time by GregTech recipe check id (`no_recipe`, `missing_item`, `insufficient_voltage`, ...), largest first. */
+    idleReasons: Record<string, number>;
 }

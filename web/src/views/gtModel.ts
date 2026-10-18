@@ -312,3 +312,34 @@ export function pendingPassiveSuggestions(data: GTMachines, passive: PassiveMach
     const suggested = new Set(data.suggestedPassive ?? []);
     return data.machines.filter((m) => suggested.has(m.id) && !(m.id in passive));
 }
+
+/**
+ * GregTech recipe check ids that mean a machine had nothing to work with - upstream did not keep up. Any other
+ * reason means it could not run what it was given (tier, voltage, heat, a missing data stick...).
+ */
+const STARVED_REASONS = new Set(["no_recipe", "missing_item", "no_fuel", "no_drilling_fluid", "no_immersion_fluid"]);
+
+const IDLE_REASON_LABELS: Record<string, string> = {
+    no_recipe: "No matching inputs",
+    missing_item: "Missing item",
+    no_fuel: "No fuel",
+    insufficient_voltage: "Voltage too low",
+    insufficient_power: "Not enough power",
+    insufficient_machine_tier: "Machine tier too low",
+    insufficient_heat: "Not enough heat",
+    insufficient_startup_power: "Not enough startup power",
+    no_data_sticks: "No data sticks",
+    no_see_sky: "Can't see the sky",
+    no_turbine: "No turbine",
+};
+
+export function isStarvedReason(reason: string): boolean {
+    return STARVED_REASONS.has(reason);
+}
+
+export function idleReasonLabel(reason: string): string {
+    const known = IDLE_REASON_LABELS[reason];
+    if (known) return known;
+    const words = reason.replace(/_/g, " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}

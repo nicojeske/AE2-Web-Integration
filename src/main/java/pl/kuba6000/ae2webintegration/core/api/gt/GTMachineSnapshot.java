@@ -31,6 +31,12 @@ public class GTMachineSnapshot {
     /** Human-readable reason behind {@link #status}, e.g. GregTech's shutdown reason; may be {@code null}. */
     public String statusDetail;
 
+    /**
+     * Why an {@link GTMachineStatus#IDLE} machine found nothing to run, as a stable lower-case id - GregTech's
+     * recipe check result, e.g. {@code no_recipe}, {@code missing_item}, {@code insufficient_voltage}; {@code null}
+     * when not idle or no check failed.
+     */
+    public String idleReason;
     /** Progress of the running recipe in ticks; 0 when idle. */
     public int progressTicks;
     public int maxProgressTicks;
@@ -77,6 +83,7 @@ public class GTMachineSnapshot {
         copy.ownerName = ownerName;
         copy.status = status;
         copy.statusDetail = statusDetail;
+        copy.idleReason = idleReason;
         copy.progressTicks = progressTicks;
         copy.maxProgressTicks = maxProgressTicks;
         copy.euPerTick = euPerTick;

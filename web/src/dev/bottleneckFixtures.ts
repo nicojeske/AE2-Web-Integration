@@ -343,6 +343,11 @@ export function mockGTMachineStates(span: number, now: number): GTMachineStates[
                 if (w > 0) states[status.toLowerCase()] = Math.round((observed * w) / total);
             }
             const observedMillis = Object.values(states).reduce((a, b) => a + b, 0);
+            const idle = states.idle ?? 0;
+            const idleReasons: Record<string, number> =
+                index % 3 === 1
+                    ? { insufficient_voltage: Math.round(idle * 0.8), no_recipe: Math.round(idle * 0.2) }
+                    : { no_recipe: Math.round(idle * 0.9) };
             return {
                 id: m.id,
                 name: m.name,
@@ -351,6 +356,7 @@ export function mockGTMachineStates(span: number, now: number): GTMachineStates[
                 observedMillis,
                 runningShare: (states.running ?? 0) / observedMillis,
                 states,
+                idleReasons,
             };
         });
     return rows.sort((a, b) => b.runningShare - a.runningShare || a.id.localeCompare(b.id));
