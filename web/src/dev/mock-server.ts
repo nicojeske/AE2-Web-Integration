@@ -31,6 +31,7 @@ import {
     mockBottlenecks,
     mockServerTickRate,
     mockGTEnergy,
+    mockGridCapacity,
     mockGTMachineStates,
     parseBottleneckRange,
 } from "./bottleneckFixtures.ts";
@@ -513,6 +514,14 @@ async function handleApi(
                 if (typeof body.isTracked === "boolean") grid.isTrackingEnabled = body.isTracked;
             }
             return ok(res, { isTracked: grid.isTrackingEnabled });
+        }
+        case "GET capacity": {
+            if (!historyEnabled(req.headers.referer)) return respond(res, "HISTORY_DISABLED", null);
+            const span = parseBottleneckRange(
+                params.get("range") === "15m" ? "24h" : params.get("range"),
+                params.get("minutes"),
+            );
+            return ok(res, mockGridCapacity(span ?? 7 * 86_400_000, Date.now()));
         }
         case "GET bottlenecks": {
             // GetBottlenecks.java: range presets or custom minutes, `previous` for the range before.

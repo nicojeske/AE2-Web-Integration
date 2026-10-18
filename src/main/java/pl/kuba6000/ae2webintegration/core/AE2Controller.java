@@ -57,6 +57,7 @@ import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProductionHistor
 import pl.kuba6000.ae2webintegration.core.http.endpoint.prefs.GetPrefs;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.prefs.PutPrefs;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetBottlenecks;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetGridCapacity;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetItemHistory;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetServerTickRate;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.stock.DeleteStockRule;
@@ -230,6 +231,7 @@ public class AE2Controller {
                 api.register(GetItemHistory.class);
                 api.register(GetBottlenecks.class);
                 api.register(GetServerTickRate.class);
+                api.register(GetGridCapacity.class);
                 api.register(GetStockRules.class);
                 api.register(PutStockRule.class);
                 api.register(DeleteStockRule.class);

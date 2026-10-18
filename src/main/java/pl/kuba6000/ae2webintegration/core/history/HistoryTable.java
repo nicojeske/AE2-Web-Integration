@@ -13,6 +13,9 @@ public enum HistoryTable {
     ITEM_FINE("item_fine", Kind.CHANGE_GAUGE, TimeUnit.DAYS.toMillis(1), TimeUnit.HOURS.toMillis(6)),
     /** Item stored counts, last sample of each hour; a row only when the value changes. */
     ITEM_HOURLY("item_hourly", Kind.CHANGE_GAUGE, TimeUnit.DAYS.toMillis(7), TimeUnit.DAYS.toMillis(1)),
+    /** Grid storage capacity and AE power (scope = grid key, key = metric), at the statistics sample interval. */
+    GRID_FINE("grid_fine", Kind.CHANGE_GAUGE, TimeUnit.DAYS.toMillis(1), TimeUnit.HOURS.toMillis(6)),
+    GRID_HOURLY("grid_hourly", Kind.CHANGE_GAUGE, TimeUnit.DAYS.toMillis(7), TimeUnit.DAYS.toMillis(1)),
     /** GregTech power sources at the power sample interval, one row per sample. */
     POWER_FINE("power_fine", Kind.GAUGE, TimeUnit.DAYS.toMillis(1), 0L),
     POWER_HOURLY("power_hourly", Kind.GAUGE, TimeUnit.DAYS.toMillis(7), 0L),

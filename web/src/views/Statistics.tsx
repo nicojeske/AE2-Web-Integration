@@ -17,6 +17,7 @@ import { CHART_SCALE_OPTIONS, CHART_SIZE_PX, RANGE_OPTIONS } from "./statsModel"
 import { CompareModal } from "./CompareModal";
 import { CustomRangeInput } from "./CustomRangeInput";
 import { ManagePinnedModal } from "./ManagePinnedModal";
+import { NetworkCapacity } from "./NetworkCapacity";
 import { StatCard } from "./StatCard";
 import { StatsOverview } from "./StatsOverview";
 import { useNetwork } from "../state/network";
@@ -186,7 +187,10 @@ export function Statistics() {
                     </div>
                 )}
 
-                <div className="page__scroll stats__scroll">{body}</div>
+                <div className="page__scroll stats__scroll">
+                    <NetworkCapacity gridKey={gridKey} range={range} customMinutes={customMinutes} />
+                    {body}
+                </div>
             </div>
 
             {manageOpen && <ManagePinnedModal onClose={() => setManageOpen(false)} />}

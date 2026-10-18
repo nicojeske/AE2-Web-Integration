@@ -29,6 +29,7 @@ import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEStorageGrid;
 import pl.kuba6000.ae2webintegration.core.server.ServerLoad;
 import pl.kuba6000.ae2webintegration.core.stock.StockKeeper;
 import pl.kuba6000.ae2webintegration.core.tracking.AE2JobTracker;
+import pl.kuba6000.ae2webintegration.core.tracking.GridStatsStore;
 import pl.kuba6000.ae2webintegration.core.tracking.ItemHistoryStore;
 import pl.kuba6000.ae2webintegration.core.utils.ReleaseManifest;
 import pl.kuba6000.ae2webintegration.core.utils.VersionChecker;
@@ -255,6 +256,7 @@ public class CoreEngine {
             return;
         }
         ItemHistoryStore.prune(System.currentTimeMillis());
+        GridStatsStore.prune(System.currentTimeMillis());
         AE2JobTracker.pruneHistory(System.currentTimeMillis());
         historyFlushScheduled = true;
         nextHistoryFlushNanos = nowNanos + HISTORY_FLUSH_INTERVAL_NANOS;
@@ -288,6 +290,7 @@ public class CoreEngine {
         if (storageGrid != null) {
             ItemHistoryStore.sample(gridKey.toString(), storageGrid.web$getStorageList(), nowMillis);
         }
+        GridStatsStore.sample(gridKey.toString(), grid.web$getStats(), nowMillis);
     }
 
     static void resetHistorySamplingForTest() {
@@ -330,6 +333,7 @@ public class CoreEngine {
         StockKeeper.clear();
         GTEngine.onServerStopped();
         ServerLoad.reset();
+        GridStatsStore.clear();
     }
 
     public static String getModVersion() {

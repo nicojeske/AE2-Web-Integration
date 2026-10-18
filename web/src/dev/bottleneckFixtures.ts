@@ -8,6 +8,7 @@ import type {
     BottleneckRange,
     Bottlenecks,
     GTEnergy,
+    GridCapacity,
     GTMachineStates,
     GTMachineStatus,
     ServerTickRate,
@@ -423,5 +424,58 @@ export function mockGTEnergy(span: number, now: number): GTEnergy {
         totalConsumed: machines.reduce((sum, m) => sum + m.consumed, 0),
         totalGenerated: machines.reduce((sum, m) => sum + m.generated, 0),
         machines,
+    };
+}
+
+/** Item bytes creeping up towards full (a run-out forecast), types flat, fluids half used, steady AE draw. */
+export function mockGridCapacity(span: number, now: number): GridCapacity {
+    const points = 120;
+    const step = Math.max(60_000, Math.ceil(span / points / 60_000) * 60_000);
+    const from = now - (points - 1) * step;
+    const at = (i: number) => from + i * step;
+    const bytesTotal = 4 * 1024 * 1024 * 64;
+    const bytesUsed = (i: number) => Math.round(bytesTotal * (0.78 + (0.04 * i) / points));
+    const series: Record<string, number[]> = {
+        item_bytes_used: [],
+        item_bytes_total: [],
+        item_types_used: [],
+        item_types_total: [],
+        fluid_bytes_used: [],
+        power_usage: [],
+    };
+    for (let i = 0; i < points; i++) {
+        series.item_bytes_used!.push(bytesUsed(i));
+        series.item_bytes_total!.push(bytesTotal);
+        series.item_types_used!.push(2210 + Math.round(4 * noise(String(at(i)), 0)));
+        series.item_types_total!.push(3780);
+        series.fluid_bytes_used!.push(Math.round(1_048_576 * (0.5 + 0.02 * noise(String(at(i)), 1))));
+        series.power_usage!.push(Math.round(1850 + 300 * noise(String(at(i)), 2)));
+    }
+    const perMilli = (bytesUsed(points - 1) - bytesUsed(0)) / (at(points - 1) - at(0));
+    return {
+        current: {
+            itemBytesUsed: bytesUsed(points - 1),
+            itemBytesTotal: bytesTotal,
+            itemTypesUsed: 2213,
+            itemTypesTotal: 3780,
+            fluidBytesUsed: 524_288,
+            fluidBytesTotal: 1_048_576,
+            fluidTypesUsed: 14,
+            fluidTypesTotal: 25,
+            powerUsage: 1987.5,
+            powerInjection: 2400,
+            powerStored: 1_200_000,
+            powerMax: 1_600_000,
+        },
+        sampledAt: now,
+        from,
+        to: at(points - 1),
+        stepMillis: step,
+        resolution: span <= 30 * 86_400_000 ? "fine" : "hourly",
+        series,
+        itemBytesFullAt:
+            perMilli > 0 ? Math.round(at(points - 1) + (bytesTotal - bytesUsed(points - 1)) / perMilli) : null,
+        itemTypesFullAt: null,
+        fluidBytesFullAt: null,
     };
 }

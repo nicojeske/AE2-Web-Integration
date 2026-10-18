@@ -132,7 +132,7 @@ public final class GetItemHistory extends IAsyncRequest {
     }
 
     /** "all" is honestly labelled: it maps to the full configured retention, not an unbounded range. */
-    private static @Nullable Long rangeToMillis(String range) {
+    static @Nullable Long rangeToMillis(String range) {
         switch (range) {
             case "15m":
                 return TimeUnit.MINUTES.toMillis(15);

@@ -12,6 +12,7 @@ import type {
     GTMachineDetail,
     GTMachines,
     GTEnergy,
+    GridCapacity,
     GTMachineStates,
     GTPower,
     GTPowerHistory,
@@ -163,6 +164,12 @@ export function setGridTracking(gridKey: GridKey, track: boolean): Promise<GridS
 }
 
 /** Every item of a grid is sampled server-side; `items` (1-50 itemids) picks which series come back. */
+export function getGridCapacity(gridKey: GridKey, range: StatsRange, customMinutes?: number): Promise<GridCapacity> {
+    return apiGet(
+        `${grid(gridKey)}/capacity${query({ range, points: 120, minutes: range === "custom" ? customMinutes : undefined })}`,
+    );
+}
+
 export function getItemHistory(
     gridKey: GridKey,
     range: StatsRange,

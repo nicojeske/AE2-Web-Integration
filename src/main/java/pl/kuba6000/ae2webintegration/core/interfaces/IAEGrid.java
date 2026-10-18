@@ -31,6 +31,11 @@ public interface IAEGrid {
     @Nullable
     PlayerIdentity web$getRepresentativeOwner();
 
+    /** Server thread only. {@code null} when the platform cannot report storage capacity and power. */
+    default @Nullable GridStats web$getStats() {
+        return null;
+    }
+
     IAECraftingGrid web$getCraftingGrid();
 
     IAEPathingGrid web$getPathingGrid();

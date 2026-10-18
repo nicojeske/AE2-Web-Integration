@@ -554,6 +554,38 @@ export interface Bottlenecks {
     missingIngredients: MissingIngredient[];
 }
 
+/** A grid's storage capacity and AE power (AE units; usage and injection per tick). */
+export interface GridStats {
+    itemBytesUsed: number;
+    itemBytesTotal: number;
+    itemTypesUsed: number;
+    itemTypesTotal: number;
+    fluidBytesUsed: number;
+    fluidBytesTotal: number;
+    fluidTypesUsed: number;
+    fluidTypesTotal: number;
+    powerUsage: number;
+    powerInjection: number;
+    powerStored: number;
+    powerMax: number;
+}
+
+/** `GET /api/grids/{gridKey}/capacity`: series values -1 = no sample. */
+export interface GridCapacity {
+    current: GridStats | null;
+    sampledAt: number;
+    from: number;
+    to: number;
+    stepMillis: number;
+    resolution: "fine" | "hourly";
+    /** Keyed `item_bytes_used`, `item_types_total`, `power_usage`, ... */
+    series: Record<string, number[]>;
+    /** Projected run-out times at the range's trend; null when not growing. */
+    itemBytesFullAt: number | null;
+    itemTypesFullAt: number | null;
+    fluidBytesFullAt: number | null;
+}
+
 /** `GET /api/gt/energy`: EU per machine over a range, sampled from the scans. */
 export interface GTEnergy {
     from: number;
