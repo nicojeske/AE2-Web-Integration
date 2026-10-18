@@ -122,6 +122,7 @@ class TrackingStatisticsResponseTest extends GridTestScope {
                 case "web$getName" -> "cpu";
                 case "web$isBusy" -> true;
                 case "web$getAvailableStorage" -> 64L;
+                case "web$getCoProcessors" -> 0L;
                 case "web$getAllItems" -> null;
                 default -> throw new AssertionError("Unexpected CPU call: " + method.getName());
             });

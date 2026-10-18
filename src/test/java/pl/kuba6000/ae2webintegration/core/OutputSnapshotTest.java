@@ -220,10 +220,13 @@ class OutputSnapshotTest extends GridTestScope {
         ICraftingCPUCluster cpu = (ICraftingCPUCluster) Proxy.newProxyInstance(
             getClass().getClassLoader(),
             new Class<?>[] { ICraftingCPUCluster.class },
-            (proxy, method, args) -> {
-                if (method.getName()
-                    .equals("web$getFinalOutput")) return output.get();
-                throw new AssertionError("Unexpected native CPU call");
+            (proxy, method, args) -> switch (method.getName()) {
+                case "web$getFinalOutput" -> output.get();
+                // The CPU descriptor recorded with the job.
+                case "web$getKey" -> StableKey.parse("AAAAAAAAAAAAAAAAAAAAAA");
+                case "web$getName" -> "cpu";
+                case "web$getAvailableStorage", "web$getCoProcessors" -> 0L;
+                default -> throw new AssertionError("Unexpected native CPU call");
             });
         AE2JobTracker.addJob(cpu, grid, false);
         Object initial = AE2JobTracker.findActiveJob(cpu).finalOutput;

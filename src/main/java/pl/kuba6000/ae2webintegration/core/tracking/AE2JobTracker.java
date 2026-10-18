@@ -105,6 +105,8 @@ public class AE2JobTracker {
         public double plannedTotal;
         /** Sum of {@link #craftedTotal} in {@link #progressUnits progress units}. */
         public double craftedSum;
+        /** The CPU running the job, as it was when the job started. */
+        public @Nullable HistoryDb.CraftJobCpu cpu;
         /** Who submitted the job: a player, or the web user; null for a machine or when unknown. */
         public @Nullable String requestedBy;
         /** Last time anything was delivered back to the CPU, Unix epoch milliseconds. */
@@ -239,6 +241,12 @@ public class AE2JobTracker {
             info = new JobTrackingInfo(finalOutput);
             String webRequester = WEB_REQUESTER.get();
             info.requestedBy = webRequester != null ? webRequester : requester;
+            info.cpu = new HistoryDb.CraftJobCpu(
+                cpuCluster.web$getKey()
+                    .toString(),
+                cpuCluster.web$getName(),
+                cpuCluster.web$getAvailableStorage(),
+                cpuCluster.web$getCoProcessors());
             trackingInfoMap.put(cpuCluster, info);
         }
         info.snapshotPlan(cpuCluster);
@@ -363,6 +371,7 @@ public class AE2JobTracker {
                 info.timeDone,
                 info.wasCancelled,
                 info.requestedBy,
+                info.cpu,
                 GSONUtils.GSON_BUILDER.create()
                     .toJson(new JSON_CompactedJobTrackingInfo(info)));
         } else {

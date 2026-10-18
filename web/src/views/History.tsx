@@ -214,6 +214,7 @@ export function History({ open, onOpen, item, onItemChange }: HistoryProps) {
                                             </span>
                                             <span className="cell-sub">
                                                 {entry.requestedBy ? `by ${entry.requestedBy}` : "unknown requester"}
+                                                {entry.cpu?.name ? ` · on ${entry.cpu.name}` : ""}
                                                 {isAllGrids ? ` · ${entry.gridLabel}` : ""}
                                             </span>
                                         </div>

@@ -381,6 +381,7 @@ export const mockGrids: MockGrid[] = [
                 timeDone: serverStart - 3_348_000,
                 wasCancelled: false,
                 requestedBy: "Steve",
+                cpu: { cpuKey: mockCpuKey("Main CPU"), name: "Main CPU", bytes: 65536, coProcessors: 4 },
                 finalOutput: {
                     itemid: "appliedenergistics2:crystal_fluix",
                     itemname: "Fluix Crystal",
@@ -394,6 +395,7 @@ export const mockGrids: MockGrid[] = [
                 timeDone: serverStart - 7_159_000,
                 wasCancelled: true,
                 requestedBy: "Steve",
+                cpu: null,
                 finalOutput: {
                     itemid: "appliedenergistics2:sky_stone_block",
                     itemname: "Sky Stone Block",
@@ -407,6 +409,7 @@ export const mockGrids: MockGrid[] = [
                 timeDone: serverStart - 1_200_000,
                 wasCancelled: false,
                 requestedBy: "Steve",
+                cpu: { cpuKey: mockCpuKey("Main CPU"), name: "Main CPU", bytes: 65536, coProcessors: 4 },
                 finalOutput: {
                     itemid: "appliedenergistics2:processor_calc",
                     itemname: "Calculation Processor",
@@ -423,6 +426,7 @@ export const mockGrids: MockGrid[] = [
                 timeDone: serverStart - 10_740_000,
                 wasCancelled: false,
                 requestedBy: "Steve",
+                cpu: null,
                 finalOutput: {
                     itemid: "minecraft:redstone",
                     itemname: "Redstone",
@@ -861,7 +865,20 @@ export function recordTracking(grid: MockGrid, cpu: MockBusyCpu, wasCancelled: b
 
     const id = grid.history.reduce((max, h) => Math.max(max, h.id), 0) + 1;
     const requestedBy = cpu.requestedBy ?? null;
-    grid.history.push({ id, timeStarted: cpu.startedAt, timeDone, wasCancelled, finalOutput: cpu.output, requestedBy });
+    grid.history.push({
+        id,
+        timeStarted: cpu.startedAt,
+        timeDone,
+        wasCancelled,
+        finalOutput: cpu.output,
+        requestedBy,
+        cpu: {
+            cpuKey: mockCpuKey(cpu.name),
+            name: cpu.name,
+            bytes: cpu.availableStorage,
+            coProcessors: cpu.coProcessors,
+        },
+    });
     grid.trackingDetails.set(id, {
         finalOutput: cpu.output,
         timeStarted: cpu.startedAt,

@@ -202,6 +202,16 @@ export interface TrackingHistoryElement {
     finalOutput: ItemStack;
     /** Player or web user who submitted the job; null for a machine or when unknown. */
     requestedBy: string | null;
+    /** The CPU that ran the job, as it was when the job started; null when not recorded. */
+    cpu: HistoryCpu | null;
+}
+
+/** A crafting CPU as recorded on a finished job. */
+export interface HistoryCpu {
+    cpuKey: string;
+    name: string | null;
+    bytes: number;
+    coProcessors: number;
 }
 
 /** `GET /api/grids/{gridKey}/crafting-history` paging and filter. */

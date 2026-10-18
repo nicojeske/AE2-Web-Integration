@@ -647,6 +647,10 @@ final class HistoryWriter implements Runnable {
                     + " output_itemid TEXT NOT NULL, output_name TEXT NOT NULL, quantity BIGINT NOT NULL,"
                     + " output_item_key TEXT, started TIMESTAMPTZ NOT NULL, done TIMESTAMPTZ NOT NULL,"
                     + " cancelled BOOLEAN NOT NULL, requested_by TEXT, detail JSONB NOT NULL)");
+            st.execute(
+                "ALTER TABLE ae2wi_craft_job ADD COLUMN IF NOT EXISTS cpu_key TEXT,"
+                    + " ADD COLUMN IF NOT EXISTS cpu_name TEXT, ADD COLUMN IF NOT EXISTS cpu_bytes BIGINT,"
+                    + " ADD COLUMN IF NOT EXISTS cpu_coprocessors BIGINT");
             st.execute("CREATE INDEX IF NOT EXISTS ae2wi_craft_job_grid ON ae2wi_craft_job (grid_key, done DESC)");
             st.execute(
                 "CREATE INDEX IF NOT EXISTS ae2wi_craft_job_output ON ae2wi_craft_job"

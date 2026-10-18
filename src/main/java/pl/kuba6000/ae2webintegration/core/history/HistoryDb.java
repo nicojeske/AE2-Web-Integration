@@ -7,6 +7,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -23,6 +24,10 @@ import java.util.function.Consumer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.history.HistoryWriter.SeriesKey;
@@ -274,6 +279,8 @@ public final class HistoryDb {
         public final long done;
         public final boolean cancelled;
         public final String requestedBy;
+        /** The CPU that ran the job; {@code null} for jobs recorded before CPUs were. */
+        public final @Nullable CraftJobCpu cpu;
 
         CraftJob(ResultSet rs) throws SQLException {
             id = rs.getLong("id");
@@ -287,19 +294,31 @@ public final class HistoryDb {
                 .getTime();
             cancelled = rs.getBoolean("cancelled");
             requestedBy = rs.getString("requested_by");
+            String cpuKey = rs.getString("cpu_key");
+            cpu = cpuKey == null ? null
+                : new CraftJobCpu(
+                    cpuKey,
+                    rs.getString("cpu_name"),
+                    rs.getLong("cpu_bytes"),
+                    rs.getLong("cpu_coprocessors"));
         }
     }
 
+    /** The crafting CPU a job ran on, as it was when the job started. */
+    @Desugar
+    public record CraftJobCpu(@NotNull String key, @Nullable String name, long bytes, long coProcessors) {}
+
     private static final String CRAFT_JOB_COLUMNS = "id, output_itemid, output_name, quantity, output_item_key, started,"
-        + " done, cancelled, requested_by";
+        + " done, cancelled, requested_by, cpu_key, cpu_name, cpu_bytes, cpu_coprocessors";
 
     /** Queues a finished job for the writer; it shows up in reads once committed. */
     public void putCraftJob(String gridKey, String outputItemid, String outputName, long quantity, String outputItemKey,
-        long started, long done, boolean cancelled, String requestedBy, String detailJson) {
+        long started, long done, boolean cancelled, String requestedBy, @Nullable CraftJobCpu cpu, String detailJson) {
         writer.enqueue(new HistoryWriter.TaskOp("craft job", (c, w) -> {
             try (PreparedStatement ps = c.prepareStatement(
                 "INSERT INTO ae2wi_craft_job (grid_key, output_itemid, output_name, quantity, output_item_key,"
-                    + " started, done, cancelled, requested_by, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)")) {
+                    + " started, done, cancelled, requested_by, cpu_key, cpu_name, cpu_bytes, cpu_coprocessors, detail)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)")) {
                 ps.setString(1, gridKey);
                 ps.setString(2, outputItemid);
                 ps.setString(3, outputName);
@@ -309,7 +328,16 @@ public final class HistoryDb {
                 ps.setTimestamp(7, timestamp(done), utc());
                 ps.setBoolean(8, cancelled);
                 ps.setString(9, requestedBy);
-                ps.setString(10, detailJson);
+                ps.setString(10, cpu == null ? null : cpu.key());
+                ps.setString(11, cpu == null ? null : cpu.name());
+                if (cpu == null) {
+                    ps.setNull(12, Types.BIGINT);
+                    ps.setNull(13, Types.BIGINT);
+                } else {
+                    ps.setLong(12, cpu.bytes());
+                    ps.setLong(13, cpu.coProcessors());
+                }
+                ps.setString(14, detailJson);
                 ps.executeUpdate();
             }
         }, null));

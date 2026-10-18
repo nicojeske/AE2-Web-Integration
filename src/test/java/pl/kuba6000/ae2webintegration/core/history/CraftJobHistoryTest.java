@@ -39,6 +39,7 @@ class CraftJobHistoryTest {
             done,
             cancelled,
             "Steve",
+            cancelled ? null : new HistoryDb.CraftJobCpu("cpu1", "Main", 65536, 4),
             "{\"finalOutput\":{\"itemid\":\"" + itemid + "\"},\"items\":[]}");
     }
 
@@ -58,6 +59,8 @@ class CraftJobHistoryTest {
         assertTrue(page.get(1).cancelled);
         assertEquals("Steve", page.get(0).requestedBy);
         assertEquals(60_000, page.get(0).done - page.get(0).started);
+        assertEquals(new HistoryDb.CraftJobCpu("cpu1", "Main", 65536, 4), page.get(0).cpu);
+        assertNull(page.get(1).cpu);
 
         List<HistoryDb.CraftJob> older = db.readCraftJobs("g", null, page.get(1).done, 2);
         assertEquals(1, older.size());
@@ -82,6 +85,7 @@ class CraftJobHistoryTest {
             NOW - 100_000,
             NOW - 10_000,
             false,
+            null,
             null,
             "{\"interfaceShare\":[{\"name\":\"Furnace\",\"timings\":[{\"started\":" + (NOW - 90_000)
                 + ",\"ended\":"

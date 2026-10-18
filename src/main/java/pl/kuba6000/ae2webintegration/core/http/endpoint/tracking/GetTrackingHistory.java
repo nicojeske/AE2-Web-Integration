@@ -92,9 +92,51 @@ public final class GetTrackingHistory extends IAsyncRequest {
         public long id;
         /** Player or web user who submitted the job; null for a machine or when unknown. */
         public @Nullable String requestedBy;
+        /** The crafting CPU that ran the job, as it was when the job started; null when not recorded. */
+        public @Nullable Cpu cpu;
 
         private HistoryEntry(@NotNull JSON_Stack finalOutput) {
             this.finalOutput = finalOutput;
+        }
+    }
+
+    @SuppressWarnings("unused") // Gson reads the fields reflectively.
+    public static class Cpu {
+
+        /**
+         * Persistent CPU identifier.
+         *
+         * @example AAAAAAAAAAAAAAAAAAAAAA
+         */
+        public @NotNull String cpuKey;
+        /**
+         * CPU display name; null when the CPU is unnamed.
+         *
+         * @example Main CPU
+         */
+        public @Nullable String name;
+        /**
+         * Total crafting storage in bytes.
+         *
+         * @example 65536
+         */
+        public long bytes;
+        /**
+         * Number of co-processing units.
+         *
+         * @example 4
+         */
+        public long coProcessors;
+
+        private Cpu(HistoryDb.CraftJobCpu cpu) {
+            cpuKey = cpu.key();
+            name = cpu.name();
+            bytes = cpu.bytes();
+            coProcessors = cpu.coProcessors();
+        }
+
+        static @Nullable Cpu of(@Nullable HistoryDb.CraftJobCpu cpu) {
+            return cpu == null ? null : new Cpu(cpu);
         }
     }
 
@@ -136,6 +178,7 @@ public final class GetTrackingHistory extends IAsyncRequest {
             entry.timeDone = job.done;
             entry.wasCancelled = job.cancelled;
             entry.requestedBy = job.requestedBy;
+            entry.cpu = Cpu.of(job.cpu);
             jobs.add(entry);
         }
         return jobs;
@@ -154,6 +197,7 @@ public final class GetTrackingHistory extends IAsyncRequest {
             entry.timeDone = info.timeDone;
             entry.wasCancelled = info.wasCancelled;
             entry.requestedBy = info.requestedBy;
+            entry.cpu = Cpu.of(info.cpu);
             jobs.add(entry);
         }
         jobs.sort((i1, i2) -> Long.compare(i2.timeDone, i1.timeDone));
