@@ -357,6 +357,92 @@ public final class HistoryDb {
         }, null);
     }
 
+    /**
+     * One machine interval of a finished job: a stretch during which the job had work out at the pattern
+     * providers named {@code machine}. A job without any carries a single row with a {@code null} machine.
+     */
+    public static final class CraftInterval {
+
+        public final long jobId;
+        public final String outputItemid;
+        public final String outputName;
+        public final long jobStarted;
+        public final long jobDone;
+        public final boolean cancelled;
+        public final String machine;
+        public final long started;
+        public final long ended;
+
+        public CraftInterval(long jobId, String outputItemid, String outputName, long jobStarted, long jobDone,
+            boolean cancelled, String machine, long started, long ended) {
+            this.jobId = jobId;
+            this.outputItemid = outputItemid;
+            this.outputName = outputName;
+            this.jobStarted = jobStarted;
+            this.jobDone = jobDone;
+            this.cancelled = cancelled;
+            this.machine = machine;
+            this.started = started;
+            this.ended = ended;
+        }
+    }
+
+    private static final int INTERVAL_READ_TIMEOUT_SECONDS = 60;
+
+    /**
+     * Streams the machine intervals of every job of a grid that overlaps {@code [fromMillis, toMillis]}, grouped
+     * by job. The detail JSON is flattened in the database, so only the rows travel. Returns {@code false}
+     * when the database is unreachable (rows already handed over are then incomplete).
+     */
+    public boolean readCraftIntervals(String gridKey, long fromMillis, long toMillis,
+        Consumer<CraftInterval> consumer) {
+        return read(c -> {
+            // A cursor needs a transaction; without one pgjdbc would load the whole result into memory.
+            c.setAutoCommit(false);
+            try (PreparedStatement ps = c.prepareStatement(
+                "SELECT j.id, j.output_itemid, j.output_name, j.started, j.done, j.cancelled, m.machine,"
+                    + " m.started, m.ended FROM ae2wi_craft_job j LEFT JOIN LATERAL (SELECT i->>'name' AS machine,"
+                    + " (t->>'started')::bigint AS started, (t->>'ended')::bigint AS ended"
+                    + " FROM jsonb_array_elements(j.detail->'interfaceShare') i,"
+                    + " jsonb_array_elements(i->'timings') t) m ON true"
+                    + " WHERE j.grid_key = ? AND j.done >= ? AND j.started <= ? ORDER BY j.id")) {
+                ps.setQueryTimeout(INTERVAL_READ_TIMEOUT_SECONDS);
+                ps.setFetchSize(5000);
+                ps.setString(1, gridKey);
+                ps.setTimestamp(2, timestamp(fromMillis), utc());
+                ps.setTimestamp(3, timestamp(toMillis), utc());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String machine = rs.getString(7);
+                        long started = rs.getLong(8);
+                        boolean hasTiming = !rs.wasNull();
+                        long ended = rs.getLong(9);
+                        consumer.accept(
+                            new CraftInterval(
+                                rs.getLong(1),
+                                rs.getString(2),
+                                rs.getString(3),
+                                rs.getTimestamp(4, utc())
+                                    .getTime(),
+                                rs.getTimestamp(5, utc())
+                                    .getTime(),
+                                rs.getBoolean(6),
+                                hasTiming ? machine : null,
+                                started,
+                                ended));
+                    }
+                }
+                return true;
+            } finally {
+                try {
+                    c.rollback();
+                } finally {
+                    c.setAutoCommit(true);
+                }
+            }
+        }, false);
+    }
+
     /** Drops jobs finished before {@code beforeMillis}; rate-limited like {@link #prune}. */
     public void pruneCraftJobs(long beforeMillis, long nowMillis) {
         if (nowMillis < nextCraftJobPruneMillis) {

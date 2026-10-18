@@ -1,4 +1,6 @@
 import type {
+    BottleneckRange,
+    Bottlenecks,
     CpuDetail,
     CpuList,
     DetailedItem,
@@ -8,6 +10,7 @@ import type {
     GridSummary,
     GTMachineDetail,
     GTMachines,
+    GTMachineStates,
     GTPower,
     GTPowerHistory,
     GTFlow,
@@ -175,6 +178,22 @@ export function getItemHistory(
     );
 }
 
+/** `previous` analyses the equally long range just before, for comparison. */
+export function getBottlenecks(
+    gridKey: GridKey,
+    range: BottleneckRange,
+    customMinutes?: number,
+    previous = false,
+): Promise<Bottlenecks> {
+    return apiGet(
+        `${grid(gridKey)}/bottlenecks${query({
+            range,
+            minutes: range === "custom" ? customMinutes : undefined,
+            previous: previous || undefined,
+        })}`,
+    );
+}
+
 export function getStockRules(gridKey: GridKey): Promise<StockRule[]> {
     return apiGet(`${grid(gridKey)}/stock-rules`);
 }
@@ -212,6 +231,10 @@ export function getGTMachines(): Promise<GTMachines> {
 
 export function getGTMachine(id: string, range: GTRange, minutes?: number): Promise<GTMachineDetail> {
     return apiGet(`gt/machines/${seg(id)}${query(gtRange(range, minutes))}`);
+}
+
+export function getGTMachineStates(range: GTRange, minutes?: number): Promise<GTMachineStates[]> {
+    return apiGet(`gt/machine-states${query(gtRange(range, minutes))}`);
 }
 
 export function getGTPower(): Promise<GTPower> {

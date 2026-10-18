@@ -12,6 +12,7 @@ import "./views/plan.css";
 import "./views/history.css";
 import "./views/favorites.css";
 import "./views/statistics.css";
+import "./views/bottlenecks.css";
 import "./views/gt.css";
 import "./views/settings.css";
 

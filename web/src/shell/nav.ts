@@ -1,7 +1,17 @@
 import type { ComponentType } from "preact";
 
 import type { IconProps } from "../ui/icons";
-import { BoltIcon, ChartIcon, ClockIcon, ConveyorIcon, CpuIcon, FactoryIcon, GridIcon, StarIcon } from "../ui/icons";
+import {
+    BoltIcon,
+    ChartIcon,
+    ClockIcon,
+    ConveyorIcon,
+    CpuIcon,
+    FactoryIcon,
+    FunnelIcon,
+    GridIcon,
+    StarIcon,
+} from "../ui/icons";
 import type { Section } from "./section";
 import { isGTSection, SECTION_TITLES } from "./section";
 
@@ -17,12 +27,23 @@ const ICONS: Record<Section, ComponentType<IconProps>> = {
     history: ClockIcon,
     favorites: StarIcon,
     stats: ChartIcon,
+    bottlenecks: FunnelIcon,
     machines: FactoryIcon,
     power: BoltIcon,
     production: ConveyorIcon,
 };
 
-const ORDER: Section[] = ["browser", "jobs", "history", "favorites", "stats", "machines", "power", "production"];
+const ORDER: Section[] = [
+    "browser",
+    "jobs",
+    "history",
+    "favorites",
+    "stats",
+    "bottlenecks",
+    "machines",
+    "power",
+    "production",
+];
 
 /** Every section this server has, in rail order - the GregTech ones only with `hasGT`. */
 export function navItems(hasGT: boolean): NavItem[] {

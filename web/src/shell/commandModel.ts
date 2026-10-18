@@ -75,6 +75,7 @@ export const GO_KEYS: Record<Section, string> = {
     history: "h",
     favorites: "f",
     stats: "s",
+    bottlenecks: "b",
     machines: "m",
     power: "p",
     production: "o",

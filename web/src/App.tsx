@@ -25,6 +25,7 @@ import { PhoneNav } from "./shell/PhoneNav";
 import { Rail } from "./shell/Rail";
 import { Topbar } from "./shell/Topbar";
 import { cx } from "./ui/cx";
+import { Bottlenecks } from "./views/Bottlenecks";
 import { Browser } from "./views/Browser";
 import { CraftDetail } from "./views/CraftDetail";
 import { Favorites } from "./views/Favorites";
@@ -322,6 +323,17 @@ function Shell() {
                                 />
                             )}
                             {section === "stats" && <Statistics />}
+                            {section === "bottlenecks" && (
+                                <Bottlenecks
+                                    onOpenJob={(gridKey, id) =>
+                                        route.push({ section: "history", detail: { type: "history", gridKey, id } })
+                                    }
+                                    onOpenItemHistory={(item) => route.push({ section: "history", detail: null, item })}
+                                    onOpenMachine={(id) =>
+                                        route.push({ section: "machines", detail: { type: "machine", id } })
+                                    }
+                                />
+                            )}
                             {section === "machines" && (
                                 <Machines
                                     openId={machineDetail?.id ?? null}

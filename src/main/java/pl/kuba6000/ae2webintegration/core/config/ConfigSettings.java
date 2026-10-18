@@ -186,6 +186,11 @@ public final class ConfigSettings {
         @Comment("Days of daily production totals to keep per machine and item (1-3650).")
         public int productionDailyRetentionDays = 90;
 
+        @Path("state_retention_days")
+        @Comment({ "Days of hourly per-machine time in each status (running, idle, no power, ...) to keep (1-3650).",
+            "Feeds the Bottlenecks page." })
+        public int stateRetentionDays = 365;
+
         @Path("machine_forget_days")
         @Comment("Forget a machine not seen in a scan (chunk unloaded or machine removed) for this many days (1-365).")
         public int machineForgetDays = 7;
@@ -220,6 +225,7 @@ public final class ConfigSettings {
         requireRange("gregtech.power_hourly_retention_days", gregtech.powerHourlyRetentionDays, 1, 365);
         requireRange("gregtech.production_hourly_retention_days", gregtech.productionHourlyRetentionDays, 1, 30);
         requireRange("gregtech.production_daily_retention_days", gregtech.productionDailyRetentionDays, 1, 3650);
+        requireRange("gregtech.state_retention_days", gregtech.stateRetentionDays, 1, 3650);
         requireRange("gregtech.machine_forget_days", gregtech.machineForgetDays, 1, 365);
     }
 }

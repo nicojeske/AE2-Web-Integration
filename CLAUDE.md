@@ -147,6 +147,13 @@ Every history test uses Testcontainers and skips without Docker; `AE2WEB_SCALE_T
 `transitive = false`, so it must shade `org.postgresql:postgresql` explicitly (and exclude it from 1.7.10's
 shadow minimization).
 
+Bottlenecks (`/api/grids/{gridKey}/bottlenecks`, `analysis/BottleneckAnalysis`) are computed on request from the
+finished jobs' per-machine intervals (`HistoryDb.readCraftIntervals` flattens the detail JSONB in SQL): held, queued
+and busy time per pattern-provider name, plus starved time per output. Intervals a cancel closed count as "stuck",
+and outliers past `max(10x median, 3x p90, median + 10 min)` are clipped. With GregTech, every scan also adds
+time-in-status per machine to `ae2wi_gt_state_hourly` (`gt/GTStateLog`, `/api/gt/machine-states`), which labels
+outliers that overlap a power outage.
+
 Stock rules (`/api/grids/{gridKey}/stock-rules[/{itemid}]`) are shared by everyone with access to the grid and
 checked server-side by `stock/StockKeeper` from the tick (one grid per tick, every `stock.check_interval_seconds`):
 one `StatusMessage` per dip below `alertBelow`, and auto-crafts (at most one plan computing per grid, submitted
@@ -198,7 +205,7 @@ must preserve the `_REPLACE_ME_USERNAME` / `_REPLACE_ME_IS_ADMIN` / `_REPLACE_ME
 
 Layout: `src/api/` (typed endpoint client, `{status,data}` envelope, error copy, formatting helpers), `src/state/` (Preact context stores — network selection, items, prefs, toasts),
 `src/shell/` (topbar, rail, phone nav, command palette, the hash router), `src/ui/` (design-system primitives), `src/views/`
-(per-section panes: Browser, Jobs, History, Favorites, Statistics, Settings, and the GregTech hub's Machines,
+(per-section panes: Browser, Jobs, History, Favorites, Statistics, Bottlenecks, Settings, and the GregTech hub's Machines,
 Power and Production — shown only when `hasGT`, see `docs/gt-hub/`), `src/login/` (the separate login page
 entry), `src/dev/mock-server.ts` + `src/dev/fixtures.ts` + `src/dev/gtFixtures.ts` (Vite dev-only middleware
 serving realistic fixture data so `npm run dev` needs no real server).

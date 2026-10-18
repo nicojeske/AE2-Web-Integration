@@ -21,7 +21,9 @@ public enum HistoryTable {
     PRODUCTION_DAILY("production_daily", Kind.COUNTER, TimeUnit.DAYS.toMillis(30), 0L),
     /** GregTech recipe inputs, summed per hour. */
     CONSUMPTION_HOURLY("consumption_hourly", Kind.COUNTER, TimeUnit.DAYS.toMillis(7), 0L),
-    CONSUMPTION_DAILY("consumption_daily", Kind.COUNTER, TimeUnit.DAYS.toMillis(30), 0L);
+    CONSUMPTION_DAILY("consumption_daily", Kind.COUNTER, TimeUnit.DAYS.toMillis(30), 0L),
+    /** GregTech machine time per status (scope = machine id, key = status), milliseconds summed per hour. */
+    GT_STATE_HOURLY("gt_state_hourly", Kind.COUNTER, TimeUnit.DAYS.toMillis(7), 0L);
 
     public enum Kind {
         /**

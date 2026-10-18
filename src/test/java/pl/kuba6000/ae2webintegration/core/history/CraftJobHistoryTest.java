@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -67,6 +68,48 @@ class CraftJobHistoryTest {
         assertFalse(
             iron.stream()
                 .anyMatch(j -> !j.outputItemid.equals("iron")));
+    }
+
+    @Test
+    void machineIntervalsAreFlattenedPerJobAndRangeFiltered() {
+        HistoryDb db = HistoryDbTestSupport.start(Flavor.POSTGRES);
+        db.putCraftJob(
+            "g",
+            "iron",
+            "Iron",
+            64,
+            null,
+            NOW - 100_000,
+            NOW - 10_000,
+            false,
+            null,
+            "{\"interfaceShare\":[{\"name\":\"Furnace\",\"timings\":[{\"started\":" + (NOW - 90_000)
+                + ",\"ended\":"
+                + (NOW - 80_000)
+                + "},{\"started\":"
+                + (NOW - 50_000)
+                + ",\"ended\":"
+                + (NOW - 20_000)
+                + "}]},{\"name\":\"Press\",\"timings\":[]}]}");
+        job(db, "g", "gold", NOW, true);
+        job(db, "g", "old", NOW - 10 * DAY, false);
+        job(db, "other", "iron", NOW, false);
+        HistoryDbTestSupport.flush();
+
+        List<HistoryDb.CraftInterval> rows = new ArrayList<>();
+        assertTrue(db.readCraftIntervals("g", NOW - DAY, NOW, rows::add));
+        assertEquals(3, rows.size());
+        HistoryDb.CraftInterval first = rows.get(0);
+        assertEquals("Furnace", first.machine);
+        assertEquals(NOW - 90_000, first.started);
+        assertEquals(NOW - 80_000, first.ended);
+        assertEquals(NOW - 100_000, first.jobStarted);
+        assertEquals("Furnace", rows.get(1).machine);
+        assertEquals(first.jobId, rows.get(1).jobId);
+        HistoryDb.CraftInterval gold = rows.get(2);
+        assertEquals("gold", gold.outputItemid);
+        assertTrue(gold.cancelled);
+        assertNull(gold.machine);
     }
 
     @Test

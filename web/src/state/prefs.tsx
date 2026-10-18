@@ -3,7 +3,7 @@ import { createContext } from "preact";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { getPrefs, setPrefs as apiSetPrefs } from "../api/client";
-import type { GridKey, GTMachineStatus, StatsRange } from "../api/types";
+import type { BottleneckRange, GridKey, GTMachineStatus, StatsRange } from "../api/types";
 import type { ChartScale } from "../views/statsModel";
 
 const FAVORITES_KEY = "ae2.favorites";
@@ -147,6 +147,8 @@ export interface Settings {
     /** Statistics' range/compare-range reset every visit otherwise, unlike every other browser
      *  preference - persisted here so a Settings default at least survives a reload. */
     statsRange: StatsRange;
+    /** The Bottlenecks page's range, persisted like `statsRange`. */
+    bottleneckRange: BottleneckRange;
     /** Statistics chart card plot height (`statsModel.ts`'s `CHART_SIZE_PX`). */
     statsChartSize: "s" | "m" | "l";
     /** Linear or log y-axis for every Statistics chart - log treats non-positive samples as gaps. */
@@ -162,6 +164,7 @@ export const DEFAULT_SETTINGS: Settings = {
     tileMin: 220,
     autoRefreshItems: "off",
     statsRange: "7d",
+    bottleneckRange: "7d",
     statsChartSize: "m",
     chartScale: "linear",
     chartSmoothing: false,

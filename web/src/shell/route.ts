@@ -46,6 +46,7 @@ const SECTIONS: readonly Section[] = [
     "history",
     "favorites",
     "stats",
+    "bottlenecks",
     "machines",
     "power",
     "production",

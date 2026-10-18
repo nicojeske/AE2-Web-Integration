@@ -67,6 +67,21 @@ export function ChartIcon({ size = 18, style, className }: IconProps) {
     );
 }
 
+/** A funnel: work narrowing to one machine. */
+export function FunnelIcon({ size = 18, style, className }: IconProps) {
+    return (
+        <svg {...base(size)} style={style} className={className}>
+            <path
+                d="M4 5h16l-6 7.5V19l-4-2v-4.5z"
+                stroke="currentColor"
+                stroke-width="1.8"
+                fill="none"
+                stroke-linejoin="round"
+            />
+        </svg>
+    );
+}
+
 export function MenuIcon({ size = 18, style, className }: IconProps) {
     return (
         <svg {...base(size)} style={style} className={className}>

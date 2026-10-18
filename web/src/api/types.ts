@@ -470,3 +470,77 @@ export interface GTProductionHistory {
 
 /** The `/api/gt/*` `range` param. Like `StatsRange`, `"custom"` takes its span from a separate `minutes`. */
 export type GTRange = "15m" | "1h" | "6h" | "24h" | "7d" | "30d" | "90d" | "all" | "custom";
+
+/** The bottlenecks endpoint's `range` param; `"custom"` takes its span from `minutes`, like `StatsRange`. */
+export type BottleneckRange = "24h" | "7d" | "30d" | "90d" | "1y" | "all" | "custom";
+
+/** A job interval the bottleneck analysis left out of its time metrics (`stuck`) or clipped. */
+export interface BottleneckIncident {
+    jobId: number;
+    itemid: string;
+    name: string;
+    started: number;
+    durationMillis: number;
+    kind: "stuck" | "anomaly" | "power";
+}
+
+/** Every pattern provider sharing one name, as crafting tracking records them. Durations in ms. */
+export interface BottleneckMachine {
+    name: string;
+    jobs: number;
+    intervals: number;
+    busyMillis: number;
+    /** Two or more jobs had work out at it at once. */
+    queuedMillis: number;
+    /** Job time spent waiting on this machine alone, summed over jobs. */
+    heldMillis: number;
+    utilization: number;
+    p50Millis: number;
+    p90Millis: number;
+    capMillis: number | null;
+    anomalies: number;
+    powerAffected: number;
+    stuckAtCancel: number;
+    trendBusyMillis: number[];
+    trendQueuedMillis: number[];
+    outputs: { itemid: string; name: string; jobs: number }[];
+    incidents: BottleneckIncident[];
+}
+
+export interface BottleneckOutput {
+    itemid: string;
+    name: string;
+    jobs: number;
+    cancelled: number;
+    p50Millis: number;
+    p90Millis: number;
+    completedMillis: number;
+    /** Share of completed job time with nothing out at any machine. */
+    starvedShare: number;
+    topBlocker: string | null;
+    topBlockerMillis: number;
+}
+
+export interface Bottlenecks {
+    from: number;
+    to: number;
+    trendFrom: number;
+    bucketMillis: number;
+    jobs: number;
+    completed: number;
+    cancelled: number;
+    powerData: boolean;
+    machines: BottleneckMachine[];
+    outputs: BottleneckOutput[];
+}
+
+/** One GregTech machine's observed time per status (lower-case `GTMachineStatus`), from `/api/gt/machine-states`. */
+export interface GTMachineStates {
+    id: string;
+    name: string;
+    ownerName: string | null;
+    voltageTier: number;
+    observedMillis: number;
+    runningShare: number;
+    states: Record<string, number>;
+}

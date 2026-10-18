@@ -27,6 +27,12 @@ import {
     toJobData,
 } from "./fixtures.ts";
 import {
+    MOCK_CRAFT_RETENTION_DAYS,
+    mockBottlenecks,
+    mockGTMachineStates,
+    parseBottleneckRange,
+} from "./bottleneckFixtures.ts";
+import {
     findMockMachine,
     hasMockPowerSource,
     MOCK_POWER_MAX_RANGE,
@@ -201,7 +207,14 @@ function parseFlow(value: string | null): GTFlow | null {
     return value === "consumed" ? "consumed" : null;
 }
 
-function handleGT(path: string[], params: URLSearchParams, mode: GTMode, res: ServerResponse, next: () => void): void {
+function handleGT(
+    path: string[],
+    params: URLSearchParams,
+    mode: GTMode,
+    referer: string | undefined,
+    res: ServerResponse,
+    next: () => void,
+): void {
     if (mode !== "1" || params.get("fail") === "NOT_AVAILABLE") return respond(res, "NOT_AVAILABLE", null);
     const now = Date.now();
     const range = (fallback: GTRange, max: number) =>
@@ -219,6 +232,12 @@ function handleGT(path: string[], params: URLSearchParams, mode: GTMode, res: Se
             production: mockGTProduction(span, "item", "produced", id, now),
             consumption: mockGTProduction(span, "item", "consumed", id, now),
         });
+    }
+    if (section === "machine-states" && id === undefined) {
+        if (!historyEnabled(referer)) return respond(res, "HISTORY_DISABLED", null);
+        const span = range("7d", MOCK_CRAFT_RETENTION_DAYS * 86_400_000);
+        if (span === null) return respond(res, "BAD_PARAM", null);
+        return ok(res, mockGTMachineStates(span, now));
     }
     if (section === "power" && id === undefined) return ok(res, { sources: mockGTPower(now) });
     if (section === "power" && id !== undefined && sub === "history") {
@@ -259,7 +278,9 @@ async function handleApi(
     for (const g of mockGrids) settleCompletedJobs(g);
     const route = `${method} ${path.map((p, i) => (path[0] === "grids" && i === 1 ? "{grid}" : p)).join("/")}`;
 
-    if (path[0] === "gt") return handleGT(path.slice(1), params, gtMode(req.headers.referer), res, next);
+    if (path[0] === "gt") {
+        return handleGT(path.slice(1), params, gtMode(req.headers.referer), req.headers.referer, res, next);
+    }
     if (route === "GET grids") return ok(res, toGridSummaries());
     if (route === "POST auth/logout") return ok(res, null);
     if (route === "GET prefs") return ok(res, { blob: mockPrefsBlob });
@@ -476,6 +497,13 @@ async function handleApi(
                 if (typeof body.isTracked === "boolean") grid.isTrackingEnabled = body.isTracked;
             }
             return ok(res, { isTracked: grid.isTrackingEnabled });
+        }
+        case "GET bottlenecks": {
+            // GetBottlenecks.java: range presets or custom minutes, `previous` for the range before.
+            if (!historyEnabled(req.headers.referer)) return respond(res, "HISTORY_DISABLED", null);
+            const span = parseBottleneckRange(params.get("range"), params.get("minutes"));
+            if (span === null) return respond(res, "BAD_PARAM", null);
+            return ok(res, mockBottlenecks(grid.history, span, params.get("previous") === "true", Date.now()));
         }
         case "GET item-history": {
             if (!historyEnabled(req.headers.referer)) return respond(res, "HISTORY_DISABLED", null);

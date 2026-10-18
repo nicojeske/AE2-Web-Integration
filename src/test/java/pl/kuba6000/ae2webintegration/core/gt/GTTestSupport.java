@@ -62,6 +62,7 @@ public final class GTTestSupport {
         Config.INSTANCE.gregtech.powerHourlyRetentionDays = 30;
         Config.INSTANCE.gregtech.productionHourlyRetentionDays = 7;
         Config.INSTANCE.gregtech.productionDailyRetentionDays = 90;
+        Config.INSTANCE.gregtech.stateRetentionDays = 365;
         Config.INSTANCE.gregtech.machineForgetDays = 7;
     }
 

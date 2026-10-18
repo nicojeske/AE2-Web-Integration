@@ -1,4 +1,5 @@
-export type Section = "browser" | "jobs" | "history" | "favorites" | "stats" | "machines" | "power" | "production";
+export type Section =
+    "browser" | "jobs" | "history" | "favorites" | "stats" | "bottlenecks" | "machines" | "power" | "production";
 
 export const SECTION_TITLES: Record<Section, string> = {
     browser: "Item Browser",
@@ -6,6 +7,7 @@ export const SECTION_TITLES: Record<Section, string> = {
     history: "History",
     favorites: "Favorites",
     stats: "Statistics",
+    bottlenecks: "Bottlenecks",
     machines: "Machines",
     power: "Power",
     production: "Production",

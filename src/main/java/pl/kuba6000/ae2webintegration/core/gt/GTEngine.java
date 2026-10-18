@@ -87,6 +87,7 @@ public final class GTEngine {
             nextMaintenanceNanos = nowNanos + MAINTENANCE_INTERVAL_NANOS;
             GTPowerHistoryStore.prune(nowMillis);
             GTProductionLog.prune(nowMillis);
+            GTStateLog.prune(nowMillis);
             GTMachineRegistry.flushIfDirty();
             GTProductionLog.flushIfDirty();
         }
@@ -113,6 +114,7 @@ public final class GTEngine {
 
         GTVisibility.mergeTeams(result.teams);
         GTMachineRegistry.apply(result.machines, nowMillis);
+        GTStateLog.record(result.machines, nowMillis);
         GTPowerHistoryStore.updateLatest(result.powerSources, nowMillis);
         if (!powerSampleScheduled || nowNanos - nextPowerSampleNanos >= 0) {
             powerSampleScheduled = true;
@@ -151,6 +153,7 @@ public final class GTEngine {
         nextMaintenanceNanos = 0L;
         nextSlowScanLogNanos = 0L;
         GTPassiveDetector.clear();
+        GTStateLog.clear();
     }
 
     /** Test hook: forget the provider and every stored GregTech datum in memory. */
