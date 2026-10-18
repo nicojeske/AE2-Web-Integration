@@ -26,6 +26,7 @@ import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IMachineSet;
 import appeng.api.networking.crafting.ICraftingGrid;
+import appeng.api.networking.energy.IEnergyGrid;
 import appeng.api.networking.pathing.IPathingGrid;
 import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.ISecurityGrid;
@@ -34,6 +35,7 @@ import appeng.api.networking.security.PlayerSource;
 import appeng.api.networking.storage.IStorageGrid;
 import appeng.me.Grid;
 import appeng.me.GridNode;
+import appeng.me.cache.GridStorageCache;
 import appeng.parts.reporting.AbstractPartTerminal;
 import appeng.util.Platform;
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -47,6 +49,7 @@ import pl.kuba6000.ae2webintegration.core.AE2Controller;
 import pl.kuba6000.ae2webintegration.core.api.DimensionalCoords;
 import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
 import pl.kuba6000.ae2webintegration.core.grid.GridAccessSource;
+import pl.kuba6000.ae2webintegration.core.interfaces.GridStats;
 import pl.kuba6000.ae2webintegration.core.interfaces.IAEGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAECraftingGrid;
 import pl.kuba6000.ae2webintegration.core.interfaces.service.IAEPathingGrid;
@@ -195,6 +198,29 @@ public abstract class AEGridMixin implements IAEGrid, IGridPermissions, IGridPla
     @Override
     public IAEStorageGrid web$getStorageGrid() {
         return ((Grid) (Object) this).getCache(IStorageGrid.class);
+    }
+
+    /** AE2's own network status totals: GridStorageCache refreshes them on its tick, so reading costs nothing. */
+    @Override
+    public @Nullable GridStats web$getStats() {
+        Grid grid = (Grid) (Object) this;
+        IStorageGrid storage = grid.getCache(IStorageGrid.class);
+        IEnergyGrid energy = grid.getCache(IEnergyGrid.class);
+        if (!(storage instanceof GridStorageCache) || energy == null) return null;
+        GridStorageCache cells = (GridStorageCache) storage;
+        return new GridStats(
+            (long) cells.getItemBytesUsed(),
+            (long) cells.getItemBytesTotal(),
+            cells.getItemTypesUsed(),
+            cells.getItemTypesTotal(),
+            (long) cells.getFluidBytesUsed(),
+            (long) cells.getFluidBytesTotal(),
+            cells.getFluidTypesUsed(),
+            cells.getFluidTypesTotal(),
+            energy.getAvgPowerUsage(),
+            energy.getAvgPowerInjection(),
+            energy.getStoredPower(),
+            energy.getMaxStoredPower());
     }
 
     @Unique
