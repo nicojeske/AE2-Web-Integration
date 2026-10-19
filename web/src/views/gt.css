@@ -809,6 +809,31 @@ th.gt-table__num {
     align-self: flex-end;
 }
 
+/* EU P2P tunnels */
+.tunnel-table {
+    --cols: minmax(0, 1fr) 50px 200px 190px 80px 80px 80px;
+}
+.tunnel-table .dtable__head {
+    gap: 14px;
+    padding: 0 20px;
+}
+.tunnel-row__badge {
+    margin-left: 8px;
+}
+.tunnel-row__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 14px;
+}
+.tunnel-capacity {
+    font-size: 12px;
+}
+.tunnel-history__maxed {
+    --chart-line: var(--red);
+}
+
 /* Production */
 .production__search {
     margin-left: auto;
@@ -926,7 +951,14 @@ th.gt-table__num {
         --cols: minmax(0, 1fr) 80px 150px 150px 170px 110px;
     }
     .power-table .dtable__head > :nth-child(6),
-    .power-row > :nth-child(6) {
+    .power-table .power-row > :nth-child(6) {
+        display: none;
+    }
+    .tunnel-table {
+        --cols: minmax(0, 1fr) 40px 150px 170px 70px 70px;
+    }
+    .tunnel-table .dtable__head > :nth-child(5),
+    .tunnel-table .power-row > :nth-child(5) {
         display: none;
     }
     .prod-table {
@@ -978,11 +1010,24 @@ th.gt-table__num {
         --cols: minmax(0, 1fr) 110px;
     }
     .power-table .dtable__head,
-    .power-row > :nth-child(2),
-    .power-row > :nth-child(3),
-    .power-row > :nth-child(4),
-    .power-row > :nth-child(6) {
+    .power-table .power-row > :nth-child(2),
+    .power-table .power-row > :nth-child(3),
+    .power-table .power-row > :nth-child(4),
+    .power-table .power-row > :nth-child(6) {
         display: none;
+    }
+    .tunnel-table {
+        --cols: minmax(0, 1fr) 120px 64px;
+    }
+    .tunnel-table .dtable__head,
+    .tunnel-table .power-row > :nth-child(2),
+    .tunnel-table .power-row > :nth-child(3),
+    .tunnel-table .power-row > :nth-child(5),
+    .tunnel-table .power-row > :nth-child(6) {
+        display: none;
+    }
+    .tunnel-table .dtable__head {
+        padding: 0 12px;
     }
     .power-row {
         padding: 0 12px;

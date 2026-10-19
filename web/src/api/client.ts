@@ -16,6 +16,8 @@ import type {
     GTMachineStates,
     GTPower,
     GTPowerHistory,
+    GTTunnelHistory,
+    GTTunnels,
     GTFlow,
     GTProduction,
     GTProductionHistory,
@@ -270,6 +272,19 @@ export function getGTPowerHistory(
     minutes?: number,
 ): Promise<GTPowerHistory> {
     return apiGet(`gt/power/${seg(source)}/history${query({ points, ...gtRange(range, minutes) })}`);
+}
+
+export function getGTTunnels(): Promise<GTTunnels> {
+    return apiGet("gt/tunnels");
+}
+
+export function getGTTunnelHistory(
+    tunnel: string,
+    range: GTRange,
+    points: number,
+    minutes?: number,
+): Promise<GTTunnelHistory> {
+    return apiGet(`gt/tunnels/${seg(tunnel)}/history${query({ points, ...gtRange(range, minutes) })}`);
 }
 
 export function getGTProduction(

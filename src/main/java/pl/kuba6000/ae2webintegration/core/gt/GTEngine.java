@@ -66,6 +66,7 @@ public final class GTEngine {
     public static void loadData() {
         GTMachineRegistry.loadData();
         GTPowerHistoryStore.clear();
+        GTTunnelStore.clear();
         GTProductionLog.loadData();
     }
 
@@ -119,11 +120,13 @@ public final class GTEngine {
         GTStateLog.record(result.machines, nowMillis);
         GTPowerHistoryStore.updateLatest(result.powerSources, nowMillis);
         GTEnergyLog.record(result.machines, nowMillis, ServerLoad.tickCount());
+        GTTunnelStore.update(result.energyTunnels, nowMillis, ServerLoad.tickCount());
         if (!powerSampleScheduled || nowNanos - nextPowerSampleNanos >= 0) {
             powerSampleScheduled = true;
             nextPowerSampleNanos = nowNanos
                 + TimeUnit.SECONDS.toNanos(Config.INSTANCE.gregtech.powerSampleIntervalSeconds);
             GTPowerHistoryStore.recordSample(result.powerSources, nowMillis);
+            GTTunnelStore.recordSample(nowMillis);
         }
 
         lastScanMillis = nowMillis;
@@ -169,6 +172,7 @@ public final class GTEngine {
         GTVisibility.clear();
         GTMachineRegistry.clear();
         GTPowerHistoryStore.clear();
+        GTTunnelStore.clear();
         GTProductionLog.clear();
     }
 }

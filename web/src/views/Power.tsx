@@ -1,14 +1,15 @@
 // GregTech Power section (docs/gt-hub/phase-2-frontend.md §4.2): the main LSC (pinned in synced prefs,
 // else the largest) as a hero panel with its history always shown, then a table of every other Lapotronic
 // Supercapacitor and team wireless EU network, with fill, net rate and a time-to-empty/full countdown,
-// each expandable into its stored-EU history. Rates read as amps at a tier plus raw EU/t.
+// each expandable into its stored-EU history. Rates read as amps at a tier plus raw EU/t. Below them, the EU
+// P2P tunnels: what each line carries against the capacity the player says it's built for.
 import { useState } from "preact/hooks";
 
-import { getGTEnergy, getGTPower, getGTPowerHistory } from "../api/client";
-import { formatDuration, formatEU, formatEUt, formatEUtTier, gtTierName } from "../api/format";
-import type { GTEnergyMachine, GTPowerSource, GTRange } from "../api/types";
+import { getGTEnergy, getGTPower, getGTPowerHistory, getGTTunnelHistory, getGTTunnels } from "../api/client";
+import { formatDuration, formatEU, formatEUt, formatEUtTier, GT_TIERS, gtTierName } from "../api/format";
+import type { GTEnergyMachine, GTPowerSource, GTRange, GTTunnel } from "../api/types";
 import { GT_FAST_POLL_MS, useGT, useGTPoll } from "../state/gt";
-import { usePrefs } from "../state/prefs";
+import { type TunnelCapacity, usePrefs } from "../state/prefs";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Chart } from "../ui/Chart";
@@ -40,6 +41,7 @@ export function Power() {
                                     <div className="placeholder-panel">
                                         No Lapotronic Supercapacitors or wireless EU networks found yet.
                                     </div>
+                                    <EnergyTunnels />
                                     <EnergyByMachine />
                                 </div>
                             </div>
@@ -114,6 +116,7 @@ export function Power() {
                                         </div>
                                     </>
                                 )}
+                                <EnergyTunnels />
                                 <EnergyByMachine />
                             </div>
                         </div>
@@ -121,6 +124,294 @@ export function Power() {
                 );
             }}
         </GTPollState>
+    );
+}
+
+/** Tier `t` runs at 8·4^t EU/t per amp. */
+function tierVoltage(tier: number): number {
+    return 8 * 4 ** tier;
+}
+
+/** The lowest tier whose voltage carries `voltage`; LV for an unknown (0) voltage. */
+function tierOf(voltage: number): number {
+    let tier = 0;
+    while (tier < GT_TIERS.length - 1 && tierVoltage(tier) < voltage) tier++;
+    return voltage > 0 ? tier : 1;
+}
+
+function loadColor(load: number): string {
+    return load >= 0.95 ? "var(--red)" : load >= 0.8 ? "var(--amber)" : "var(--cyan)";
+}
+
+function amps(value: number | null): string {
+    return value === null ? "—" : `${value.toFixed(value < 10 ? 2 : 1)} A`;
+}
+
+function tunnelName(t: GTTunnel): string {
+    return t.name ?? `Tunnel at ${t.x}, ${t.y}, ${t.z}`;
+}
+
+/**
+ * EU P2P tunnels, from the input side. Load is the 5-minute average against the capacity the player sets per
+ * tunnel (synced prefs), and "maxed" is the share of ticks the outputs took every amp the line offered - demand has
+ * caught up with what the line delivers.
+ */
+function EnergyTunnels() {
+    const { nonce } = useGT();
+    const { tunnelCapacity } = usePrefs();
+    const tunnels = useGTPoll(getGTTunnels, GT_FAST_POLL_MS, "tunnels", nonce);
+    const [expanded, setExpanded] = useState<string | null>(null);
+    const list = tunnels.data?.tunnels ?? [];
+    if (list.length === 0) return null;
+    return (
+        <section className="energy">
+            <div className="energy__header">
+                <span className="power__section-label section-label">EU P2P tunnels</span>
+            </div>
+            <div className="dtable tunnel-table">
+                <div className="dtable__head">
+                    <span>Tunnel</span>
+                    <span>Tier</span>
+                    <span>Load</span>
+                    <span className="right">Average</span>
+                    <span className="right">Peak</span>
+                    <span className="right">Maxed</span>
+                    <span />
+                </div>
+                {list.map((t) => (
+                    <TunnelRow
+                        key={t.id}
+                        tunnel={t}
+                        capacity={tunnelCapacity[t.id] ?? null}
+                        expanded={expanded === t.id}
+                        onToggle={() => setExpanded((e) => (e === t.id ? null : t.id))}
+                    />
+                ))}
+            </div>
+        </section>
+    );
+}
+
+function TunnelRow({
+    tunnel: t,
+    capacity,
+    expanded,
+    onToggle,
+}: {
+    tunnel: GTTunnel;
+    capacity: TunnelCapacity | null;
+    expanded: boolean;
+    onToggle: () => void;
+}) {
+    const [range, setRange] = useState<GTRange>("24h");
+    const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
+    const capacityEUt = capacity ? capacity.amps * tierVoltage(capacity.tier) : null;
+    const load = capacityEUt !== null && t.euPerTick !== null ? t.euPerTick / capacityEUt : null;
+    const maxed = t.maxedShare !== null && t.maxedShare > 0;
+    const meta = [
+        t.ownerName ?? "Admin only",
+        `${t.outputs} output${t.outputs === 1 ? "" : "s"}`,
+        `${t.x}, ${t.y}, ${t.z} (${t.dimName ?? `dim ${t.dim}`})`,
+    ].join(" · ");
+
+    return (
+        <>
+            <div className={cx("dtable__row power-row", !t.loaded && "power--unloaded", expanded && "power-row--open")}>
+                <div className="cell-stack">
+                    <span className="cell-text">
+                        {tunnelName(t)}
+                        {maxed && (
+                            <Badge variant="red" size="sm" className="tunnel-row__badge">
+                                Line maxed
+                            </Badge>
+                        )}
+                    </span>
+                    <span className="cell-sub">
+                        {meta}
+                        {!t.loaded ? " · not loaded" : ""}
+                    </span>
+                </div>
+                <span className="cell-text dim">{t.voltage > 0 ? gtTierName(tierOf(t.voltage)) : "—"}</span>
+                <div className="power-row__fill">
+                    {load !== null ? (
+                        <>
+                            <div className="bar">
+                                <div
+                                    className="bar__fill"
+                                    style={{ width: `${Math.min(1, load) * 100}%`, background: loadColor(load) }}
+                                />
+                            </div>
+                            <span style={{ color: loadColor(load) }}>{Math.round(load * 100)}%</span>
+                        </>
+                    ) : (
+                        <span className="dim">{capacity ? "pending" : "no capacity set"}</span>
+                    )}
+                </div>
+                <span className="cell-num" title={t.euPerTick === null ? undefined : formatEUt(t.euPerTick)}>
+                    {t.euPerTick === null ? "pending" : `${amps(t.amps)} · ${formatEUt(t.euPerTick)}`}
+                </span>
+                <span className="cell-num">{amps(t.peakAmps)}</span>
+                <span
+                    className={cx("cell-num", maxed && "power__net--negative")}
+                    title="Share of ticks the outputs took every amp the line offered"
+                >
+                    {t.maxedShare === null ? "—" : `${Math.round(t.maxedShare * 100)}%`}
+                </span>
+                <span className="power-row__actions">
+                    <Button variant="text" onClick={onToggle} aria-expanded={expanded}>
+                        {expanded ? "Hide" : "History"}
+                    </Button>
+                </span>
+            </div>
+            {expanded && (
+                <div className="power-row__history">
+                    <div className="tunnel-row__controls">
+                        <CapacityEditor tunnel={t} capacity={capacity} />
+                        <RangeControls
+                            range={range}
+                            onRange={setRange}
+                            customMinutes={customMinutes}
+                            onCustomMinutes={setCustomMinutes}
+                        />
+                    </div>
+                    <TunnelHistory
+                        tunnel={t}
+                        capacity={capacity}
+                        capacityEUt={capacityEUt}
+                        range={range}
+                        customMinutes={customMinutes}
+                    />
+                </div>
+            )}
+        </>
+    );
+}
+
+/** "64 A at IV": what the line feeding this tunnel is built for. Blank amps clears it. */
+function CapacityEditor({ tunnel, capacity }: { tunnel: GTTunnel; capacity: TunnelCapacity | null }) {
+    const { setTunnelCapacity } = usePrefs();
+    const [draft, setDraft] = useState<string | null>(null);
+    const tier = capacity?.tier ?? tierOf(tunnel.voltage);
+    const commit = (value: string, nextTier: number) => {
+        const parsed = Number(value);
+        setTunnelCapacity(tunnel.id, value.trim() !== "" && parsed > 0 ? { amps: parsed, tier: nextTier } : null);
+    };
+    return (
+        <label className="stats__custom-range tunnel-capacity">
+            <span className="dim">Line capacity</span>
+            <input
+                type="number"
+                min={1}
+                placeholder="amps"
+                className="stats__custom-range-amount"
+                value={draft ?? capacity?.amps ?? ""}
+                onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+                onBlur={() => {
+                    if (draft !== null) commit(draft, tier);
+                    setDraft(null);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+            />
+            <span className="dim">A at</span>
+            <select
+                className="stats__custom-range-unit"
+                value={tier}
+                onChange={(e) => {
+                    const nextTier = Number((e.target as HTMLSelectElement).value);
+                    if (capacity) setTunnelCapacity(tunnel.id, { amps: capacity.amps, tier: nextTier });
+                }}
+                disabled={!capacity}
+            >
+                {GT_TIERS.map((name, i) => (
+                    <option key={name} value={i}>
+                        {name}
+                    </option>
+                ))}
+            </select>
+        </label>
+    );
+}
+
+function TunnelHistory({
+    tunnel,
+    capacity,
+    capacityEUt,
+    range,
+    customMinutes,
+}: {
+    tunnel: GTTunnel;
+    capacity: TunnelCapacity | null;
+    capacityEUt: number | null;
+    range: GTRange;
+    customMinutes: number;
+}) {
+    const { nonce } = useGT();
+    const { settings } = usePrefs();
+    const minutes = range === "custom" ? customMinutes : undefined;
+    const history = useGTPoll(
+        () => getGTTunnelHistory(tunnel.id, range, HISTORY_POINTS, minutes),
+        GT_FAST_POLL_MS * 3,
+        `${tunnel.id}|${range}|${minutes ?? ""}`,
+        nonce,
+    );
+    const data = history.data;
+    const average = data ? toValues(data.euPerTick) : [];
+    const peak = data ? toValues(data.peakEuPerTick) : [];
+    const maxedTime = data ? toValues(data.maxedPermille).map((v) => (v === null ? null : v / 10)) : [];
+    const timestamps = data ? pointTimestamps(data.from, data.stepMillis, average.length) : [];
+    const spanMillis = data ? data.to - data.from : undefined;
+    const name = tunnelName(tunnel);
+    const chart = (
+        values: (number | null)[],
+        label: string,
+        height: number,
+        threshold: number | null,
+        format: (v: number) => string = (v) => formatEUt(v).replace(" EU/t", ""),
+    ) => (
+        <Chart
+            values={values}
+            timestamps={timestamps}
+            range={range}
+            spanMillis={spanMillis}
+            width={HISTORY_W_WIDE}
+            height={height}
+            showAxes
+            formatValue={format}
+            numberFormat={settings.numberFormat}
+            zeroBased
+            threshold={threshold}
+            yMax={threshold}
+            ariaLabel={`${name}, ${label}`}
+        />
+    );
+
+    return (
+        <div className="power-history power-history--wide">
+            {history.error && <div className="power-history__note">Couldn't load history ({history.error}).</div>}
+            {data && (
+                <>
+                    <span className="section-label">
+                        Average · {RANGE_LABEL[range] ?? range}
+                        {capacity &&
+                            capacityEUt !== null &&
+                            ` · line at ${capacity.amps} A ${gtTierName(capacity.tier)} (${formatEUt(capacityEUt)})`}
+                    </span>
+                    {chart(average, "average EU per tick", 160, capacityEUt)}
+                    <span className="section-label">Busiest scan</span>
+                    {chart(peak, "peak EU per tick", 100, capacityEUt)}
+                    {maxedTime.some((v) => v !== null && v > 0) && (
+                        <>
+                            <span className="section-label">Time maxed (outputs took every amp offered)</span>
+                            <div className="power-history__net tunnel-history__maxed">
+                                {chart(maxedTime, "percent of time maxed", 70, null, (v) => `${Math.round(v)}%`)}
+                            </div>
+                        </>
+                    )}
+                </>
+            )}
+        </div>
     );
 }
 

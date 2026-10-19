@@ -7,6 +7,8 @@ import type {
     GTMachineStatus,
     GTPowerHistory,
     GTPowerSource,
+    GTTunnel,
+    GTTunnelHistory,
     GTFlow,
     GTProduction,
     GTProductionEntry,
@@ -592,6 +594,101 @@ export function mockGTPowerHistory(source: string, span: number, points: number,
         avgOut.push(p.avgOut === null ? HISTORY_NO_SAMPLE : Math.round(p.avgOut * (2 - jitter)));
     }
     return { source, from, to, stepMillis: step, resolution: fine ? "fine" : "hourly", stored, avgIn, avgOut };
+}
+
+// ---- EU P2P tunnels ----
+
+interface MockTunnel {
+    id: string;
+    name: string | null;
+    voltage: number;
+    /** Average amps; the load swings ±15% around it over the day. */
+    amps: number;
+    /** 0..1 */
+    maxedShare: number;
+    outputs: number;
+    pos: [number, number, number, number];
+}
+
+const MOCK_TUNNELS: MockTunnel[] = [
+    {
+        id: "p2p:0:96:64:-280:north",
+        name: "Main IV line",
+        voltage: 8192,
+        amps: 54,
+        maxedShare: 0,
+        outputs: 32,
+        pos: [0, 96, 64, -280],
+    },
+    { id: "p2p:0:40:70:12:up", name: null, voltage: 2048, amps: 2, maxedShare: 0.35, outputs: 1, pos: [0, 40, 70, 12] },
+];
+
+function tunnelAmpsAt(t: MockTunnel, time: number): number {
+    return t.amps * (1 + 0.15 * Math.sin((2 * Math.PI * (time - serverStart)) / DAY + t.pos[1]));
+}
+
+export function mockGTTunnels(now: number): GTTunnel[] {
+    const time = scanTime(now);
+    return MOCK_TUNNELS.map((t) => {
+        const amps = tunnelAmpsAt(t, time);
+        return {
+            id: t.id,
+            name: t.name,
+            owner: DEV.owner,
+            ownerName: DEV.ownerName,
+            frequency: 0x1234abcd,
+            outputs: t.outputs,
+            voltage: t.voltage,
+            euPerTick: amps * t.voltage,
+            amps,
+            peakAmps: amps * 1.12,
+            maxedShare: t.maxedShare,
+            dim: t.pos[0],
+            dimName: "Overworld",
+            x: t.pos[1],
+            y: t.pos[2],
+            z: t.pos[3],
+            side: t.id.slice(t.id.lastIndexOf(":") + 1),
+            sampledAt: time,
+            loaded: true,
+        };
+    });
+}
+
+export function hasMockTunnel(id: string): boolean {
+    return MOCK_TUNNELS.some((t) => t.id === id);
+}
+
+export function mockGTTunnelHistory(tunnel: string, span: number, points: number, now: number): GTTunnelHistory {
+    const t = MOCK_TUNNELS.find((x) => x.id === tunnel)!;
+    const fine = span <= POWER_FINE_RETENTION;
+    const bucket = fine ? POWER_SAMPLE_MS : HOUR;
+    const buckets = Math.max(1, Math.ceil(span / bucket));
+    const step = bucket * Math.ceil(buckets / points);
+    const count = Math.max(1, Math.ceil(span / step));
+    const to = Math.floor(now / step) * step;
+    const from = to - (count - 1) * step;
+    const euPerTick: number[] = [];
+    const peakEuPerTick: number[] = [];
+    const maxedPermille: number[] = [];
+    for (let i = 0; i < count; i++) {
+        const time = Math.min(from + i * step + step - 1, now);
+        const jitter = 0.9 + 0.2 * noise(t.id, Math.floor(time / bucket));
+        const avg = tunnelAmpsAt(t, time) * jitter * t.voltage;
+        euPerTick.push(Math.round(avg));
+        peakEuPerTick.push(Math.round(avg * 1.12));
+        maxedPermille.push(Math.round(Math.min(1, t.maxedShare * jitter) * 1000));
+    }
+    return {
+        tunnel,
+        from,
+        to,
+        stepMillis: step,
+        resolution: fine ? "fine" : "hourly",
+        euPerTick,
+        peakEuPerTick,
+        maxedPermille,
+    };
 }
 
 // ---- production ----

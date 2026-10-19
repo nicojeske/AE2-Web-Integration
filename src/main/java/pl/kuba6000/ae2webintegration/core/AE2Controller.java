@@ -54,6 +54,8 @@ import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPower;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPowerHistory;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProduction;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProductionHistory;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTTunnelHistory;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTTunnels;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.prefs.GetPrefs;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.prefs.PutPrefs;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.statistics.GetBottlenecks;
@@ -241,6 +243,8 @@ public class AE2Controller {
                 api.register(GetGTEnergy.class);
                 api.register(GetGTPower.class);
                 api.register(GetGTPowerHistory.class);
+                api.register(GetGTTunnels.class);
+                api.register(GetGTTunnelHistory.class);
                 api.register(GetGTProduction.class);
                 api.register(GetGTProductionHistory.class);
                 api.register(GetPrefs.class);

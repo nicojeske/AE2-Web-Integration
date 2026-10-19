@@ -16,6 +16,7 @@ const MAIN_POWER_SOURCE_KEY = "ae2.mainPowerSource";
 const PASSIVE_MACHINES_KEY = "ae2.passiveMachines";
 const MACHINE_NAMES_KEY = "ae2.machineNames";
 const MACHINE_LINES_KEY = "ae2.machineLines";
+const TUNNEL_CAPACITY_KEY = "ae2.tunnelCapacity";
 const SETTINGS_KEY = "ae2.settings";
 const SCHEMA_KEY = "ae2.schema";
 
@@ -119,6 +120,12 @@ function isLabels(value: unknown): value is MachineLabels {
     return value !== null && typeof value === "object";
 }
 
+/** What an EU P2P tunnel's line is built for, by tunnel id: `amps` at GT voltage tier `tier`. */
+export interface TunnelCapacity {
+    amps: number;
+    tier: number;
+}
+
 /** A saved Statistics compare view (M8). Scoped to the grid it was saved on via `gridKey`. */
 export interface StatsView {
     id: string;
@@ -211,6 +218,7 @@ interface SyncedPrefs {
     passiveMachines: PassiveMachines;
     machineNames: MachineLabels;
     machineLines: MachineLabels;
+    tunnelCapacity: Record<string, TunnelCapacity>;
 }
 
 function serializeSyncedPrefs(p: Omit<SyncedPrefs, "schemaVersion">): string {
@@ -238,6 +246,10 @@ function parseSyncedPrefs(raw: string): SyncedPrefs | null {
                     : {},
             machineNames: isLabels(parsed.machineNames) ? parsed.machineNames : {},
             machineLines: isLabels(parsed.machineLines) ? parsed.machineLines : {},
+            tunnelCapacity:
+                parsed.tunnelCapacity !== null && typeof parsed.tunnelCapacity === "object"
+                    ? parsed.tunnelCapacity
+                    : {},
         };
     } catch {
         return null;
@@ -273,6 +285,9 @@ export interface PrefsContextValue {
     setMachineLine: (ids: string[], line: string | null) => void;
     /** Moves every machine on line `from` to `to` (merging into it when `to` already exists). */
     renameLine: (from: string, to: string) => void;
+    tunnelCapacity: Record<string, TunnelCapacity>;
+    /** Sets what a tunnel's line is built for; `null` forgets it. */
+    setTunnelCapacity: (id: string, capacity: TunnelCapacity | null) => void;
     statsViews: StatsView[];
     addStatsView: (view: Omit<StatsView, "id">) => void;
     removeStatsView: (id: string) => void;
@@ -304,6 +319,9 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
     const [passiveMachines, setPassiveMachines] = useState<PassiveMachines>(() => readJSON(PASSIVE_MACHINES_KEY, {}));
     const [machineNames, setMachineNames] = useState<MachineLabels>(() => readJSON(MACHINE_NAMES_KEY, {}));
     const [machineLines, setMachineLines] = useState<MachineLabels>(() => readJSON(MACHINE_LINES_KEY, {}));
+    const [tunnelCapacity, setTunnelCapacityState] = useState<Record<string, TunnelCapacity>>(() =>
+        readJSON(TUNNEL_CAPACITY_KEY, {}),
+    );
     // Spread over the defaults (not a bare `readJSON` fallback) so a settings blob saved before a future
     // field existed still picks up that field's default instead of `undefined`.
     const [settings, setSettingsState] = useState<Settings>(() => ({
@@ -339,6 +357,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                             passiveMachines,
                             machineNames,
                             machineLines,
+                            tunnelCapacity,
                         }),
                     );
                     return;
@@ -363,6 +382,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 writeJSON(MACHINE_NAMES_KEY, parsed.machineNames);
                 setMachineLines(parsed.machineLines);
                 writeJSON(MACHINE_LINES_KEY, parsed.machineLines);
+                setTunnelCapacityState(parsed.tunnelCapacity);
+                writeJSON(TUNNEL_CAPACITY_KEY, parsed.tunnelCapacity);
             } catch {
                 // Offline, or no /prefs on this server yet - stay on localStorage alone.
             } finally {
@@ -396,6 +417,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                     passiveMachines,
                     machineNames,
                     machineLines,
+                    tunnelCapacity,
                 }),
             ).catch(() => {});
         }, PREFS_PUSH_DEBOUNCE_MS);
@@ -410,6 +432,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         passiveMachines,
         machineNames,
         machineLines,
+        tunnelCapacity,
     ]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
@@ -501,6 +524,16 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
+    const setTunnelCapacity = useCallback((id: string, capacity: TunnelCapacity | null) => {
+        setTunnelCapacityState((current) => {
+            const next = { ...current };
+            if (capacity === null) delete next[id];
+            else next[id] = capacity;
+            writeJSON(TUNNEL_CAPACITY_KEY, next);
+            return next;
+        });
+    }, []);
+
     // `id` is a string, not a bare `Date.now()` - two saves in the same millisecond would collide.
     const addStatsView = useCallback((view: Omit<StatsView, "id">) => {
         setStatsViews((current) => {
@@ -558,6 +591,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             machineLines,
             setMachineLine,
             renameLine,
+            tunnelCapacity,
+            setTunnelCapacity,
             statsViews,
             addStatsView,
             removeStatsView,
@@ -586,6 +621,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             machineLines,
             setMachineLine,
             renameLine,
+            tunnelCapacity,
+            setTunnelCapacity,
             statsViews,
             addStatsView,
             removeStatsView,

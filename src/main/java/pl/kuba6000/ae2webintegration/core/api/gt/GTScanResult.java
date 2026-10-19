@@ -15,6 +15,9 @@ public class GTScanResult {
     /** Every power source: loaded Lapotronic Supercapacitors and the wireless EU network of each team. */
     public List<GTPowerSourceSnapshot> powerSources = new ArrayList<>();
 
+    /** The input side of every loaded EU P2P tunnel. */
+    public List<GTEnergyTunnelSnapshot> energyTunnels = new ArrayList<>();
+
     /**
      * Player UUID to team UUID (the GregTech team leader), for every owner seen in this scan and every
      * online player. Core merges it into what it already knows, so a player who logged off keeps their

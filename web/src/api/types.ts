@@ -451,6 +451,50 @@ export interface GTPowerHistory {
     avgOut: number[];
 }
 
+/** One `/api/gt/tunnels` EU P2P tunnel (its input side). Rates are 5-minute averages, null until two scans saw it. */
+export interface GTTunnel {
+    id: string;
+    /** The input part's custom name. */
+    name: string | null;
+    owner: string | null;
+    ownerName: string | null;
+    frequency: number;
+    outputs: number;
+    /** Voltage of the last packet, 0 before the first one. */
+    voltage: number;
+    euPerTick: number | null;
+    amps: number | null;
+    /** Busiest single scan in the window. */
+    peakAmps: number | null;
+    /** 0..1: share of ticks the outputs took every amp the line offered - the line was maxed out. */
+    maxedShare: number | null;
+    dim: number;
+    dimName: string | null;
+    x: number;
+    y: number;
+    z: number;
+    side: string;
+    sampledAt: number;
+    loaded: boolean;
+}
+
+export interface GTTunnels {
+    tunnels: GTTunnel[];
+}
+
+/** `/api/gt/tunnels/{tunnelId}/history` response; `HISTORY_NO_SAMPLE` (-1) for a gap. */
+export interface GTTunnelHistory {
+    tunnel: string;
+    from: number;
+    to: number;
+    stepMillis: number;
+    resolution: "fine" | "hourly";
+    euPerTick: number[];
+    peakEuPerTick: number[];
+    /** Per-mille of each bucket's ticks the line was maxed out. */
+    maxedPermille: number[];
+}
+
 /** A production row: an item or fluid (`groupBy=item`) or a machine (`groupBy=machine`). */
 export interface GTProductionEntry {
     key: string;

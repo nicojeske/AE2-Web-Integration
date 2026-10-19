@@ -45,6 +45,9 @@ import {
     mockGTPowerHistory,
     mockGTProduction,
     mockGTProductionHistory,
+    mockGTTunnelHistory,
+    mockGTTunnels,
+    hasMockTunnel,
     parseGTRange,
     parsePoints,
 } from "./gtFixtures.ts";
@@ -255,6 +258,14 @@ function handleGT(
         if (span === null || points === null) return respond(res, "BAD_PARAM", null);
         if (!hasMockPowerSource(id)) return respond(res, "NOT_FOUND", null);
         return ok(res, mockGTPowerHistory(id, span, points, now));
+    }
+    if (section === "tunnels" && id === undefined) return ok(res, { tunnels: mockGTTunnels(now) });
+    if (section === "tunnels" && id !== undefined && sub === "history") {
+        const span = range("24h", MOCK_POWER_MAX_RANGE);
+        const points = parsePoints(params.get("points"));
+        if (span === null || points === null) return respond(res, "BAD_PARAM", null);
+        if (!hasMockTunnel(id)) return respond(res, "NOT_FOUND", null);
+        return ok(res, mockGTTunnelHistory(id, span, points, now));
     }
     if (section === "production" && id === undefined) {
         const span = range("24h", MOCK_PRODUCTION_MAX_RANGE);

@@ -4,6 +4,7 @@ import java.math.BigInteger;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import pl.kuba6000.ae2webintegration.core.api.gt.GTEnergyTunnelSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
@@ -114,5 +115,23 @@ public final class GTTestSupport {
         source.owner = team;
         source.stored = stored;
         return source;
+    }
+
+    public static GTEnergyTunnelSnapshot tunnel(int x, UUID owner, String name, long eu, long packets, long maxed,
+        long voltage) {
+        GTEnergyTunnelSnapshot tunnel = new GTEnergyTunnelSnapshot();
+        tunnel.id = GTEnergyTunnelSnapshot.idOf(0, x, 64, 0, "north");
+        tunnel.x = x;
+        tunnel.y = 64;
+        tunnel.side = "north";
+        tunnel.name = name;
+        tunnel.owner = owner;
+        tunnel.frequency = 42;
+        tunnel.outputs = 1;
+        tunnel.euAccepted = eu;
+        tunnel.packetsAccepted = packets;
+        tunnel.ticksMaxed = maxed;
+        tunnel.voltage = voltage;
+        return tunnel;
     }
 }

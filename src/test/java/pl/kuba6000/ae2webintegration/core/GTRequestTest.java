@@ -31,6 +31,8 @@ import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPower;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPowerHistory;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProduction;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProductionHistory;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTTunnelHistory;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTTunnels;
 
 /**
  * The {@code /gt/*} endpoints at the request-handler level, the way {@code ItemHistoryRequestTest} drives
@@ -70,6 +72,7 @@ class GTRequestTest {
         for (String pair : query.split("&")) {
             if (pair.startsWith("id=")) path.put("machineId", pair.substring(3));
             else if (pair.startsWith("source=")) path.put("sourceId", pair.substring(7));
+            else if (pair.startsWith("tunnel=")) path.put("tunnelId", pair.substring(7));
             else if (!pair.isEmpty()) rest.append(rest.length() == 0 ? "" : "&")
                 .append(pair);
         }
@@ -107,6 +110,8 @@ class GTRequestTest {
         assertStatus("NOT_AVAILABLE", run(new GetGTMachine(), ALICE_ID, "id=0:1:64:0"));
         assertStatus("NOT_AVAILABLE", run(new GetGTPower(), ALICE_ID, ""));
         assertStatus("NOT_AVAILABLE", run(new GetGTPowerHistory(), ALICE_ID, "source=x"));
+        assertStatus("NOT_AVAILABLE", run(new GetGTTunnels(), ALICE_ID, ""));
+        assertStatus("NOT_AVAILABLE", run(new GetGTTunnelHistory(), ALICE_ID, "tunnel=x"));
         assertStatus("NOT_AVAILABLE", run(new GetGTProduction(), ALICE_ID, ""));
         assertStatus("NOT_AVAILABLE", run(new GetGTProductionHistory(), ALICE_ID, ""));
     }
@@ -266,6 +271,38 @@ class GTRequestTest {
         assertStatus("BAD_PARAM", run(new GetGTPowerHistory(), ALICE_ID, ""));
         assertStatus("BAD_PARAM", run(new GetGTPowerHistory(), ALICE_ID, "source=" + id + "&range=forever"));
         assertStatus("BAD_PARAM", run(new GetGTPowerHistory(), ALICE_ID, "source=" + id + "&points=0"));
+    }
+
+    @Test
+    void tunnelsAreFilteredByOwnerAndServeHistory() {
+        provider.next.energyTunnels.add(GTTestSupport.tunnel(1, ALICE, "Main IV line", 0, 0, 0, 8192));
+        provider.next.energyTunnels.add(GTTestSupport.tunnel(2, CAROL, null, 0, 0, 0, 0));
+        provider.next.teams.put(ALICE, ALICE);
+        provider.next.teams.put(BOB, ALICE);
+        GTTestSupport.scan(provider, System.currentTimeMillis());
+        String id = provider.next.energyTunnels.get(0).id;
+
+        JsonObject response = run(new GetGTTunnels(), BOB_ID, "");
+        assertStatus("OK", response);
+        JsonArray tunnels = response.getAsJsonObject("data")
+            .getAsJsonArray("tunnels");
+        assertEquals(1, tunnels.size(), "Carol's tunnel is not on Alice's team");
+        JsonObject tunnel = tunnels.get(0)
+            .getAsJsonObject();
+        assertEquals(
+            "Main IV line",
+            tunnel.get("name")
+                .getAsString());
+        assertTrue(
+            tunnel.get("amps")
+                .isJsonNull(),
+            "one scan is not a rate yet");
+        assertTrue(
+            tunnel.get("loaded")
+                .getAsBoolean());
+
+        assertStatus("OK", run(new GetGTTunnelHistory(), ALICE_ID, "tunnel=" + id + "&range=1h"));
+        assertStatus("NOT_FOUND", run(new GetGTTunnelHistory(), CAROL_ID, "tunnel=" + id));
     }
 
     @Test
