@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -19,6 +20,12 @@ import net.minecraftforge.common.DimensionManager;
 
 import com.mojang.authlib.GameProfile;
 
+import appeng.api.networking.IGridNode;
+import appeng.core.worlddata.WorldData;
+import appeng.hooks.TickHandler;
+import appeng.me.Grid;
+import appeng.me.GridAccessException;
+import appeng.parts.p2p.PartP2PGT5Power;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEExtendedPowerMultiBlockBase;
@@ -31,6 +38,10 @@ import gregtech.common.misc.GlobalVariableStorage;
 import gregtech.common.misc.spaceprojects.SpaceProjectManager;
 import kekztech.common.tileentities.MTELapotronicSuperCapacitor;
 import pl.kuba6000.ae2webintegration.ae2interface.AE2WebIntegration;
+import pl.kuba6000.ae2webintegration.ae2interface.accessors.IEnergyTunnelCounters;
+import pl.kuba6000.ae2webintegration.ae2interface.accessors.IPlayerProfileLookup;
+import pl.kuba6000.ae2webintegration.core.api.PlayerIdentity;
+import pl.kuba6000.ae2webintegration.core.api.gt.GTEnergyTunnelSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTPowerSourceSnapshot;
@@ -38,7 +49,7 @@ import pl.kuba6000.ae2webintegration.core.api.gt.GTScanResult;
 import pl.kuba6000.ae2webintegration.core.api.gt.IGTProvider;
 
 /**
- * Snapshots every loaded GregTech multiblock, Lapotronic Supercapacitor and team wireless network. Only
+ * Snapshots every loaded GregTech multiblock, Lapotronic Supercapacitor, team wireless network and EU P2P input. Only
  * class-loaded when GregTech is present (see {@link GTCompat}).
  */
 public class GTProvider implements IGTProvider {
@@ -79,6 +90,8 @@ public class GTProvider implements IGTProvider {
             }
         }
 
+        tunnels(r, players);
+
         MinecraftServer server = MinecraftServer.getServer();
         for (Object o : server.getConfigurationManager().playerEntityList) {
             EntityPlayerMP p = (EntityPlayerMP) o;
@@ -103,6 +116,68 @@ public class GTProvider implements IGTProvider {
             r.powerSources.add(wireless(leader, eu, ownerName(leader, r.playerNames, server)));
         }
         return r;
+    }
+
+    /**
+     * The input side of every EU P2P tunnel, found through the AE grids: cable buses don't tick, so in 1.7.10 they are
+     * never in {@code loadedTileEntityList}.
+     */
+    private void tunnels(GTScanResult r, Set<UUID> players) {
+        for (Grid grid : TickHandler.INSTANCE.getGridList()) {
+            for (IGridNode node : grid.getMachines(PartP2PGT5Power.class)) {
+                PartP2PGT5Power part = (PartP2PGT5Power) node.getMachine();
+                if (part.isOutput()) continue;
+                try {
+                    GTEnergyTunnelSnapshot t = tunnel(part, node);
+                    r.energyTunnels.add(t);
+                    if (t.owner != null) {
+                        players.add(t.owner);
+                        if (t.ownerName != null) r.playerNames.put(t.owner, t.ownerName);
+                    }
+                } catch (Throwable e) {
+                    if (failedTypes.add(part.getClass())) {
+                        AE2WebIntegration.LOG.warn("Skipping EU P2P tunnels in scans", e);
+                    }
+                }
+            }
+        }
+    }
+
+    private static GTEnergyTunnelSnapshot tunnel(PartP2PGT5Power part, IGridNode node) {
+        GTEnergyTunnelSnapshot t = new GTEnergyTunnelSnapshot();
+        TileEntity te = part.getTile();
+        t.dim = te.getWorldObj().provider.dimensionId;
+        t.dimName = te.getWorldObj().provider.getDimensionName();
+        t.x = te.xCoord;
+        t.y = te.yCoord;
+        t.z = te.zCoord;
+        t.side = part.getSide()
+            .name()
+            .toLowerCase(Locale.ROOT);
+        t.id = GTEnergyTunnelSnapshot.idOf(t.dim, t.x, t.y, t.z, t.side);
+        t.name = part.hasCustomName() ? part.getCustomName() : null;
+        t.frequency = part.getFrequency();
+        try {
+            for (PartP2PGT5Power output : part.getOutputs()) {
+                t.outputs++;
+                // Some name the output end instead.
+                if (t.name == null && output.hasCustomName()) t.name = output.getCustomName();
+            }
+        } catch (GridAccessException e) {
+            // Not on a grid right now: no outputs.
+        }
+        IEnergyTunnelCounters counters = (IEnergyTunnelCounters) part;
+        t.euAccepted = counters.web$euAccepted();
+        t.packetsAccepted = counters.web$packetsAccepted();
+        t.ticksMaxed = counters.web$ticksMaxed();
+        t.voltage = counters.web$voltage();
+        PlayerIdentity owner = ((IPlayerProfileLookup) WorldData.instance()
+            .playerData()).web$getPlayerProfile(node.getPlayerID());
+        if (owner != null) {
+            t.owner = owner.uuid;
+            t.ownerName = owner.name;
+        }
+        return t;
     }
 
     private static GTMachineSnapshot machine(MTEMultiBlockBase mte, IGregTechTileEntity igte, int dim, String dimName) {

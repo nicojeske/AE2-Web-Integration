@@ -68,6 +68,9 @@ public class MixinPlugin implements IMixinConfigPlugin {
             if (hasClass("gregtech/api/logic/ProcessingLogic.class")) {
                 mixins.add("GT.ProcessingLogicConsumptionMixin");
             }
+            if (hasClass("appeng/parts/p2p/PartP2PGT5Power.class")) {
+                mixins.add("AE2.PartP2PGT5PowerCounterMixin");
+            }
             if (hasClass("tectech/thing/metaTileEntity/multi/base/TTMultiblockBase.class")) {
                 mixins.add("GT.TTMultiblockBaseProductionMixin");
             }
