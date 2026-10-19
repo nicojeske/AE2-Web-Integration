@@ -36,7 +36,7 @@ export interface CompareModalProps {
 export function CompareModal({ itemids, onClose }: CompareModalProps) {
     const { selectedGrid } = useNetwork();
     const { items } = useItems();
-    const { addStatsView } = usePrefs();
+    const { addStatsView, settings } = usePrefs();
     const {
         compareRange,
         setCompareRange,
@@ -77,7 +77,7 @@ export function CompareModal({ itemids, onClose }: CompareModalProps) {
         });
     }, [ids, compareHistory]);
 
-    const domain = sharedDomain(series);
+    const domain = sharedDomain(series, settings.chartZeroBased);
     const geometries = series.map((s) =>
         chartGeometry(s.normalized, domain.min, domain.max, COMPARE_W, COMPARE_H, COMPARE_PAD),
     );

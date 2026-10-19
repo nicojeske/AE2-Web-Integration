@@ -118,6 +118,7 @@ export function Statistics() {
                                 chartHeight={chartHeight}
                                 scale={settings.chartScale}
                                 smoothing={settings.chartSmoothing}
+                                zeroBased={settings.chartZeroBased}
                                 threshold={threshold}
                                 onExpand={() => setCompareIds([itemid])}
                             />
@@ -151,6 +152,13 @@ export function Statistics() {
                         title="Overlay a moving average to damp per-sample noise"
                     >
                         <span>Smoothing</span>
+                    </Checkbox>
+                    <Checkbox
+                        checked={settings.chartZeroBased}
+                        onChange={(chartZeroBased) => setSettings((s) => ({ ...s, chartZeroBased }))}
+                        title="Start the y-axis at zero instead of the lowest sample"
+                    >
+                        <span>From 0</span>
                     </Checkbox>
                     {history && (
                         <span className="mono-count">

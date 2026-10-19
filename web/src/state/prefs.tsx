@@ -156,6 +156,9 @@ export interface Settings {
     /** Overlays a moving-average line (`statsModel.ts`'s `movingAverage`/`SMOOTHING_WINDOW`) on every
      *  Statistics chart, dimmed under the raw line. */
     chartSmoothing: boolean;
+    /** Anchors every Statistics chart's y-axis at 0, so a small change on a large stock doesn't fill the
+     *  whole plot the way the default lowest-sample floor makes it. */
+    chartZeroBased: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -168,6 +171,7 @@ export const DEFAULT_SETTINGS: Settings = {
     statsChartSize: "m",
     chartScale: "linear",
     chartSmoothing: false,
+    chartZeroBased: false,
 };
 
 export const TILE_MIN_RANGE = { min: 140, max: 260 } as const;

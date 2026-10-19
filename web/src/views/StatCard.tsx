@@ -42,6 +42,8 @@ export interface StatCardProps {
     chartHeight: number;
     scale: ChartScale;
     smoothing: boolean;
+    /** Floor the y-axis at 0 instead of the lowest sample. */
+    zeroBased: boolean;
     /** The favourite's `alertBelow`, or `null` when this item isn't favourited. */
     threshold: number | null;
     onExpand: () => void;
@@ -60,6 +62,7 @@ export function StatCard({
     chartHeight,
     scale,
     smoothing,
+    zeroBased,
     threshold,
     onExpand,
 }: StatCardProps) {
@@ -154,6 +157,7 @@ export function StatCard({
                 markers={markers}
                 threshold={threshold}
                 ariaLabel={ariaLabel}
+                zeroBased={zeroBased}
             />
             {stats.samples > 0 && (
                 <div className="stat-card__metrics">

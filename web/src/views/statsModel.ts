@@ -222,10 +222,12 @@ export function normalizeSeries(itemid: string, values: (number | null)[]): Norm
     };
 }
 
-/** Shared y-domain across every drawn compare series, unioned with 100 (the reference line). */
-export function sharedDomain(series: NormalizedSeries[]): { min: number; max: number } {
+/** Shared y-domain across every drawn compare series, unioned with 100 (the reference line) and, when
+ *  `zeroBased`, with 0. */
+export function sharedDomain(series: NormalizedSeries[], zeroBased = false): { min: number; max: number } {
     const all = series.flatMap((s) => s.normalized).filter((v): v is number => v !== null);
     all.push(100);
+    if (zeroBased) all.push(0);
     let min = Math.min(...all);
     let max = Math.max(...all);
     if (max - min < 1) {
