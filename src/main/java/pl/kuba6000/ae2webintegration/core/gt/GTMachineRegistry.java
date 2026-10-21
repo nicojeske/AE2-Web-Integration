@@ -57,7 +57,9 @@ public final class GTMachineRegistry {
             }
             GTMachineSnapshot previous = entry.getValue();
             if (previous.lastSeenMillis < forgetBefore) {
-                machines.remove(entry.getKey(), previous);
+                if (machines.remove(entry.getKey(), previous)) {
+                    GTLabelStore.forgetMachine(entry.getKey());
+                }
             } else if (previous.loaded) {
                 GTMachineSnapshot unloaded = previous.copy();
                 unloaded.loaded = false;
@@ -69,6 +71,7 @@ public final class GTMachineRegistry {
 
     public static void remove(String machineId) {
         if (machineId != null && machines.remove(machineId) != null) {
+            GTLabelStore.forgetMachine(machineId);
             dirty.set(true);
         }
     }

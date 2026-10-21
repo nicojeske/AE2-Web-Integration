@@ -40,7 +40,12 @@ import {
     hasMockPowerSource,
     MOCK_POWER_MAX_RANGE,
     MOCK_PRODUCTION_MAX_RANGE,
+    clearMockTunnelCapacity,
+    mockGTLabels,
     mockGTMachines,
+    renameMockLine,
+    setMockMachineLabel,
+    setMockTunnelCapacity,
     mockGTPower,
     mockGTPowerHistory,
     mockGTProduction,
@@ -218,6 +223,7 @@ function handleGT(
     method: string,
     path: string[],
     params: URLSearchParams,
+    body: Record<string, unknown>,
     mode: GTMode,
     referer: string | undefined,
     res: ServerResponse,
@@ -261,12 +267,40 @@ function handleGT(
         if (!hasMockPowerSource(id)) return respond(res, "NOT_FOUND", null);
         return ok(res, mockGTPowerHistory(id, span, points, now));
     }
+    if (method === "PUT") {
+        const text = (key: string) => (typeof body[key] === "string" ? (body[key] as string) : null);
+        if (section === "machines" && id !== undefined && (sub === "nickname" || sub === "line")) {
+            const value = text(sub === "nickname" ? "name" : "line");
+            if (value === null) return respond(res, "BAD_PARAM", null);
+            if (!setMockMachineLabel(id, sub, value)) return respond(res, "NOT_FOUND", null);
+            return ok(res, mockGTLabels().machines[id] ?? null);
+        }
+        if (section === "lines" && id !== undefined && sub === undefined) {
+            const name = text("name");
+            if (name === null) return respond(res, "BAD_PARAM", null);
+            const moved = renameMockLine(id, name);
+            return moved > 0 ? ok(res, moved) : respond(res, "NOT_FOUND", null);
+        }
+        if (section === "tunnels" && id !== undefined && sub === "capacity") {
+            const { amps, tier } = body;
+            if (typeof amps !== "number" || typeof tier !== "number" || amps < 1 || tier < 0 || tier > 14) {
+                return respond(res, "BAD_PARAM", null);
+            }
+            if (!setMockTunnelCapacity(id, amps, tier)) return respond(res, "NOT_FOUND", null);
+            return ok(res, { amps, tier });
+        }
+        return next();
+    }
     if (method === "DELETE") {
         if (section === "tunnels" && id !== undefined && sub === undefined) {
             return removeMockTunnel(id) ? ok(res, null) : respond(res, "NOT_FOUND", null);
         }
+        if (section === "tunnels" && id !== undefined && sub === "capacity") {
+            return clearMockTunnelCapacity(id) ? ok(res, null) : respond(res, "NOT_FOUND", null);
+        }
         return next();
     }
+    if (section === "labels" && id === undefined) return ok(res, mockGTLabels());
     if (section === "tunnels" && id === undefined) return ok(res, { tunnels: mockGTTunnels(now) });
     if (section === "tunnels" && id !== undefined && sub === "history") {
         const span = range("24h", MOCK_POWER_MAX_RANGE);
@@ -288,8 +322,12 @@ function handleGT(
         const span = range("7d", MOCK_PRODUCTION_MAX_RANGE);
         const points = parsePoints(params.get("points"));
         const flow = parseFlow(params.get("flow"));
-        if (span === null || points === null || flow === null) return respond(res, "BAD_PARAM", null);
-        return ok(res, mockGTProductionHistory(params.get("item"), params.get("machine"), flow, span, points, now));
+        const machine = params.get("machine") || null;
+        const line = params.get("line") || null;
+        if (span === null || points === null || flow === null || (machine !== null && line !== null)) {
+            return respond(res, "BAD_PARAM", null);
+        }
+        return ok(res, mockGTProductionHistory(params.get("item"), machine, line, flow, span, points, now));
     }
     next();
 }
@@ -307,7 +345,17 @@ async function handleApi(
     const route = `${method} ${path.map((p, i) => (path[0] === "grids" && i === 1 ? "{grid}" : p)).join("/")}`;
 
     if (path[0] === "gt") {
-        return handleGT(method, path.slice(1), params, gtMode(req.headers.referer), req.headers.referer, res, next);
+        const body = method === "PUT" ? await readJson(req) : {};
+        return handleGT(
+            method,
+            path.slice(1),
+            params,
+            body,
+            gtMode(req.headers.referer),
+            req.headers.referer,
+            res,
+            next,
+        );
     }
     if (route === "GET grids") return ok(res, toGridSummaries());
     if (route === "POST auth/logout") return ok(res, null);

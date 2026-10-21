@@ -4,7 +4,8 @@ import type { GTMachine, GTMachines, GTMachineStatus, GTProductionEntry, GTRange
 import { GT_PROBLEM_STATUSES, GT_STATUS_ORDER } from "../api/types";
 import type { BadgeVariant } from "../ui/Badge";
 import type { SegmentedOption } from "../ui/SegmentedControl";
-import type { MachineFilters, MachineLabels, PassiveMachines } from "../state/prefs";
+import type { MachineLabels } from "../state/gt";
+import type { MachineFilters, PassiveMachines } from "../state/prefs";
 
 export const GT_STATUS_LABELS: Record<GTMachineStatus, string> = {
     STRUCTURE_INCOMPLETE: "Structure incomplete",

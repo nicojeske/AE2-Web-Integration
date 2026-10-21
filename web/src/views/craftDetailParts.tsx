@@ -7,7 +7,7 @@ import { useState } from "preact/hooks";
 import { formatDuration, gtTierName, skipSpecialFormat } from "../api/format";
 import type { GTMachine, ResourceRef, WorkingMachine } from "../api/types";
 import { buildHash } from "../shell/route";
-import type { MachineLabels } from "../state/prefs";
+import type { MachineLabels } from "../state/gt";
 
 import { Badge } from "../ui/Badge";
 import { cx } from "../ui/cx";

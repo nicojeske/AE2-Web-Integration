@@ -16,8 +16,8 @@ import {
 } from "../api/client";
 import { formatDuration, formatEU, formatEUt, formatEUtTier, GT_TIERS, gtTierName } from "../api/format";
 import type { GTEnergyMachine, GTPowerSource, GTRange, GTTunnel } from "../api/types";
-import { GT_FAST_POLL_MS, useGT, useGTPoll } from "../state/gt";
-import { type TunnelCapacity, usePrefs } from "../state/prefs";
+import { GT_FAST_POLL_MS, type TunnelCapacity, useGT, useGTPoll } from "../state/gt";
+import { usePrefs } from "../state/prefs";
 import { useToast } from "../state/toast";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -166,8 +166,7 @@ function tunnelName(t: GTTunnel): string {
  * caught up with what the line delivers.
  */
 function EnergyTunnels() {
-    const { nonce } = useGT();
-    const { tunnelCapacity, setTunnelCapacity } = usePrefs();
+    const { nonce, tunnelCapacity, setTunnelCapacity } = useGT();
     const toast = useToast();
     const tunnels = useGTPoll(getGTTunnels, GT_FAST_POLL_MS, "tunnels", nonce);
     const [expanded, setExpanded] = useState<string | null>(null);
@@ -321,7 +320,7 @@ function TunnelRow({
 
 /** "64 A at IV": what the line feeding this tunnel is built for. Blank amps clears it. */
 function CapacityEditor({ tunnel, capacity }: { tunnel: GTTunnel; capacity: TunnelCapacity | null }) {
-    const { setTunnelCapacity } = usePrefs();
+    const { setTunnelCapacity } = useGT();
     const [draft, setDraft] = useState<string | null>(null);
     const tier = capacity?.tier ?? tierOf(tunnel.voltage);
     const commit = (value: string, nextTier: number) => {
@@ -453,8 +452,7 @@ const ENERGY_ROWS = 15;
 
 /** Where the power goes and which generators carry the base, from the per-machine EU the scans sample. */
 function EnergyByMachine() {
-    const { nonce } = useGT();
-    const { machineNames } = usePrefs();
+    const { nonce, machineNames } = useGT();
     const [range, setRange] = useState<GTRange>("24h");
     const [customMinutes, setCustomMinutes] = useState(24 * 60);
     const [showAll, setShowAll] = useState(false);

@@ -12,6 +12,7 @@ import type {
     GTMachineDetail,
     GTMachines,
     GTEnergy,
+    GTLabels,
     GridCapacity,
     GTMachineStates,
     GTPower,
@@ -292,6 +293,33 @@ export function getGTTunnelHistory(
     return apiGet(`gt/tunnels/${seg(tunnel)}/history${query({ points, ...gtRange(range, minutes) })}`);
 }
 
+export function getGTLabels(): Promise<GTLabels> {
+    return apiGet("gt/labels");
+}
+
+/** Blank clears it. Every GT label is shared with everyone who can see the machine or tunnel. */
+export function putGTMachineNickname(machine: string, name: string): Promise<unknown> {
+    return apiRequest("PUT", `gt/machines/${seg(machine)}/nickname`, { name });
+}
+
+/** Blank takes the machine off its line. */
+export function putGTMachineLine(machine: string, line: string): Promise<unknown> {
+    return apiRequest("PUT", `gt/machines/${seg(machine)}/line`, { line });
+}
+
+/** Moves every machine on `line` the caller can see to `name`, merging into it when it exists. */
+export function putGTLineName(line: string, name: string): Promise<number> {
+    return apiRequest("PUT", `gt/lines/${seg(line)}`, { name });
+}
+
+export function putGTTunnelCapacity(tunnel: string, amps: number, tier: number): Promise<unknown> {
+    return apiRequest("PUT", `gt/tunnels/${seg(tunnel)}/capacity`, { amps, tier });
+}
+
+export function deleteGTTunnelCapacity(tunnel: string): Promise<null> {
+    return apiRequest("DELETE", `gt/tunnels/${seg(tunnel)}/capacity`);
+}
+
 export function getGTProduction(
     range: GTRange,
     groupBy: "item" | "machine",
@@ -305,13 +333,15 @@ export function getGTProduction(
 export function getGTProductionHistory(opts: {
     item?: string;
     machine?: string;
+    /** A processing line: the sum over its machines. Not together with `machine`. */
+    line?: string;
     flow: GTFlow;
     range: GTRange;
     points: number;
     minutes?: number;
 }): Promise<GTProductionHistory> {
-    const { item, machine, flow, range, points, minutes } = opts;
-    return apiGet(`gt/production/history${query({ item, machine, flow, points, ...gtRange(range, minutes) })}`);
+    const { item, machine, line, flow, range, points, minutes } = opts;
+    return apiGet(`gt/production/history${query({ item, machine, line, flow, points, ...gtRange(range, minutes) })}`);
 }
 
 /** The server has no GregTech provider (or `gt_enabled=false`) - an empty state, never an error toast. */

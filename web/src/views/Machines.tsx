@@ -95,14 +95,8 @@ function MachinesBody({
     openId: string | null;
     onOpen: (id: string) => void;
 }) {
-    const {
-        machineFilters: filters,
-        setMachineFilters,
-        settings,
-        passiveMachines,
-        machineNames,
-        machineLines,
-    } = usePrefs();
+    const { machineFilters: filters, setMachineFilters, settings, passiveMachines } = usePrefs();
+    const { machineNames, machineLines } = useGT();
     const [search, setSearch] = useState("");
     // The Passive group exists to get out of the way, so it starts every visit collapsed.
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set(["passive"]));
@@ -325,7 +319,7 @@ const LINE_LIST_ID = "gt-line-names";
 
 /** The `<datalist>` behind `LINE_LIST_ID`; rendered once by `Machines`. */
 function LineNameList() {
-    const { machineLines } = usePrefs();
+    const { machineLines } = useGT();
     return (
         <datalist id={LINE_LIST_ID}>
             {lineNames(machineLines).map((line) => (
@@ -348,7 +342,7 @@ function GroupHeader({
     selection: ReadonlySet<string> | null;
     onSelectAll: (ids: string[], on: boolean) => void;
 }) {
-    const { renameLine } = usePrefs();
+    const { renameLine } = useGT();
     const [renaming, setRenaming] = useState(false);
     const health = group.health;
     const ids = group.machines.map((m) => m.id);
@@ -398,7 +392,8 @@ function GroupHeader({
 
 /** The sticky bar of select mode: put the picked machines on a line, take them off, or mark them passive. */
 function SelectionBar({ selection, onClear }: { selection: ReadonlySet<string>; onClear: () => void }) {
-    const { setMachineLine, setPassive } = usePrefs();
+    const { setPassive } = usePrefs();
+    const { setMachineLine } = useGT();
     const [line, setLine] = useState("");
     const ids = [...selection];
     const none = ids.length === 0;
@@ -522,7 +517,8 @@ function CommitInput({
 
 /** The server's "these look passive" candidates, each to mark passive or dismiss (the toolbar's Review). */
 function PassiveSuggestions({ machines, onOpen }: { machines: GTMachine[]; onOpen: (id: string) => void }) {
-    const { setPassive, machineNames } = usePrefs();
+    const { setPassive } = usePrefs();
+    const { machineNames } = useGT();
     const n = machines.length;
     return (
         <div className="passive-suggestions">
@@ -710,9 +706,8 @@ function MachineInspector({
     /** Whether the server suggests this machine as passive. */
     suggested: boolean;
 }) {
-    const { nonce } = useGT();
-    const { settings, passiveMachines, setPassive, machineNames, setMachineName, machineLines, setMachineLine } =
-        usePrefs();
+    const { nonce, machineNames, setMachineName, machineLines, setMachineLine } = useGT();
+    const { settings, passiveMachines, setPassive } = usePrefs();
     const copyCoords = useCopyCoords();
     const now = useNow(1000);
     const [range, setRange] = useState<GTRange>("24h");
@@ -836,6 +831,9 @@ function MachineInspector({
                         onCommit={(line) => setMachineLine([m.id], line)}
                     />
                 </label>
+                <p className="item-panel__hint machine-panel__naming-hint">
+                    Shared with everyone who can see this machine.
+                </p>
             </div>
 
             {clock && (

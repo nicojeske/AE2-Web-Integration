@@ -482,6 +482,15 @@ export interface GTTunnels {
     tunnels: GTTunnel[];
 }
 
+/**
+ * `/api/gt/labels`: what players called things, shared by everyone who can see the machine or tunnel. A machine
+ * entry has at least one of the two set.
+ */
+export interface GTLabels {
+    machines: Record<string, { nickname: string | null; line: string | null }>;
+    tunnels: Record<string, { amps: number; tier: number }>;
+}
+
 /** `/api/gt/tunnels/{tunnelId}/history` response; `HISTORY_NO_SAMPLE` (-1) for a gap. */
 export interface GTTunnelHistory {
     tunnel: string;
@@ -524,6 +533,7 @@ export type GTFlow = "produced" | "consumed";
 export interface GTProductionHistory {
     stack: string | null;
     machine: string | null;
+    line: string | null;
     from: number;
     to: number;
     stepMillis: number;

@@ -65,6 +65,7 @@ public final class GTEngine {
 
     public static void loadData() {
         GTMachineRegistry.loadData();
+        GTLabelStore.loadData();
         GTPowerHistoryStore.clear();
         GTTunnelStore.clear();
         GTProductionLog.loadData();
@@ -92,6 +93,7 @@ public final class GTEngine {
             GTStateLog.prune(nowMillis);
             GTEnergyLog.prune(nowMillis);
             GTMachineRegistry.flushIfDirty();
+            GTLabelStore.flushIfDirty();
             GTProductionLog.flushIfDirty();
         }
     }
@@ -143,6 +145,7 @@ public final class GTEngine {
 
     public static void onServerStopping() {
         GTMachineRegistry.saveNow();
+        GTLabelStore.saveNow();
         GTProductionLog.saveNow();
     }
 
@@ -171,6 +174,7 @@ public final class GTEngine {
         lastScanMicros = 0L;
         GTVisibility.clear();
         GTMachineRegistry.clear();
+        GTLabelStore.clear();
         GTPowerHistoryStore.clear();
         GTTunnelStore.clear();
         GTProductionLog.clear();

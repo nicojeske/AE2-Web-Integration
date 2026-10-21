@@ -22,10 +22,13 @@ import pl.kuba6000.ae2webintegration.core.api.gt.GTFlow;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineSnapshot;
 import pl.kuba6000.ae2webintegration.core.api.gt.GTMachineStatus;
 import pl.kuba6000.ae2webintegration.core.config.Config;
+import pl.kuba6000.ae2webintegration.core.gt.GTLabelStore;
 import pl.kuba6000.ae2webintegration.core.gt.GTProductionLog;
 import pl.kuba6000.ae2webintegration.core.gt.GTTestSupport;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.DeleteGTTunnel;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.DeleteGTTunnelCapacity;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTLabels;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachine;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachines;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPower;
@@ -34,6 +37,10 @@ import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProduction;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTProductionHistory;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTTunnelHistory;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTTunnels;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.PutGTLineName;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.PutGTMachineLine;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.PutGTMachineNickname;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.PutGTTunnelCapacity;
 
 /**
  * The {@code /gt/*} endpoints at the request-handler level, the way {@code ItemHistoryRequestTest} drives
@@ -67,6 +74,10 @@ class GTRequestTest {
     }
 
     private static <T extends IAsyncRequest> JsonObject run(T request, int userId, String query) {
+        return run(request, userId, query, null);
+    }
+
+    private static <T extends IAsyncRequest> JsonObject run(T request, int userId, String query, JsonObject body) {
         // The machine and power source ids are path parameters on the real routes.
         java.util.Map<String, String> path = new java.util.HashMap<>();
         StringBuilder rest = new StringBuilder();
@@ -74,6 +85,7 @@ class GTRequestTest {
             if (pair.startsWith("id=")) path.put("machineId", pair.substring(3));
             else if (pair.startsWith("source=")) path.put("sourceId", pair.substring(7));
             else if (pair.startsWith("tunnel=")) path.put("tunnelId", pair.substring(7));
+            else if (pair.startsWith("lineName=")) path.put("line", pair.substring(9));
             else if (!pair.isEmpty()) rest.append(rest.length() == 0 ? "" : "&")
                 .append(pair);
         }
@@ -82,7 +94,7 @@ class GTRequestTest {
                 new TestGridFixtures.TestExchange(rest.toString()),
                 TestGridFixtures.principal(userId),
                 path,
-                null));
+                body));
         return new JsonParser().parse(request.getJSON())
             .getAsJsonObject();
     }
@@ -475,6 +487,98 @@ class GTRequestTest {
             carolPoints.get(carolPoints.size() - 1)
                 .getAsLong());
         assertFalse(carolPoints.size() == 0);
+    }
+
+    private static JsonObject body(String member, String value) {
+        JsonObject body = new JsonObject();
+        body.addProperty(member, value);
+        return body;
+    }
+
+    @Test
+    void labelsAreSharedWithEveryoneWhoSeesTheMachine() {
+        scanThreeOwners();
+        provider.next.energyTunnels.add(GTTestSupport.tunnel(4, ALICE, "Main IV line", 0, 0, 0, 8192));
+        GTTestSupport.scan(provider, System.currentTimeMillis());
+        String alices = GTMachineSnapshot.idOf(0, 1, 64, 0);
+        String carols = GTMachineSnapshot.idOf(0, 3, 64, 0);
+        String tunnel = provider.next.energyTunnels.get(0).id;
+
+        assertStatus("OK", run(new PutGTMachineNickname(), ALICE_ID, "id=" + alices, body("name", "EBF #2")));
+        JsonObject line = run(new PutGTMachineLine(), ALICE_ID, "id=" + alices, body("line", "Platline"));
+        assertStatus("OK", line);
+        assertEquals(
+            "EBF #2",
+            line.getAsJsonObject("data")
+                .get("nickname")
+                .getAsString());
+        assertStatus("NOT_FOUND", run(new PutGTMachineLine(), ALICE_ID, "id=" + carols, body("line", "Platline")));
+        assertStatus("NOT_FOUND", run(new PutGTMachineLine(), ALICE_ID, "id=missing", body("line", "Platline")));
+
+        JsonObject capacity = new JsonObject();
+        capacity.addProperty("amps", 64);
+        capacity.addProperty("tier", 5);
+        assertStatus("OK", run(new PutGTTunnelCapacity(), ALICE_ID, "tunnel=" + tunnel, capacity));
+        capacity.addProperty("tier", 99);
+        assertStatus("BAD_PARAM", run(new PutGTTunnelCapacity(), ALICE_ID, "tunnel=" + tunnel, capacity));
+
+        // Bob is on Alice's team and sees what she set; Carol sees none of it.
+        JsonObject bob = run(new GetGTLabels(), BOB_ID, "").getAsJsonObject("data");
+        assertEquals(
+            "Platline",
+            bob.getAsJsonObject("machines")
+                .getAsJsonObject(alices)
+                .get("line")
+                .getAsString());
+        assertEquals(
+            64,
+            bob.getAsJsonObject("tunnels")
+                .getAsJsonObject(tunnel)
+                .get("amps")
+                .getAsLong());
+        JsonObject carol = run(new GetGTLabels(), CAROL_ID, "").getAsJsonObject("data");
+        assertEquals(
+            0,
+            carol.getAsJsonObject("machines")
+                .entrySet()
+                .size());
+        assertEquals(
+            0,
+            carol.getAsJsonObject("tunnels")
+                .entrySet()
+                .size());
+
+        assertStatus("NOT_FOUND", run(new PutGTLineName(), CAROL_ID, "lineName=Platline", body("name", "Mine")));
+        assertStatus("OK", run(new PutGTLineName(), BOB_ID, "lineName=Platline", body("name", "Platinum")));
+        assertEquals("Platinum", GTLabelStore.lineOf(alices));
+
+        assertStatus("NOT_FOUND", run(new DeleteGTTunnelCapacity(), CAROL_ID, "tunnel=" + tunnel));
+        assertStatus("OK", run(new DeleteGTTunnelCapacity(), BOB_ID, "tunnel=" + tunnel));
+        assertStatus("NOT_FOUND", run(new DeleteGTTunnelCapacity(), BOB_ID, "tunnel=" + tunnel));
+    }
+
+    @Test
+    void productionHistoryIsServedPerLine() {
+        scanThreeOwners();
+        long now = System.currentTimeMillis();
+        String alices = GTMachineSnapshot.idOf(0, 1, 64, 0);
+        String bobs = GTMachineSnapshot.idOf(0, 2, 64, 0);
+        GTProductionLog.record(GTFlow.PRODUCED, alices, "EBF", ALICE, "gt:ingot:1", "Ti", 30, false, now);
+        GTProductionLog.record(GTFlow.PRODUCED, bobs, "EBF", BOB, "gt:ingot:1", "Ti", 12, false, now);
+        GTLabelStore.setLine(alices, "Ti-line");
+        GTTestSupport.flushHistory();
+
+        JsonObject response = run(new GetGTProductionHistory(), ALICE_ID, "line=Ti-line&range=24h");
+        assertStatus("OK", response);
+        JsonArray points = response.getAsJsonObject("data")
+            .getAsJsonArray("points");
+        assertEquals(
+            30,
+            points.get(points.size() - 1)
+                .getAsLong());
+        assertStatus(
+            "BAD_PARAM",
+            run(new GetGTProductionHistory(), ALICE_ID, "line=Ti-line&machine=" + alices + "&range=24h"));
     }
 
     @Test

@@ -1,9 +1,11 @@
 package pl.kuba6000.ae2webintegration.core.gt;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -166,7 +168,7 @@ public final class GTProductionLog {
         }
         List<HistoryDb.CounterTotal> totals = db.readCounterTotals(
             hourly ? hourlyTable(flow) : dailyTable(flow),
-            visibleMachines(ownerFilter, machineId),
+            visibleMachines(ownerFilter, machineId, null),
             fromBucket,
             toBucket,
             bucketMillis);
@@ -191,6 +193,7 @@ public final class GTProductionLog {
 
         public String stack;
         public String machine;
+        public String line;
         public long from;
         public long to;
         public long stepMillis;
@@ -204,6 +207,12 @@ public final class GTProductionLog {
      */
     public static Series series(GTFlow flow, String stackId, String machineId, long fromMillis, long toMillis,
         long nowMillis, int maxPoints, Predicate<UUID> ownerFilter) {
+        return series(flow, stackId, machineId, null, fromMillis, toMillis, nowMillis, maxPoints, ownerFilter);
+    }
+
+    /** As above, further restricted to the machines on processing {@code line} when it isn't {@code null}. */
+    public static Series series(GTFlow flow, String stackId, String machineId, String line, long fromMillis,
+        long toMillis, long nowMillis, int maxPoints, Predicate<UUID> ownerFilter) {
         boolean hourly = useHourly(fromMillis, nowMillis);
         long bucketMillis = hourly ? HOUR_MILLIS : DAY_MILLIS;
         long fromBucket = Math.floorDiv(Math.min(fromMillis, toMillis), bucketMillis);
@@ -215,6 +224,7 @@ public final class GTProductionLog {
         Series series = new Series();
         series.stack = stackId;
         series.machine = machineId;
+        series.line = line;
         series.resolution = hourly ? "hourly" : "daily";
         series.from = fromBucket * bucketMillis;
         series.to = toBucket * bucketMillis;
@@ -226,7 +236,7 @@ public final class GTProductionLog {
         }
         series.points = db.readCounterWindows(
             hourly ? hourlyTable(flow) : dailyTable(flow),
-            visibleMachines(ownerFilter, machineId),
+            visibleMachines(ownerFilter, machineId, line),
             stackId,
             fromBucket,
             toBucket,
@@ -235,11 +245,17 @@ public final class GTProductionLog {
         return series;
     }
 
-    /** Ids of the known machines {@code ownerFilter} lets through, optionally just {@code machineId}. */
-    private static List<String> visibleMachines(Predicate<UUID> ownerFilter, String machineId) {
+    /**
+     * Ids of the known machines {@code ownerFilter} lets through, optionally just {@code machineId} and just those on
+     * {@code line}.
+     */
+    private static List<String> visibleMachines(Predicate<UUID> ownerFilter, String machineId, String line) {
         List<String> ids = new ArrayList<>();
+        Set<String> onLine = line == null ? null : new HashSet<>(GTLabelStore.membersOf(line, ownerFilter));
         for (Map.Entry<String, MachineProduction> entry : machines.entrySet()) {
-            if ((machineId == null || machineId.equals(entry.getKey())) && ownerFilter.test(entry.getValue().owner)) {
+            if ((machineId == null || machineId.equals(entry.getKey()))
+                && (onLine == null || onLine.contains(entry.getKey()))
+                && ownerFilter.test(entry.getValue().owner)) {
                 ids.add(entry.getKey());
             }
         }

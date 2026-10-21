@@ -21,10 +21,11 @@ import pl.kuba6000.ae2webintegration.core.http.contract.QueryParam;
 /**
  * Reads the amount produced per window, summed over the visible machines.
  *
- * Without {@code item} it sums every stack, which is only meaningful together with {@code machine}.
+ * Without {@code item} it sums every stack, which is only meaningful together with {@code machine} or {@code line}.
  * 
  * @response 200 {@link Response} Successful response.
- * @response 400 {@link ErrorResponse} BAD_PARAM: malformed path value or query parameter.
+ * @response 400 {@link ErrorResponse} BAD_PARAM: malformed path value or query parameter, or both {@code machine}
+ *           and {@code line}.
  * @responseExample 400 {"status":"BAD_PARAM","data":null}
  * @response 401 {@link ErrorResponse} UNAUTHORIZED: no valid session was provided.
  * @response 404 {@link ErrorResponse} NOT_AVAILABLE: GregTech is not installed or its pages are disabled.
@@ -77,12 +78,19 @@ public final class GetGTProductionHistory extends GTRequest {
     @OptionalInput
     private @Nullable String machine;
 
+    /** Processing line to restrict the series to: the sum over its visible machines. */
+    @QueryParam("line")
+    @OptionalInput
+    private @Nullable String line;
+
     @Override
     protected void handleGT(WebPrincipal principal) {
         Long span = parseRange(range, minutes, GetGTProduction.maxRangeMillis());
         Integer points = parsePoints(this.points);
         GTFlow flow = GTFlow.fromParam(this.flow);
-        if (span == null || points == null || flow == null) {
+        String machine = emptyToNull(this.machine);
+        String line = emptyToNull(this.line);
+        if (span == null || points == null || flow == null || (machine != null && line != null)) {
             deny(ApiStatus.BAD_PARAM);
             return;
         }
@@ -98,7 +106,8 @@ public final class GetGTProductionHistory extends GTRequest {
                 GTProductionLog.series(
                     flow,
                     emptyToNull(item),
-                    emptyToNull(machine),
+                    machine,
+                    line,
                     now - span,
                     now,
                     now,

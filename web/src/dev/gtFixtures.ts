@@ -10,6 +10,7 @@ import type {
     GTTunnel,
     GTTunnelHistory,
     GTFlow,
+    GTLabels,
     GTProduction,
     GTProductionEntry,
     GTProductionHistory,
@@ -667,6 +668,54 @@ export function mockGTTunnels(now: number): GTTunnel[] {
     });
 }
 
+// ---- shared labels (`GTLabelStore`) ----
+
+/** Three of the EBFs on the left of the base form a line; the main IV tunnel has its capacity set. */
+const mockLabels: GTLabels = {
+    machines: {
+        "0:104:64:-306": { nickname: "EBF #1", line: "Titanium line" },
+        "0:110:64:-306": { nickname: null, line: "Titanium line" },
+        "0:116:64:-306": { nickname: null, line: "Titanium line" },
+        "0:130:64:-340": { nickname: null, line: "Titanium line" },
+        "0:210:64:-340": { nickname: null, line: "Petrochem" },
+        "0:150:64:-340": { nickname: "Distillery", line: "Petrochem" },
+    },
+    tunnels: { "p2p:0:96:64:-280:north": { amps: 64, tier: 5 } },
+};
+
+export function mockGTLabels(): GTLabels {
+    return mockLabels;
+}
+
+/** `PutGTMachineNickname`/`PutGTMachineLine`: false when there is no such machine. Blank clears. */
+export function setMockMachineLabel(id: string, field: "nickname" | "line", value: string): boolean {
+    if (!MOCK_MACHINES.some((m) => machineId(m) === id)) return false;
+    const trimmed = value.trim().slice(0, 64).trim() || null;
+    const next = { nickname: null, line: null, ...mockLabels.machines[id], [field]: trimmed };
+    if (next.nickname === null && next.line === null) delete mockLabels.machines[id];
+    else mockLabels.machines[id] = next;
+    return true;
+}
+
+/** `PutGTLineName`: how many machines moved. */
+export function renameMockLine(from: string, to: string): number {
+    const ids = Object.keys(mockLabels.machines).filter((id) => mockLabels.machines[id]!.line === from);
+    for (const id of ids) setMockMachineLabel(id, "line", to);
+    return ids.length;
+}
+
+export function setMockTunnelCapacity(id: string, amps: number, tier: number): boolean {
+    if (!hasMockTunnel(id)) return false;
+    mockLabels.tunnels[id] = { amps, tier };
+    return true;
+}
+
+export function clearMockTunnelCapacity(id: string): boolean {
+    if (!mockLabels.tunnels[id]) return false;
+    delete mockLabels.tunnels[id];
+    return true;
+}
+
 export function hasMockTunnel(id: string): boolean {
     return MOCK_TUNNELS.some((t) => t.id === id);
 }
@@ -676,6 +725,7 @@ export function removeMockTunnel(id: string): boolean {
     const index = MOCK_TUNNELS.findIndex((t) => t.id === id);
     if (index < 0) return false;
     MOCK_TUNNELS.splice(index, 1);
+    delete mockLabels.tunnels[id];
     return true;
 }
 
@@ -794,6 +844,7 @@ export function mockGTProduction(
 export function mockGTProductionHistory(
     item: string | null,
     machine: string | null,
+    line: string | null,
     flow: GTFlow,
     span: number,
     points: number,
@@ -811,6 +862,7 @@ export function mockGTProductionHistory(
         let sum = 0;
         for (const m of MOCK_MACHINES) {
             if (machine !== null && machineId(m) !== machine) continue;
+            if (line !== null && mockLabels.machines[machineId(m)]?.line !== line) continue;
             for (const s of stacksOf(m, flow)) {
                 if (item !== null && s.id !== item) continue;
                 sum += producedIn(m, s, start, Math.min(start + step, now));
@@ -818,5 +870,5 @@ export function mockGTProductionHistory(
         }
         out.push(sum);
     }
-    return { stack: item, machine, from, to, stepMillis: step, resolution, points: out };
+    return { stack: item, machine, line, from, to, stepMillis: step, resolution, points: out };
 }

@@ -5,6 +5,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "p
 import { getPrefs, setPrefs as apiSetPrefs } from "../api/client";
 import type { BottleneckRange, GridKey, GTMachineStatus, StatsRange } from "../api/types";
 import type { ChartScale } from "../views/statsModel";
+import type { MachineLabels, TunnelCapacity } from "./gt";
 
 const FAVORITES_KEY = "ae2.favorites";
 const NOTIFY_KEY = "ae2.notifyEnabled";
@@ -14,9 +15,12 @@ const STATS_PINNED_KEY = "ae2.statsPinned";
 const MACHINE_FILTERS_KEY = "ae2.machineFilters";
 const MAIN_POWER_SOURCE_KEY = "ae2.mainPowerSource";
 const PASSIVE_MACHINES_KEY = "ae2.passiveMachines";
-const MACHINE_NAMES_KEY = "ae2.machineNames";
-const MACHINE_LINES_KEY = "ae2.machineLines";
-const TUNNEL_CAPACITY_KEY = "ae2.tunnelCapacity";
+// One-shot import of prefs-era GT labels - remove in a later release. Only read now, to hand to `state/gt`.
+const LEGACY_GT_LABEL_KEYS = {
+    machineNames: "ae2.machineNames",
+    machineLines: "ae2.machineLines",
+    tunnelCapacity: "ae2.tunnelCapacity",
+};
 const SETTINGS_KEY = "ae2.settings";
 const SCHEMA_KEY = "ae2.schema";
 
@@ -100,30 +104,27 @@ export const DEFAULT_MACHINE_FILTERS: MachineFilters = {
 export type PassiveMachines = Record<string, boolean>;
 
 /**
- * A user-chosen text per GT machine id: its nickname (`machineNames`) or the processing line it belongs to
- * (`machineLines`). A line exists for as long as some machine names it, so there's no line list to keep in step.
+ * One-shot import of prefs-era GT labels - remove in a later release. Machine nicknames, processing lines and tunnel
+ * capacities used to live in this blob; they're shared on the server now (`state/gt.tsx`), which imports these once.
  */
-export type MachineLabels = Record<string, string>;
-
-/** `labels` with every one of `ids` set to `value` (trimmed), or removed when it's null or blank. */
-function withLabel(labels: MachineLabels, ids: string[], value: string | null): MachineLabels {
-    const next = { ...labels };
-    const trimmed = value?.trim() ?? "";
-    for (const id of ids) {
-        if (trimmed === "") delete next[id];
-        else next[id] = trimmed;
-    }
-    return next;
+export interface LegacyGTLabels {
+    machineNames: MachineLabels;
+    machineLines: MachineLabels;
+    tunnelCapacity: Record<string, TunnelCapacity>;
 }
 
-function isLabels(value: unknown): value is MachineLabels {
+function isRecord<T>(value: unknown): value is Record<string, T> {
     return value !== null && typeof value === "object";
 }
 
-/** What an EU P2P tunnel's line is built for, by tunnel id: `amps` at GT voltage tier `tier`. */
-export interface TunnelCapacity {
-    amps: number;
-    tier: number;
+/** `null` when none of the three has an entry - nothing to import. */
+function legacyGTLabels(source: Partial<Record<keyof LegacyGTLabels, unknown>>): LegacyGTLabels | null {
+    const labels: LegacyGTLabels = {
+        machineNames: isRecord<string>(source.machineNames) ? source.machineNames : {},
+        machineLines: isRecord<string>(source.machineLines) ? source.machineLines : {},
+        tunnelCapacity: isRecord<TunnelCapacity>(source.tunnelCapacity) ? source.tunnelCapacity : {},
+    };
+    return Object.values(labels).some((r) => Object.keys(r).length > 0) ? labels : null;
 }
 
 /** A saved Statistics compare view (M8). Scoped to the grid it was saved on via `gridKey`. */
@@ -196,6 +197,14 @@ function writeJSON(key: string, value: unknown): void {
     localStorage.setItem(key, JSON.stringify(value));
 }
 
+function localLegacyGTLabels(): LegacyGTLabels | null {
+    return legacyGTLabels({
+        machineNames: readJSON(LEGACY_GT_LABEL_KEYS.machineNames, null),
+        machineLines: readJSON(LEGACY_GT_LABEL_KEYS.machineLines, null),
+        tunnelCapacity: readJSON(LEGACY_GT_LABEL_KEYS.tunnelCapacity, null),
+    });
+}
+
 /**
  * The subset of prefs that follows a player across devices (M13) - favourites, the Browser
  * toolbar filters, saved Statistics views and pinned items, and the GT Machines filters. Deliberately excludes
@@ -216,20 +225,19 @@ interface SyncedPrefs {
     /** The Power tab's pinned main LSC (a `/gt/power` source id) - `null` picks the largest one. */
     mainPowerSource: string | null;
     passiveMachines: PassiveMachines;
-    machineNames: MachineLabels;
-    machineLines: MachineLabels;
-    tunnelCapacity: Record<string, TunnelCapacity>;
 }
 
-function serializeSyncedPrefs(p: Omit<SyncedPrefs, "schemaVersion">): string {
+/** `legacy` rides along until `state/gt` has imported it, so a failed import can retry on any device. */
+function serializeSyncedPrefs(p: Omit<SyncedPrefs, "schemaVersion">, legacy: LegacyGTLabels | null = null): string {
     const blob: SyncedPrefs = { schemaVersion: CURRENT_SCHEMA_VERSION, ...p };
-    return JSON.stringify(blob);
+    return JSON.stringify(legacy ? { ...blob, ...legacy } : blob);
 }
 
 /** `null` on anything unparsable - the caller keeps whatever's already local rather than adopting junk. */
-function parseSyncedPrefs(raw: string): SyncedPrefs | null {
+function parseSyncedPrefs(raw: string): (SyncedPrefs & { legacyGTLabels: LegacyGTLabels | null }) | null {
     try {
-        const parsed = JSON.parse(raw) as Partial<SyncedPrefs> | null;
+        const parsed = JSON.parse(raw) as
+            (Partial<SyncedPrefs> & Partial<Record<keyof LegacyGTLabels, unknown>>) | null;
         if (parsed === null || typeof parsed !== "object") return null;
         return {
             schemaVersion: typeof parsed.schemaVersion === "number" ? parsed.schemaVersion : 0,
@@ -244,12 +252,7 @@ function parseSyncedPrefs(raw: string): SyncedPrefs | null {
                 parsed.passiveMachines !== null && typeof parsed.passiveMachines === "object"
                     ? parsed.passiveMachines
                     : {},
-            machineNames: isLabels(parsed.machineNames) ? parsed.machineNames : {},
-            machineLines: isLabels(parsed.machineLines) ? parsed.machineLines : {},
-            tunnelCapacity:
-                parsed.tunnelCapacity !== null && typeof parsed.tunnelCapacity === "object"
-                    ? parsed.tunnelCapacity
-                    : {},
+            legacyGTLabels: legacyGTLabels(parsed),
         };
     } catch {
         return null;
@@ -277,17 +280,10 @@ export interface PrefsContextValue {
     passiveMachines: PassiveMachines;
     /** Marks (`true`), dismisses (`false`) or forgets (`null`) every one of `ids`. */
     setPassive: (ids: string[], value: boolean | null) => void;
-    machineNames: MachineLabels;
-    /** Sets a machine's nickname; blank clears it. */
-    setMachineName: (id: string, name: string) => void;
-    machineLines: MachineLabels;
-    /** Puts every one of `ids` on `line`, or off any line for null/blank. */
-    setMachineLine: (ids: string[], line: string | null) => void;
-    /** Moves every machine on line `from` to `to` (merging into it when `to` already exists). */
-    renameLine: (from: string, to: string) => void;
-    tunnelCapacity: Record<string, TunnelCapacity>;
-    /** Sets what a tunnel's line is built for; `null` forgets it. */
-    setTunnelCapacity: (id: string, capacity: TunnelCapacity | null) => void;
+    /** Prefs-era GT labels still to import, once the server's prefs have been read; `null` when there are none. */
+    legacyGTLabels: LegacyGTLabels | null;
+    /** Forgets them, here and (with the next push) in the synced blob. */
+    clearLegacyGTLabels: () => void;
     statsViews: StatsView[];
     addStatsView: (view: Omit<StatsView, "id">) => void;
     removeStatsView: (id: string) => void;
@@ -317,11 +313,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         readJSON<string | null>(MAIN_POWER_SOURCE_KEY, null),
     );
     const [passiveMachines, setPassiveMachines] = useState<PassiveMachines>(() => readJSON(PASSIVE_MACHINES_KEY, {}));
-    const [machineNames, setMachineNames] = useState<MachineLabels>(() => readJSON(MACHINE_NAMES_KEY, {}));
-    const [machineLines, setMachineLines] = useState<MachineLabels>(() => readJSON(MACHINE_LINES_KEY, {}));
-    const [tunnelCapacity, setTunnelCapacityState] = useState<Record<string, TunnelCapacity>>(() =>
-        readJSON(TUNNEL_CAPACITY_KEY, {}),
-    );
+    // Held back until the server's blob has been read, so the import never runs on a stale local copy.
+    const [legacyLabels, setLegacyLabels] = useState<LegacyGTLabels | null>(null);
     // Spread over the defaults (not a bare `readJSON` fallback) so a settings blob saved before a future
     // field existed still picks up that field's default instead of `undefined`.
     const [settings, setSettingsState] = useState<Settings>(() => ({
@@ -355,15 +348,14 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                             machineFilters,
                             mainPowerSource,
                             passiveMachines,
-                            machineNames,
-                            machineLines,
-                            tunnelCapacity,
                         }),
                     );
+                    setLegacyLabels(localLegacyGTLabels());
                     return;
                 }
                 const parsed = parseSyncedPrefs(blob);
                 if (!parsed || cancelled) return;
+                setLegacyLabels(parsed.legacyGTLabels ?? localLegacyGTLabels());
                 setFavorites(parsed.favorites);
                 writeJSON(FAVORITES_KEY, parsed.favorites);
                 setBrowserFiltersState(parsed.browserFilters);
@@ -378,14 +370,9 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
                 writeJSON(MAIN_POWER_SOURCE_KEY, parsed.mainPowerSource);
                 setPassiveMachines(parsed.passiveMachines);
                 writeJSON(PASSIVE_MACHINES_KEY, parsed.passiveMachines);
-                setMachineNames(parsed.machineNames);
-                writeJSON(MACHINE_NAMES_KEY, parsed.machineNames);
-                setMachineLines(parsed.machineLines);
-                writeJSON(MACHINE_LINES_KEY, parsed.machineLines);
-                setTunnelCapacityState(parsed.tunnelCapacity);
-                writeJSON(TUNNEL_CAPACITY_KEY, parsed.tunnelCapacity);
             } catch {
                 // Offline, or no /prefs on this server yet - stay on localStorage alone.
+                if (!cancelled) setLegacyLabels(localLegacyGTLabels());
             } finally {
                 if (!cancelled) hasHydratedRef.current = true;
             }
@@ -407,21 +394,22 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         if (!hasHydratedRef.current) return;
         const timer = setTimeout(() => {
             void apiSetPrefs(
-                serializeSyncedPrefs({
-                    favorites,
-                    browserFilters,
-                    statsViews,
-                    statsPinned,
-                    machineFilters,
-                    mainPowerSource,
-                    passiveMachines,
-                    machineNames,
-                    machineLines,
-                    tunnelCapacity,
-                }),
+                serializeSyncedPrefs(
+                    {
+                        favorites,
+                        browserFilters,
+                        statsViews,
+                        statsPinned,
+                        machineFilters,
+                        mainPowerSource,
+                        passiveMachines,
+                    },
+                    legacyLabels,
+                ),
             ).catch(() => {});
         }, PREFS_PUSH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
+        // With `legacyLabels`, clearing them pushes a blob without them.
     }, [
         favorites,
         browserFilters,
@@ -430,9 +418,7 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         machineFilters,
         mainPowerSource,
         passiveMachines,
-        machineNames,
-        machineLines,
-        tunnelCapacity,
+        legacyLabels,
     ]);
 
     const isFavorite = useCallback((key: string) => favorites[key] === true, [favorites]);
@@ -499,39 +485,9 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
         });
     }, []);
 
-    const setMachineName = useCallback((id: string, name: string) => {
-        setMachineNames((current) => {
-            const next = withLabel(current, [id], name);
-            writeJSON(MACHINE_NAMES_KEY, next);
-            return next;
-        });
-    }, []);
-
-    const setMachineLine = useCallback((ids: string[], line: string | null) => {
-        setMachineLines((current) => {
-            const next = withLabel(current, ids, line);
-            writeJSON(MACHINE_LINES_KEY, next);
-            return next;
-        });
-    }, []);
-
-    const renameLine = useCallback((from: string, to: string) => {
-        setMachineLines((current) => {
-            const ids = Object.keys(current).filter((id) => current[id] === from);
-            const next = withLabel(current, ids, to);
-            writeJSON(MACHINE_LINES_KEY, next);
-            return next;
-        });
-    }, []);
-
-    const setTunnelCapacity = useCallback((id: string, capacity: TunnelCapacity | null) => {
-        setTunnelCapacityState((current) => {
-            const next = { ...current };
-            if (capacity === null) delete next[id];
-            else next[id] = capacity;
-            writeJSON(TUNNEL_CAPACITY_KEY, next);
-            return next;
-        });
+    const clearLegacyGTLabels = useCallback(() => {
+        for (const key of Object.values(LEGACY_GT_LABEL_KEYS)) localStorage.removeItem(key);
+        setLegacyLabels(null);
     }, []);
 
     // `id` is a string, not a bare `Date.now()` - two saves in the same millisecond would collide.
@@ -586,13 +542,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setMainPowerSource,
             passiveMachines,
             setPassive,
-            machineNames,
-            setMachineName,
-            machineLines,
-            setMachineLine,
-            renameLine,
-            tunnelCapacity,
-            setTunnelCapacity,
+            legacyGTLabels: legacyLabels,
+            clearLegacyGTLabels,
             statsViews,
             addStatsView,
             removeStatsView,
@@ -616,13 +567,8 @@ export function PrefsProvider({ children }: { children?: ComponentChildren }) {
             setMainPowerSource,
             passiveMachines,
             setPassive,
-            machineNames,
-            setMachineName,
-            machineLines,
-            setMachineLine,
-            renameLine,
-            tunnelCapacity,
-            setTunnelCapacity,
+            legacyLabels,
+            clearLegacyGTLabels,
             statsViews,
             addStatsView,
             removeStatsView,

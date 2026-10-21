@@ -116,6 +116,20 @@ test('PHP proxy preserves explicit credentials and guards cookie mutations', { s
     const itemPath = url.replace('api/grids', encodeURIComponent('api/grids/grid-key/tracked-items/minecraft:iron_ingot:0'));
     assert.equal((await fetch(itemPath, { headers: { Cookie: 'authenticationToken=cookie-token' } })).status, 200);
     assert.equal(paths.pop(), '/api/grids/grid-key/tracked-items/minecraft%3Airon_ingot%3A0');
+    // GT labels: machine ids hold colons and a negative coordinate, line names spaces; both are PUTs.
+    const labelHeaders = {
+        Cookie: 'authenticationToken=cookie-token', 'Content-Type': 'application/json', 'X-AE2-Request': 'true'
+    };
+    for (const [path, body, expected] of [
+        ['api/gt/machines/0:104:64:-306/line', '{"line":"Titanium line"}', '/api/gt/machines/0%3A104%3A64%3A-306/line'],
+        ['api/gt/lines/Titanium line', '{"name":"Ti"}', '/api/gt/lines/Titanium%20line'],
+    ]) {
+        const response = await fetch(url.replace('api/grids', encodeURIComponent(path)), {
+            method: 'PUT', headers: labelHeaders, body });
+        assert.equal(response.status, 200, path);
+        assert.equal(paths.pop(), expected);
+        assert.equal(received.pop(), 'Bearer cookie-token');
+    }
     for (const escape of ['api/grids/..', 'api/../icon', 'api//grids', 'other/grids']) {
         const response = await fetch(url.replace('api/grids', encodeURIComponent(escape)), {
             headers: { Cookie: 'authenticationToken=cookie-token' } });

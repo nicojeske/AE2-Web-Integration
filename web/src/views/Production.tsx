@@ -88,8 +88,7 @@ export interface ProductionProps {
 }
 
 export function Production({ onOpenMachine, onOpenStats }: ProductionProps) {
-    const { nonce } = useGT();
-    const { machineLines } = usePrefs();
+    const { nonce, machineLines } = useGT();
     const [range, setRange] = useState<GTRange>("24h");
     const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
     const [chosenGroupBy, setGroupBy] = useState<GroupBy>("item");
@@ -193,8 +192,8 @@ function ProductionTable({
     onOpenMachine: (id: string) => void;
     onOpenStats: () => void;
 }) {
-    const { settings, machineNames, machineLines } = usePrefs();
-    const { machines } = useGT();
+    const { settings } = usePrefs();
+    const { machines, machineNames, machineLines } = useGT();
     const [expanded, setExpanded] = useState<string | null>(null);
     // Until a regrouped poll lands, `data` may still hold the other grouping - render what it really holds.
     const groupBy: GroupBy = lines && data.groupBy === "machine" ? "line" : data.groupBy;
@@ -443,21 +442,33 @@ function ProductionDetail({
                     </div>
                 ))}
             </div>
-            {/* The history endpoint is per item or per machine, so a line shows its machines instead of a chart. */}
             {groupBy === "line" ? (
-                <LineMachines
-                    row={row as LineProductionEntry}
-                    flow={flow}
-                    range={range}
-                    minutes={minutes}
-                    numberFormat={numberFormat}
-                    liveById={liveById}
-                    onOpenMachine={onOpenMachine}
-                />
+                <div className="production__line-side">
+                    {/* "Unassigned" isn't a line the server knows, so it has no history of its own. */}
+                    {row.key !== "" && (
+                        <ProductionChart
+                            row={row}
+                            groupBy={groupBy}
+                            flow={flow}
+                            range={range}
+                            minutes={minutes}
+                            numberFormat={numberFormat}
+                        />
+                    )}
+                    <LineMachines
+                        row={row as LineProductionEntry}
+                        flow={flow}
+                        range={range}
+                        minutes={minutes}
+                        numberFormat={numberFormat}
+                        liveById={liveById}
+                        onOpenMachine={onOpenMachine}
+                    />
+                </div>
             ) : (
                 <ProductionChart
                     row={row}
-                    isItem={isItem}
+                    groupBy={groupBy}
                     flow={flow}
                     range={range}
                     minutes={minutes}
@@ -507,8 +518,7 @@ function LineMachines({
     liveById: Map<string, GTMachine>;
     onOpenMachine: (id: string) => void;
 }) {
-    const { nonce } = useGT();
-    const { machineNames, machineLines } = usePrefs();
+    const { nonce, machineNames, machineLines } = useGT();
     const states = useGTPoll(
         () => getGTMachineStates(range, minutes),
         GT_PRODUCTION_POLL_MS,
@@ -593,34 +603,36 @@ function LineMachines({
 
 function ProductionChart({
     row,
-    isItem,
+    groupBy,
     flow,
     range,
     minutes,
     numberFormat,
 }: {
     row: GTProductionEntry;
-    isItem: boolean;
+    groupBy: GroupBy;
     flow: GTFlow;
     range: GTRange;
     minutes: number | undefined;
     numberFormat: "full" | "compact";
 }) {
     const { nonce } = useGT();
-    // The history endpoint has no kind filter, so a machine's chart shows its combined output even when
-    // the table above shows only its items or fluids.
+    const isItem = groupBy === "item";
+    // The history endpoint has no kind filter, so a machine's or line's chart shows its combined output even
+    // when the table above shows only its items or fluids.
     const history = useGTPoll(
         () =>
             getGTProductionHistory({
                 item: isItem ? row.key : undefined,
-                machine: isItem ? undefined : row.key,
+                machine: groupBy === "machine" ? row.key : undefined,
+                line: groupBy === "line" ? row.key : undefined,
                 flow,
                 range,
                 points: DETAIL_POINTS,
                 minutes,
             }),
         GT_PRODUCTION_POLL_MS,
-        `${isItem ? "item" : "machine"}|${flow}|${row.key}|${range}|${minutes ?? ""}`,
+        `${groupBy}|${flow}|${row.key}|${range}|${minutes ?? ""}`,
         nonce,
     );
     const data = history.data;

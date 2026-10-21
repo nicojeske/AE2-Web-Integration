@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import com.github.bsideup.jabel.Desugar;
 
 import pl.kuba6000.ae2webintegration.core.WebPrincipal;
+import pl.kuba6000.ae2webintegration.core.gt.GTLabelStore;
 import pl.kuba6000.ae2webintegration.core.gt.GTTunnelStore;
 import pl.kuba6000.ae2webintegration.core.gt.GTVisibility;
 import pl.kuba6000.ae2webintegration.core.http.ApiStatus;
@@ -19,7 +20,8 @@ import pl.kuba6000.ae2webintegration.core.http.contract.PathParam;
 /**
  * Removes an EU P2P tunnel from the list, e.g. one that was broken or linked as an output since.
  * <p>
- * Its history stays and ages out. A tunnel still loaded as an input comes back on the next scan.
+ * Its history stays and ages out, its line capacity is forgotten. A tunnel still loaded as an input comes back on
+ * the next scan.
  *
  * @pathParam tunnelId Tunnel id, as listed by the tunnels endpoint.
  * @response 200 {@link Response} The tunnel was removed.
@@ -66,6 +68,8 @@ public final class DeleteGTTunnel extends GTRequest {
             deny(ApiStatus.NOT_FOUND);
             return;
         }
+        GTLabelStore.clearCapacity(tunnelId);
+        GTLabelStore.flushIfDirty();
         respond(HttpURLConnection.HTTP_OK, new Response(ApiStatus.OK, null));
     }
 }

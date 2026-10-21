@@ -654,7 +654,7 @@ function GTStatesTable({
     onOpenMachine: (id: string) => void;
 }) {
     const gt = useGT();
-    const { machineNames } = usePrefs();
+    const { machineNames } = gt;
     const gtRange = toGTRange(range, customMinutes);
     const states = useGTPoll(
         () => getGTMachineStates(gtRange.range, gtRange.minutes),

@@ -344,6 +344,10 @@ th.gt-table__num {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
 }
+.machine-panel__naming-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+}
 .machine-panel__label {
     display: flex;
     flex-direction: column;
@@ -885,6 +889,12 @@ th.gt-table__num {
 }
 .production__detail--line {
     grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+}
+.production__line-side {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
 }
 .prod-row__line-health {
     margin-left: 12px;

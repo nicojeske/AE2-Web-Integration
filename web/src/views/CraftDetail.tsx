@@ -98,7 +98,8 @@ export function CraftDetail({ gridKey, cpuKey, onClose, onOpenCpu }: CraftDetail
 
     // GregTech machines running the recipes this job's providers owe - see craftMachinesModel.ts.
     const gt = useGT();
-    const { passiveMachines, machineNames, settings } = usePrefs();
+    const { passiveMachines, settings } = usePrefs();
+    const { machineNames } = gt;
     const providers = live?.detail?.machines;
     const gtMachines = gt.machines.data;
     const matches = useMemo(
