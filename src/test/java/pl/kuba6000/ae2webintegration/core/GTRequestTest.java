@@ -25,6 +25,7 @@ import pl.kuba6000.ae2webintegration.core.config.Config;
 import pl.kuba6000.ae2webintegration.core.gt.GTProductionLog;
 import pl.kuba6000.ae2webintegration.core.gt.GTTestSupport;
 import pl.kuba6000.ae2webintegration.core.history.HistoryDbTestSupport;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.DeleteGTTunnel;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachine;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachines;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTPower;
@@ -112,6 +113,7 @@ class GTRequestTest {
         assertStatus("NOT_AVAILABLE", run(new GetGTPowerHistory(), ALICE_ID, "source=x"));
         assertStatus("NOT_AVAILABLE", run(new GetGTTunnels(), ALICE_ID, ""));
         assertStatus("NOT_AVAILABLE", run(new GetGTTunnelHistory(), ALICE_ID, "tunnel=x"));
+        assertStatus("NOT_AVAILABLE", run(new DeleteGTTunnel(), ALICE_ID, "tunnel=x"));
         assertStatus("NOT_AVAILABLE", run(new GetGTProduction(), ALICE_ID, ""));
         assertStatus("NOT_AVAILABLE", run(new GetGTProductionHistory(), ALICE_ID, ""));
     }
@@ -303,6 +305,15 @@ class GTRequestTest {
 
         assertStatus("OK", run(new GetGTTunnelHistory(), ALICE_ID, "tunnel=" + id + "&range=1h"));
         assertStatus("NOT_FOUND", run(new GetGTTunnelHistory(), CAROL_ID, "tunnel=" + id));
+
+        assertStatus("NOT_FOUND", run(new DeleteGTTunnel(), CAROL_ID, "tunnel=" + id));
+        assertStatus("OK", run(new DeleteGTTunnel(), BOB_ID, "tunnel=" + id));
+        assertStatus("NOT_FOUND", run(new DeleteGTTunnel(), BOB_ID, "tunnel=" + id));
+        assertEquals(
+            0,
+            run(new GetGTTunnels(), BOB_ID, "").getAsJsonObject("data")
+                .getAsJsonArray("tunnels")
+                .size());
     }
 
     @Test

@@ -278,6 +278,11 @@ export function getGTTunnels(): Promise<GTTunnels> {
     return apiGet("gt/tunnels");
 }
 
+/** Forgets a tunnel that is gone; one still loaded as an input comes back on the next scan. */
+export function deleteGTTunnel(tunnel: string): Promise<null> {
+    return apiRequest("DELETE", `gt/tunnels/${seg(tunnel)}`);
+}
+
 export function getGTTunnelHistory(
     tunnel: string,
     range: GTRange,

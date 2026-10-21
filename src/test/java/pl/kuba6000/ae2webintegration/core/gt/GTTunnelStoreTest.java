@@ -1,7 +1,9 @@
 package pl.kuba6000.ae2webintegration.core.gt;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.util.Collections;
@@ -73,6 +75,20 @@ class GTTunnelStoreTest {
         assertEquals(1.0 * IV, view.euPerTick, 1e-6);
         view = update(NOW + 70 * SECOND, 1200, tunnel(1_000_000 + 400, 0));
         assertEquals(600.0 * IV / 400, view.euPerTick, 1e-6);
+    }
+
+    @Test
+    void unlinkedTunnelsAreSkippedAndRemovedOnesStartOver() {
+        GTEnergyTunnelSnapshot unlinked = tunnel(0, 0);
+        unlinked.frequency = 0;
+        assertNull(update(NOW, 0, unlinked), "a part not linked yet is not a tunnel");
+
+        update(NOW, 0, tunnel(0, 0));
+        update(NOW + 10 * SECOND, 200, tunnel(200, 0));
+        assertTrue(GTTunnelStore.remove(tunnel(0, 0).id));
+        assertNull(GTTunnelStore.latest(tunnel(0, 0).id));
+        assertFalse(GTTunnelStore.remove(tunnel(0, 0).id));
+        assertNull(update(NOW + 20 * SECOND, 400, tunnel(400, 0)).euPerTick, "no rate carried over");
     }
 
     @Test

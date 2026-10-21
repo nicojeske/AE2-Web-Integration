@@ -48,6 +48,7 @@ import {
     mockGTTunnelHistory,
     mockGTTunnels,
     hasMockTunnel,
+    removeMockTunnel,
     parseGTRange,
     parsePoints,
 } from "./gtFixtures.ts";
@@ -214,6 +215,7 @@ function parseFlow(value: string | null): GTFlow | null {
 }
 
 function handleGT(
+    method: string,
     path: string[],
     params: URLSearchParams,
     mode: GTMode,
@@ -259,6 +261,12 @@ function handleGT(
         if (!hasMockPowerSource(id)) return respond(res, "NOT_FOUND", null);
         return ok(res, mockGTPowerHistory(id, span, points, now));
     }
+    if (method === "DELETE") {
+        if (section === "tunnels" && id !== undefined && sub === undefined) {
+            return removeMockTunnel(id) ? ok(res, null) : respond(res, "NOT_FOUND", null);
+        }
+        return next();
+    }
     if (section === "tunnels" && id === undefined) return ok(res, { tunnels: mockGTTunnels(now) });
     if (section === "tunnels" && id !== undefined && sub === "history") {
         const span = range("24h", MOCK_POWER_MAX_RANGE);
@@ -299,7 +307,7 @@ async function handleApi(
     const route = `${method} ${path.map((p, i) => (path[0] === "grids" && i === 1 ? "{grid}" : p)).join("/")}`;
 
     if (path[0] === "gt") {
-        return handleGT(path.slice(1), params, gtMode(req.headers.referer), req.headers.referer, res, next);
+        return handleGT(method, path.slice(1), params, gtMode(req.headers.referer), req.headers.referer, res, next);
     }
     if (route === "GET grids") return ok(res, toGridSummaries());
     if (route === "POST auth/logout") return ok(res, null);

@@ -122,7 +122,8 @@ public final class GTTunnelStore {
         }
         long scanTicks = (long) Config.INSTANCE.gregtech.scanIntervalSeconds * TICKS_PER_SECOND;
         for (GTEnergyTunnelSnapshot tunnel : tunnels) {
-            if (tunnel == null || tunnel.id == null) {
+            // Frequency 0: a freshly placed part not linked to anything yet, which turns into an output once it is.
+            if (tunnel == null || tunnel.id == null || tunnel.frequency == 0) {
                 continue;
             }
             Tracker tracker = trackers.computeIfAbsent(tunnel.id, k -> new Tracker());
@@ -198,6 +199,18 @@ public final class GTTunnelStore {
         db.putGauge(table, id, EU_T, bucketStart, Math.round((double) acc.eu / acc.ticks));
         db.putGauge(table, id, PEAK_EU_T, bucketStart, Math.round(acc.peakEuPerTick));
         db.putGauge(table, id, MAXED_PERMILLE, bucketStart, Math.round(1000.0 * acc.maxed / acc.ticks));
+    }
+
+    /**
+     * Forgets a tunnel, e.g. one that was broken or turned into an output. Its history stays and ages out. A tunnel
+     * still loaded as an input comes back on the next scan.
+     */
+    public static boolean remove(String tunnelId) {
+        if (tunnelId == null) {
+            return false;
+        }
+        trackers.remove(tunnelId);
+        return views.remove(tunnelId) != null;
     }
 
     // --- Reading (HTTP threads) ---

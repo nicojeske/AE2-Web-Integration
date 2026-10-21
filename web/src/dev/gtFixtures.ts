@@ -608,6 +608,8 @@ interface MockTunnel {
     maxedShare: number;
     outputs: number;
     pos: [number, number, number, number];
+    /** Not in the latest scan - broken, or linked as an output since. Removable. */
+    unloaded?: boolean;
 }
 
 const MOCK_TUNNELS: MockTunnel[] = [
@@ -621,6 +623,16 @@ const MOCK_TUNNELS: MockTunnel[] = [
         pos: [0, 96, 64, -280],
     },
     { id: "p2p:0:40:70:12:up", name: null, voltage: 2048, amps: 2, maxedShare: 0.35, outputs: 1, pos: [0, 40, 70, 12] },
+    {
+        id: "p2p:0:-12:64:30:west",
+        name: null,
+        voltage: 512,
+        amps: 0,
+        maxedShare: 0,
+        outputs: 0,
+        pos: [0, -12, 64, 30],
+        unloaded: true,
+    },
 ];
 
 function tunnelAmpsAt(t: MockTunnel, time: number): number {
@@ -649,14 +661,22 @@ export function mockGTTunnels(now: number): GTTunnel[] {
             y: t.pos[2],
             z: t.pos[3],
             side: t.id.slice(t.id.lastIndexOf(":") + 1),
-            sampledAt: time,
-            loaded: true,
+            sampledAt: t.unloaded ? serverStart : time,
+            loaded: !t.unloaded,
         };
     });
 }
 
 export function hasMockTunnel(id: string): boolean {
     return MOCK_TUNNELS.some((t) => t.id === id);
+}
+
+/** `DeleteGTTunnel`: false when there was no such tunnel. */
+export function removeMockTunnel(id: string): boolean {
+    const index = MOCK_TUNNELS.findIndex((t) => t.id === id);
+    if (index < 0) return false;
+    MOCK_TUNNELS.splice(index, 1);
+    return true;
 }
 
 export function mockGTTunnelHistory(tunnel: string, span: number, points: number, now: number): GTTunnelHistory {

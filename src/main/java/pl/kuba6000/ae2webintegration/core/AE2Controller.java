@@ -46,6 +46,7 @@ import pl.kuba6000.ae2webintegration.core.http.endpoint.grid.GetGridSettings;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.grid.GetGrids;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.grid.GetItems;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.grid.PatchGridSettings;
+import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.DeleteGTTunnel;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTEnergy;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachine;
 import pl.kuba6000.ae2webintegration.core.http.endpoint.gt.GetGTMachineStates;
@@ -245,6 +246,7 @@ public class AE2Controller {
                 api.register(GetGTPowerHistory.class);
                 api.register(GetGTTunnels.class);
                 api.register(GetGTTunnelHistory.class);
+                api.register(DeleteGTTunnel.class);
                 api.register(GetGTProduction.class);
                 api.register(GetGTProductionHistory.class);
                 api.register(GetPrefs.class);

@@ -5,11 +5,20 @@
 // P2P tunnels: what each line carries against the capacity the player says it's built for.
 import { useState } from "preact/hooks";
 
-import { getGTEnergy, getGTPower, getGTPowerHistory, getGTTunnelHistory, getGTTunnels } from "../api/client";
+import {
+    ApiError,
+    deleteGTTunnel,
+    getGTEnergy,
+    getGTPower,
+    getGTPowerHistory,
+    getGTTunnelHistory,
+    getGTTunnels,
+} from "../api/client";
 import { formatDuration, formatEU, formatEUt, formatEUtTier, GT_TIERS, gtTierName } from "../api/format";
 import type { GTEnergyMachine, GTPowerSource, GTRange, GTTunnel } from "../api/types";
 import { GT_FAST_POLL_MS, useGT, useGTPoll } from "../state/gt";
 import { type TunnelCapacity, usePrefs } from "../state/prefs";
+import { useToast } from "../state/toast";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Chart } from "../ui/Chart";
@@ -158,10 +167,26 @@ function tunnelName(t: GTTunnel): string {
  */
 function EnergyTunnels() {
     const { nonce } = useGT();
-    const { tunnelCapacity } = usePrefs();
+    const { tunnelCapacity, setTunnelCapacity } = usePrefs();
+    const toast = useToast();
     const tunnels = useGTPoll(getGTTunnels, GT_FAST_POLL_MS, "tunnels", nonce);
     const [expanded, setExpanded] = useState<string | null>(null);
-    const list = tunnels.data?.tunnels ?? [];
+    // Hidden right away rather than waiting for the next poll, which won't list them anyway.
+    const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
+    const list = (tunnels.data?.tunnels ?? []).filter((t) => !removed.has(t.id));
+    const remove = async (t: GTTunnel) => {
+        try {
+            await deleteGTTunnel(t.id);
+        } catch (e) {
+            if (!(e instanceof ApiError && e.status === "NOT_FOUND")) {
+                toast(e instanceof ApiError ? e.status : "Failed to remove tunnel");
+                return;
+            }
+        }
+        setRemoved((r) => new Set(r).add(t.id));
+        setTunnelCapacity(t.id, null);
+        toast(`Removed ${tunnelName(t)}`);
+    };
     if (list.length === 0) return null;
     return (
         <section className="energy">
@@ -185,6 +210,7 @@ function EnergyTunnels() {
                         capacity={tunnelCapacity[t.id] ?? null}
                         expanded={expanded === t.id}
                         onToggle={() => setExpanded((e) => (e === t.id ? null : t.id))}
+                        onRemove={t.loaded ? undefined : () => void remove(t)}
                     />
                 ))}
             </div>
@@ -197,11 +223,14 @@ function TunnelRow({
     capacity,
     expanded,
     onToggle,
+    onRemove,
 }: {
     tunnel: GTTunnel;
     capacity: TunnelCapacity | null;
     expanded: boolean;
     onToggle: () => void;
+    /** Only on tunnels missing from the last scan - a loaded input would come straight back. */
+    onRemove?: () => void;
 }) {
     const [range, setRange] = useState<GTRange>("24h");
     const [customMinutes, setCustomMinutes] = useState(DEFAULT_CUSTOM_MINUTES);
@@ -258,6 +287,15 @@ function TunnelRow({
                     {t.maxedShare === null ? "—" : `${Math.round(t.maxedShare * 100)}%`}
                 </span>
                 <span className="power-row__actions">
+                    {onRemove && (
+                        <Button
+                            variant="text"
+                            onClick={onRemove}
+                            title="Not in the last scan: broken, linked as an output, or its chunk is unloaded"
+                        >
+                            Remove
+                        </Button>
+                    )}
                     <Button variant="text" onClick={onToggle} aria-expanded={expanded}>
                         {expanded ? "Hide" : "History"}
                     </Button>
@@ -274,13 +312,7 @@ function TunnelRow({
                             onCustomMinutes={setCustomMinutes}
                         />
                     </div>
-                    <TunnelHistory
-                        tunnel={t}
-                        capacity={capacity}
-                        capacityEUt={capacityEUt}
-                        range={range}
-                        customMinutes={customMinutes}
-                    />
+                    <TunnelHistory tunnel={t} capacity={capacity} range={range} customMinutes={customMinutes} />
                 </div>
             )}
         </>
@@ -334,16 +366,15 @@ function CapacityEditor({ tunnel, capacity }: { tunnel: GTTunnel; capacity: Tunn
     );
 }
 
+/** Average and peak in amps: the stored EU/t over the tunnel's voltage, like the list's figures. */
 function TunnelHistory({
     tunnel,
     capacity,
-    capacityEUt,
     range,
     customMinutes,
 }: {
     tunnel: GTTunnel;
     capacity: TunnelCapacity | null;
-    capacityEUt: number | null;
     range: GTRange;
     customMinutes: number;
 }) {
@@ -357,8 +388,10 @@ function TunnelHistory({
         nonce,
     );
     const data = history.data;
-    const average = data ? toValues(data.euPerTick) : [];
-    const peak = data ? toValues(data.peakEuPerTick) : [];
+    const toAmps = (values: (number | null)[]) =>
+        values.map((v) => (v === null || tunnel.voltage <= 0 ? null : v / tunnel.voltage));
+    const average = data ? toAmps(toValues(data.euPerTick)) : [];
+    const peak = data ? toAmps(toValues(data.peakEuPerTick)) : [];
     const maxedTime = data ? toValues(data.maxedPermille).map((v) => (v === null ? null : v / 10)) : [];
     const timestamps = data ? pointTimestamps(data.from, data.stepMillis, average.length) : [];
     const spanMillis = data ? data.to - data.from : undefined;
@@ -368,7 +401,7 @@ function TunnelHistory({
         label: string,
         height: number,
         threshold: number | null,
-        format: (v: number) => string = (v) => formatEUt(v).replace(" EU/t", ""),
+        format: (v: number) => string = amps,
     ) => (
         <Chart
             values={values}
@@ -390,17 +423,18 @@ function TunnelHistory({
     return (
         <div className="power-history power-history--wide">
             {history.error && <div className="power-history__note">Couldn't load history ({history.error}).</div>}
-            {data && (
+            {data && tunnel.voltage <= 0 && (
+                <div className="power-history__note">No voltage seen yet, so there are no amps to chart.</div>
+            )}
+            {data && tunnel.voltage > 0 && (
                 <>
                     <span className="section-label">
-                        Average · {RANGE_LABEL[range] ?? range}
-                        {capacity &&
-                            capacityEUt !== null &&
-                            ` · line at ${capacity.amps} A ${gtTierName(capacity.tier)} (${formatEUt(capacityEUt)})`}
+                        Average amps · {RANGE_LABEL[range] ?? range}
+                        {capacity && ` · line at ${capacity.amps} A ${gtTierName(capacity.tier)}`}
                     </span>
-                    {chart(average, "average EU per tick", 160, capacityEUt)}
+                    {chart(average, "average amps", 160, capacity?.amps ?? null)}
                     <span className="section-label">Busiest scan</span>
-                    {chart(peak, "peak EU per tick", 100, capacityEUt)}
+                    {chart(peak, "peak amps", 100, capacity?.amps ?? null)}
                     {maxedTime.some((v) => v !== null && v > 0) && (
                         <>
                             <span className="section-label">Time maxed (outputs took every amp offered)</span>
