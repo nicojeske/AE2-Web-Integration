@@ -1,15 +1,17 @@
 // GregTech Production section (docs/gt-hub/phase-2-frontend.md §4.3): what GT multiblocks produced over
-// a range, grouped by item or by machine, each row expandable into its breakdown and a per-window chart.
+// a range, grouped by item, machine or processing line, each row expandable into its breakdown and a per-window
+// chart - or, for a line, its machines' output and how they spent the range.
 // An item row links to its stock history in Statistics, since `/gt/*` item ids match AE2's `itemid`.
 import { useMemo, useState } from "preact/hooks";
 
-import { getGTProduction, getGTProductionHistory } from "../api/client";
+import { getGTMachineStates, getGTProduction, getGTProductionHistory } from "../api/client";
 import { formatTimestamp } from "../api/format";
-import type { GTFlow, GTProduction, GTProductionEntry, GTRange } from "../api/types";
+import type { GTFlow, GTMachine, GTProduction, GTProductionEntry, GTRange } from "../api/types";
 import { GT_PRODUCTION_POLL_MS, useGT, useGTPoll } from "../state/gt";
 import { useNetwork } from "../state/network";
 import { usePrefs } from "../state/prefs";
 import { MAX_PINNED, useStats } from "../state/stats";
+import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Chart } from "../ui/Chart";
 import { cx } from "../ui/cx";
@@ -18,8 +20,20 @@ import { ItemIcon } from "../ui/ItemIcon";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import type { SegmentedOption } from "../ui/SegmentedControl";
 import { CustomRangeInput } from "./CustomRangeInput";
-import { GTPollState } from "./gtCommon";
-import { aggregateLines, formatGTAmount, formatGTPerHour, gtRangeOptions } from "./gtModel";
+import { machineVerdicts } from "./bottlenecksModel";
+import { GTPollState, StateSplitBar } from "./gtCommon";
+import {
+    aggregateLines,
+    formatGTAmount,
+    formatGTPerHour,
+    GT_STATUS_LABELS,
+    GT_STATUS_VARIANTS,
+    gtRangeOptions,
+    lineHealth,
+    lineHealthText,
+    lineMemberIds,
+} from "./gtModel";
+import type { LineHealth, LineProductionEntry } from "./gtModel";
 import { DEFAULT_CUSTOM_MINUTES, pointTimestamps } from "./statsModel";
 
 /** `"line"` is the user's processing lines, summed client-side from the server's per-machine rows. */
@@ -180,14 +194,15 @@ function ProductionTable({
     onOpenStats: () => void;
 }) {
     const { settings, machineNames, machineLines } = usePrefs();
+    const { machines } = useGT();
     const [expanded, setExpanded] = useState<string | null>(null);
     // Until a regrouped poll lands, `data` may still hold the other grouping - render what it really holds.
     const groupBy: GroupBy = lines && data.groupBy === "machine" ? "line" : data.groupBy;
     const kindRows = useMemo(() => {
         const byKind = filterByKind(data.rows, data.groupBy, kind);
-        if (groupBy === "line") return aggregateLines(byKind, machineLines);
-        // Machine names appear as rows (by machine) or breakdown entries (by item) - show the user's nicknames.
+        // Machine names appear as rows (by machine or line) or breakdown entries (by item) - show the user's nicknames.
         const nick = (e: GTProductionEntry) => (machineNames[e.key] ? { ...e, name: machineNames[e.key]! } : e);
+        if (groupBy === "line") return aggregateLines(byKind.map(nick), machineLines);
         return groupBy === "machine"
             ? byKind.map(nick)
             : byKind.map((row) => ({ ...row, breakdown: row.breakdown.map(nick) }));
@@ -196,6 +211,20 @@ function ProductionTable({
         const q = search.trim().toLowerCase();
         return q ? kindRows.filter((r) => r.name.toLowerCase().includes(q) || r.key.includes(q)) : kindRows;
     }, [kindRows, search]);
+    // Each line's live health from the app-wide machines poll, over every machine on it, producing or not.
+    const liveById = useMemo(() => new Map((machines.data?.machines ?? []).map((m) => [m.id, m])), [machines.data]);
+    const healthByLine = useMemo(() => {
+        const out = new Map<string, LineHealth>();
+        if (groupBy !== "line") return out;
+        for (const row of kindRows) {
+            if (row.key === "") continue;
+            const members = lineMemberIds(machineLines, row.key)
+                .map((id) => liveById.get(id))
+                .filter((m): m is GTMachine => m !== undefined);
+            out.set(row.key, lineHealth(members));
+        }
+        return out;
+    }, [groupBy, kindRows, machineLines, liveById]);
     const fmt = settings.numberFormat;
     // Share bars are relative to the top row of the shown kind, not of the searched list, so a search
     // doesn't make a minor output look like the biggest one. Items and fluids aren't comparable units,
@@ -242,6 +271,8 @@ function ProductionTable({
                             groupBy={groupBy}
                             flow={data.flow}
                             share={row.total / maxTotal(row.fluid)}
+                            health={healthByLine.get(row.key)}
+                            liveById={liveById}
                             expanded={expanded === row.key}
                             onToggle={() => setExpanded((e) => (e === row.key ? null : row.key))}
                             range={range}
@@ -267,6 +298,8 @@ function ProductionRow({
     groupBy,
     flow,
     share,
+    health,
+    liveById,
     expanded,
     onToggle,
     range,
@@ -279,6 +312,9 @@ function ProductionRow({
     groupBy: GroupBy;
     flow: GTFlow;
     share: number;
+    /** Line rows only: the live state of the line's machines. */
+    health: LineHealth | undefined;
+    liveById: Map<string, GTMachine>;
     expanded: boolean;
     onToggle: () => void;
     range: GTRange;
@@ -321,7 +357,10 @@ function ProductionRow({
                 ) : (
                     <FactoryIcon size={18} className="prod-row__machine-icon" />
                 )}
-                <span className="cell-text">{row.name}</span>
+                <span className="cell-text">
+                    {row.name}
+                    {health && <LineHealthSummary health={health} />}
+                </span>
                 <div className="prod-row__share">
                     <div
                         style={{
@@ -346,6 +385,7 @@ function ProductionRow({
                         range={range}
                         minutes={minutes}
                         numberFormat={numberFormat}
+                        liveById={liveById}
                         onOpenMachine={onOpenMachine}
                     />
                     {actions && <div className="production__detail-actions">{actions}</div>}
@@ -365,6 +405,7 @@ function ProductionDetail({
     range,
     minutes,
     numberFormat,
+    liveById,
     onOpenMachine,
 }: {
     row: GTProductionEntry;
@@ -373,11 +414,12 @@ function ProductionDetail({
     range: GTRange;
     minutes: number | undefined;
     numberFormat: "full" | "compact";
+    liveById: Map<string, GTMachine>;
     onOpenMachine: (id: string) => void;
 }) {
     const isItem = groupBy === "item";
     return (
-        <div className="production__detail">
+        <div className={cx("production__detail", groupBy === "line" && "production__detail--line")}>
             <div className="production__breakdown">
                 <span className="section-label">
                     {isItem ? "By machine" : flow === "consumed" ? "By input" : "By output"}
@@ -401,8 +443,18 @@ function ProductionDetail({
                     </div>
                 ))}
             </div>
-            {/* The history endpoint is per item or per machine, so a line has no chart of its own. */}
-            {groupBy !== "line" && (
+            {/* The history endpoint is per item or per machine, so a line shows its machines instead of a chart. */}
+            {groupBy === "line" ? (
+                <LineMachines
+                    row={row as LineProductionEntry}
+                    flow={flow}
+                    range={range}
+                    minutes={minutes}
+                    numberFormat={numberFormat}
+                    liveById={liveById}
+                    onOpenMachine={onOpenMachine}
+                />
+            ) : (
                 <ProductionChart
                     row={row}
                     isItem={isItem}
@@ -412,6 +464,129 @@ function ProductionDetail({
                     numberFormat={numberFormat}
                 />
             )}
+        </div>
+    );
+}
+
+/** `"4 machines · 3 running · 1 no power · 2.1k EU/t"` after a line's name, led by its worst status. */
+function LineHealthSummary({ health }: { health: LineHealth }) {
+    const count = health.counts.reduce((n, [, c]) => n + c, 0);
+    const text = `${count === 1 ? "1 machine" : `${count} machines`}${health.counts.length > 0 || health.euPerTick !== 0 ? ` · ${lineHealthText(health)}` : ""}`;
+    return (
+        <span className="prod-row__line-health" title={text}>
+            {health.worst && (
+                <span
+                    className={`machines__dot machines__dot--${GT_STATUS_VARIANTS[health.worst]}`}
+                    title={GT_STATUS_LABELS[health.worst]}
+                />
+            )}
+            {text}
+        </span>
+    );
+}
+
+/**
+ * A line's machines: what each one put out over the range (largest first, then the members that put out nothing)
+ * and how it spent the range. The time split comes from `/gt/machine-states`, which needs the history database -
+ * without it only the output columns show.
+ */
+function LineMachines({
+    row,
+    flow,
+    range,
+    minutes,
+    numberFormat,
+    liveById,
+    onOpenMachine,
+}: {
+    row: LineProductionEntry;
+    flow: GTFlow;
+    range: GTRange;
+    minutes: number | undefined;
+    numberFormat: "full" | "compact";
+    liveById: Map<string, GTMachine>;
+    onOpenMachine: (id: string) => void;
+}) {
+    const { nonce } = useGT();
+    const { machineNames, machineLines } = usePrefs();
+    const states = useGTPoll(
+        () => getGTMachineStates(range, minutes),
+        GT_PRODUCTION_POLL_MS,
+        `${range}|${minutes ?? ""}`,
+        nonce,
+    );
+    const stateById = useMemo(() => new Map((states.data ?? []).map((m) => [m.id, m])), [states.data]);
+    const members = useMemo(() => {
+        const producing = new Set(row.machines.map((m) => m.key));
+        // "Unassigned" isn't a line the user built, so it lists only the machines that produced something.
+        const idle = row.key === "" ? [] : lineMemberIds(machineLines, row.key).filter((id) => !producing.has(id));
+        return [
+            ...row.machines.map((m) => ({ id: m.key, name: m.name, output: m as GTProductionEntry | null })),
+            ...idle
+                .map((id) => ({ id, name: machineNames[id] ?? liveById.get(id)?.name ?? id, output: null }))
+                .sort((a, b) => a.name.localeCompare(b.name)),
+        ];
+    }, [row, machineLines, machineNames, liveById]);
+    const withStates = states.data !== null;
+    const outputs = flow === "consumed" ? "Took" : "Made";
+
+    return (
+        <div className="production__chart">
+            <span className="section-label">Machines</span>
+            <div className={cx("dtable prod-line-machines", !withStates && "prod-line-machines--no-states")}>
+                <div className="dtable__head">
+                    <span>Machine</span>
+                    {withStates && <span>Time split</span>}
+                    {withStates && <span className="right">Running</span>}
+                    <span className="right">Total</span>
+                    <span className="right">Per hour</span>
+                    {withStates && <span />}
+                </div>
+                {members.map(({ id, name, output }) => {
+                    const st = stateById.get(id);
+                    const top = output?.breakdown
+                        .slice(0, 3)
+                        .map((b) => `${b.name} ${formatGTAmount(b.total, b.fluid, numberFormat)}`)
+                        .join(", ");
+                    return (
+                        <div
+                            key={id}
+                            className="dtable__row prod-line-machines__row"
+                            title={top ? `${outputs}: ${top}` : undefined}
+                        >
+                            <button
+                                type="button"
+                                className="production__link cell-text"
+                                onClick={() => onOpenMachine(id)}
+                            >
+                                {name}
+                            </button>
+                            {withStates && (st ? <StateSplitBar machine={st} /> : <span className="dim">—</span>)}
+                            {withStates && (
+                                <span className="cell-num">{st ? `${Math.round(st.runningShare * 100)}%` : "—"}</span>
+                            )}
+                            <span className="cell-num">
+                                {output ? formatGTAmount(output.total, false, numberFormat) : "—"}
+                            </span>
+                            <span className="cell-num dim">
+                                {output ? formatGTPerHour(output.perHour, false, numberFormat) : "—"}
+                            </span>
+                            {withStates && (
+                                <span className="bn-row__flags">
+                                    {st &&
+                                        machineVerdicts(st).map((v) => (
+                                            <span key={v.label} title={v.title}>
+                                                <Badge variant={v.variant} size="sm">
+                                                    {v.label}
+                                                </Badge>
+                                            </span>
+                                        ))}
+                                </span>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }

@@ -36,6 +36,7 @@ import {
     formatMicros,
     groupMachines,
     groupMachinesByLine,
+    lineHealthText,
     GT_STATUS_LABELS,
     GT_STATUS_VARIANTS,
     gtRangeOptions,
@@ -380,13 +381,7 @@ function GroupHeader({
                     <span className="machines__group-count">{group.machines.length}</span>
                 </button>
             )}
-            {health && (
-                <span className="machines__line-health">
-                    {health.counts.map(([status, n]) => `${n} ${GT_STATUS_LABELS[status].toLowerCase()}`).join(" · ")}
-                    {health.euPerTick !== 0 &&
-                        ` · ${health.euPerTick < 0 ? `+${formatEUt(-health.euPerTick)}` : formatEUt(health.euPerTick)}`}
-                </span>
-            )}
+            {health && <span className="machines__line-health">{lineHealthText(health)}</span>}
             {group.line !== undefined && !renaming && (
                 <Button variant="text" size="sm" onClick={() => setRenaming(true)}>
                     Rename

@@ -32,14 +32,13 @@ import {
     formatDelta,
     machineVerdicts,
     sortMachines,
-    stateShares,
     toGTRange,
     toHours,
     trendTimestamps,
 } from "./bottlenecksModel";
 import type { MachineSort } from "./bottlenecksModel";
 import { CustomRangeInput } from "./CustomRangeInput";
-import { GT_STATUS_LABELS, GT_STATUS_VARIANTS } from "./gtModel";
+import { StateSplitBar } from "./gtCommon";
 
 /** The server caches an analysis for a minute, so polling faster only re-reads it. */
 const POLL_MS = 60_000;
@@ -700,16 +699,7 @@ function GTStatesTable({
                             <span className="cell-text" title={m.id}>
                                 {machineNames[m.id] ?? m.name}
                             </span>
-                            <div className="bn-gt-row__split">
-                                {stateShares(m).map(({ status, share }) => (
-                                    <div
-                                        key={status}
-                                        className={`bn-gt-row__seg bn-gt-row__seg--${GT_STATUS_VARIANTS[status]}`}
-                                        style={{ width: `${share * 100}%` }}
-                                        title={`${GT_STATUS_LABELS[status]} ${formatPercent(share)}`}
-                                    />
-                                ))}
-                            </div>
+                            <StateSplitBar machine={m} />
                             <span className="cell-num">{Math.round(m.runningShare * 100)}%</span>
                             <span className="cell-num dim">{formatDuration(m.observedMillis)}</span>
                             <span className="bn-row__flags">

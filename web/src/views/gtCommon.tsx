@@ -2,8 +2,11 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
+import { formatPercent } from "../api/format";
+import type { GTMachineStates } from "../api/types";
 import type { GTPoll } from "../state/gt";
-import { clockProgressMs, clockRemainingMs, formatSecondsLeft } from "./gtModel";
+import { stateShares } from "./bottlenecksModel";
+import { clockProgressMs, clockRemainingMs, formatSecondsLeft, GT_STATUS_LABELS, GT_STATUS_VARIANTS } from "./gtModel";
 import type { RecipeClock } from "./gtModel";
 
 /** `Date.now()`, re-rendering every `intervalMs` - for live countdowns and interpolated progress. */
@@ -105,4 +108,20 @@ export function GTPollState<T>({
         );
     }
     return <div className="placeholder-panel">Loading {what}…</div>;
+}
+
+/** A machine's time over a range as one bar, a segment per status in `GT_STATUS_ORDER`. */
+export function StateSplitBar({ machine }: { machine: GTMachineStates }) {
+    return (
+        <div className="bn-gt-row__split">
+            {stateShares(machine).map(({ status, share }) => (
+                <div
+                    key={status}
+                    className={`bn-gt-row__seg bn-gt-row__seg--${GT_STATUS_VARIANTS[status]}`}
+                    style={{ width: `${share * 100}%` }}
+                    title={`${GT_STATUS_LABELS[status]} ${formatPercent(share)}`}
+                />
+            ))}
+        </div>
+    );
 }

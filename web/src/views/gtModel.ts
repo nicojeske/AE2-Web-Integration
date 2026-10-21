@@ -1,5 +1,5 @@
 // Pure helpers shared by the GregTech hub views (Machines, Power, Production).
-import { formatLiters, formatNumber } from "../api/format";
+import { formatEUt, formatLiters, formatNumber } from "../api/format";
 import type { GTMachine, GTMachines, GTMachineStatus, GTProductionEntry, GTRange } from "../api/types";
 import { GT_PROBLEM_STATUSES, GT_STATUS_ORDER } from "../api/types";
 import type { BadgeVariant } from "../ui/Badge";
@@ -190,6 +190,15 @@ export interface LineHealth {
     euPerTick: number;
 }
 
+/** `"3 running · 1 no power · 2.1k EU/t"` - generation shown as `+`. */
+export function lineHealthText(health: LineHealth): string {
+    const parts = health.counts.map(([status, n]) => `${n} ${GT_STATUS_LABELS[status].toLowerCase()}`);
+    if (health.euPerTick !== 0) {
+        parts.push(health.euPerTick < 0 ? `+${formatEUt(-health.euPerTick)}` : formatEUt(health.euPerTick));
+    }
+    return parts.join(" · ");
+}
+
 export function lineHealth(machines: GTMachine[]): LineHealth {
     const loaded = machines.filter((m) => m.loaded);
     const counts = GT_STATUS_ORDER.map((s): [GTMachineStatus, number] => [
@@ -239,26 +248,32 @@ export function lineNames(lines: MachineLabels): string[] {
     return [...new Set(Object.values(lines))].sort((a, b) => a.localeCompare(b));
 }
 
+/** A processing line's production row, with the machine rows it was summed from (largest total first). */
+export interface LineProductionEntry extends GTProductionEntry {
+    machines: GTProductionEntry[];
+}
+
 /**
  * `/gt/production?groupBy=machine` rows summed per processing line: each line's breakdown merges its
  * machines' breakdowns by key. Machines on no line become one "Unassigned" row (key `""`), listed last.
  */
-export function aggregateLines(rows: GTProductionEntry[], lines: MachineLabels): GTProductionEntry[] {
-    const groups = new Map<string, Map<string, GTProductionEntry>>();
+export function aggregateLines(rows: GTProductionEntry[], lines: MachineLabels): LineProductionEntry[] {
+    const groups = new Map<string, { merged: Map<string, GTProductionEntry>; machines: GTProductionEntry[] }>();
     for (const row of rows) {
         const line = lines[row.key] ?? "";
-        let merged = groups.get(line);
-        if (!merged) groups.set(line, (merged = new Map()));
+        let group = groups.get(line);
+        if (!group) groups.set(line, (group = { merged: new Map(), machines: [] }));
+        group.machines.push(row);
         for (const b of row.breakdown) {
-            const prev = merged.get(b.key);
-            merged.set(
+            const prev = group.merged.get(b.key);
+            group.merged.set(
                 b.key,
                 prev ? { ...prev, total: prev.total + b.total, perHour: prev.perHour + b.perHour } : { ...b },
             );
         }
     }
     return [...groups.entries()]
-        .map(([line, merged]): GTProductionEntry => {
+        .map(([line, { merged, machines }]): LineProductionEntry => {
             const breakdown = [...merged.values()].sort((a, b) => b.total - a.total);
             return {
                 key: line,
@@ -267,9 +282,15 @@ export function aggregateLines(rows: GTProductionEntry[], lines: MachineLabels):
                 total: breakdown.reduce((n, b) => n + b.total, 0),
                 perHour: breakdown.reduce((n, b) => n + b.perHour, 0),
                 breakdown,
+                machines: [...machines].sort((a, b) => b.total - a.total),
             };
         })
         .sort((a, b) => ((a.key === "") !== (b.key === "") ? (a.key === "" ? 1 : -1) : b.total - a.total));
+}
+
+/** Every machine on processing line `line`, whether or not it produced anything. */
+export function lineMemberIds(lines: MachineLabels, line: string): string[] {
+    return Object.keys(lines).filter((id) => lines[id] === line);
 }
 
 /** Statuses a passive machine stays tucked away in; anything else is worth a look and shows normally. */
